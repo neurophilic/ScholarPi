@@ -256,13 +256,46 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
 # --- 7. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK WITH WEIGHTS) ---
 
 def generate_interactive_bubble_chart(scope, user_id):
-    # ... [keep your data fetching logic the same] ...
-
-    net = Network(height='600px', width='100%', bgcolor='#ffffff', notebook=False)
+    cursor = conn.cursor()
+    cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
+    data = cursor.fetchall()
     
-    # 1. ADJUSTED PHYSICS: 
-    # Decrease 'gravitationalConstant' (e.g., -80) for less repulsion (tighter space)
-    # Increase 'centralGravity' (e.g., 0.2) to pull bubbles into a tighter cluster
+    if not data: return None, None
+    
+    all_topics = []
+    for fields_json, subfields_json, final_score in data:
+        try:
+            fields = [f.title().strip() for f in json.loads(fields_json)]
+            subfields = [s.title().strip() for s in json.loads(subfields_json)]
+            score = float(final_score) if final_score else 50.0
+            
+            for f in fields: all_topics.append({'topic': f, 'weight': score})
+            for s in subfields: all_topics.append({'topic': s, 'weight': score})
+        except: continue
+            
+    if not all_topics: return None, None
+    
+    df_topics = pd.DataFrame(all_topics)
+    topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
+    topic_counts['weight'] = topic_counts['weight'].round(1)
+    
+    # --- ADDED SAFETY CHECK ---
+    if topic_counts.empty:
+        return None, None
+    # --------------------------
+    
+    unique_topics = topic_counts['topic'].unique()
+    
+    def get_color(i, n):
+        h, s, v = i/n, 0.7, 0.9
+        rgb = colorsys.hsv_to_rgb(h, s, v)
+        return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb)
+    
+    color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
+    
+    net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
+    
+    # Physics adjusted for tighter gravity and reduced repulsion
     physics_options = """
     {
       "physics": {
@@ -281,33 +314,24 @@ def generate_interactive_bubble_chart(scope, user_id):
     for _, row in topic_counts.iterrows():
         topic_weight = row['weight']
         
-        # 2. DYNAMIC SIZE & MASS:
         # Scaling size/mass based on relevancy (topic_weight)
         node_size = 20 + (topic_weight * 0.5) 
         node_mass = 2 + (topic_weight * 0.1)
         
         net.add_node(
             n_id=row['topic'],
-            label="", # 3. REMOVE LABEL: Set to empty string
+            label="", # Label removed per your request
             title=f"Topic: {row['topic']} | Weight: {topic_weight}",
             size=node_size,
             mass=node_mass,
             color=color_map[row['topic']]
         )
-      
         
     html_string = net.generate_html()
     
-    # Updated HTML Table - Indentation stripped to prevent Markdown Code Block styling
-    table_html = "<style>"
-    table_html += ".table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; }"
-    table_html += ".table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; }"
-    table_html += ".table-big td { border-bottom: 1px solid #ddd; padding: 8px; vertical-align: middle; }"
-    table_html += ".color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; margin: 0 auto;}"
-    table_html += ".legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }"
-    table_html += "</style>"
-    table_html += "<div class='legend-container'><table class='table-big'>"
-    table_html += "<thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
+    # HTML Table Legend
+    table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; } .table-big td { border-bottom: 1px solid #ddd; padding: 8px; vertical-align: middle; } .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; margin: 0 auto;} .legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }</style>"
+    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
     
     topic_counts_sorted = topic_counts.sort_values(by="weight", ascending=False)
     
@@ -318,6 +342,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     table_html += "</tbody></table></div>"
     
     return html_string, table_html
+  
 
 # --- 8. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
