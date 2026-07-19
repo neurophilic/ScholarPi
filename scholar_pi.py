@@ -249,51 +249,34 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
 
 
-# --- 7. TOPOLOGICAL MAPPING (ROBUST COLORING & PHYSICS) ---
-
-def safe_color_to_rgba(color, alpha=0.6):
-    """Safely converts generic CSS/Plotly color strings to RGBA preventing ValueError."""
-    try:
-        color = str(color).strip()
-        # Handle existing rgb/rgba strings
-        if color.startswith('rgb'):
-            nums = re.findall(r'\d+', color)
-            if len(nums) >= 3:
-                return f'rgba({nums[0]}, {nums[1]}, {nums[2]}, {alpha})'
-        # Handle Hex strings
-        elif color.startswith('#'):
-            hex_color = color.lstrip('#')
-            if len(hex_color) == 3:  # shorthand hex
-                hex_color = ''.join([c*2 for c in hex_color])
-            if len(hex_color) >= 6:
-                r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-                return f'rgba({r}, {g}, {b}, {alpha})'
-    except Exception:
-        pass
-    # Safe Fallback color
-    return f'rgba(100, 150, 200, {alpha})'
-
-# --- 6. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK) ---
+# --- 7. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK WITH WEIGHTS) ---
 def generate_interactive_bubble_chart(scope, user_id):
     cursor = conn.cursor()
-    cursor.execute("SELECT fields, subfields FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
+    # Fetch final_score along with fields to calculate the weight
+    cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
     data = cursor.fetchall()
     
     if not data: return None, None
     
     all_topics = []
-    for fields_json, subfields_json in data:
+    for fields_json, subfields_json, final_score in data:
         try:
             fields = [f.title().strip() for f in json.loads(fields_json)]
             subfields = [s.title().strip() for s in json.loads(subfields_json)]
-            for f in fields: all_topics.append({'topic': f, 'category': 'Field'})
-            for s in subfields: all_topics.append({'topic': s, 'category': 'Subfield'})
+            score = float(final_score) if final_score else 50.0
+            
+            # Append each topic with its paper's score
+            for f in fields: all_topics.append({'topic': f, 'category': 'Field', 'weight': score})
+            for s in subfields: all_topics.append({'topic': s, 'category': 'Subfield', 'weight': score})
         except: continue
             
     if not all_topics: return None, None
     
     df_topics = pd.DataFrame(all_topics)
-    topic_counts = df_topics.groupby(['topic', 'category']).size().reset_index(name='count')
+    
+    # Group by topic and calculate the sum of the scores as the new "Weight"
+    topic_counts = df_topics.groupby(['topic', 'category'])['weight'].sum().reset_index(name='weight')
+    topic_counts['weight'] = topic_counts['weight'].round(1)
     
     # Generate a unique color for every unique topic
     unique_topics = topic_counts['topic'].unique()
@@ -308,7 +291,6 @@ def generate_interactive_bubble_chart(scope, user_id):
     # Initialize Network
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
     
-    # High centralGravity + mass makes big bubbles central gravity wells
     physics_options = """
     {
       "physics": {
@@ -325,14 +307,16 @@ def generate_interactive_bubble_chart(scope, user_id):
     net.set_options(physics_options)
     
     for _, row in topic_counts.iterrows():
-        freq = row['count']
-        node_size = 20 + (freq * 10) 
-        node_mass = 1 + (freq * 2)   # Higher mass = more gravity/centrality
+        topic_weight = row['weight']
+        
+        # DYNAMIC SCALING based on weight instead of frequency
+        node_size = 20 + (topic_weight / 5.0) 
+        node_mass = 1 + (topic_weight / 20.0)
         
         net.add_node(
             n_id=row['topic'],
             label=row['topic'],
-            title=f"Topic: {row['topic']} | Frequency: {freq}",
+            title=f"Topic: {row['topic']} | Accumulated Weight: {topic_weight}",
             size=node_size,
             mass=node_mass,
             color=color_map[row['topic']]
@@ -340,29 +324,41 @@ def generate_interactive_bubble_chart(scope, user_id):
         
     html_string = net.generate_html()
     
-    # Custom CSS/HTML for the Table
+    # Custom CSS/HTML for the Table (Replaces Streamlit's default DataFrame)
     table_html = """
     <style>
-        .table-big { width: 100%; font-size: 18px; border-collapse: collapse; margin-top: 20px; }
-        .table-big th { background-color: #2c3e50; color: white; padding: 12px; text-align: left; }
-        .table-big td { border-bottom: 1px solid #ddd; padding: 10px; }
-        .color-box { width: 20px; height: 20px; display: inline-block; border-radius: 3px; }
+        .table-big { width: 100%; font-size: 15px; border-collapse: collapse; margin-top: 10px; }
+        .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; }
+        .table-big td { border-bottom: 1px solid #ddd; padding: 8px; }
+        .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; }
+        .legend-container { max-height: 550px; overflow-y: auto; }
     </style>
+    <div class="legend-container">
     <table class='table-big'>
-        <tr><th>Color</th><th>Topic</th><th>Category</th><th>Frequency</th></tr>
+        <tr>
+            <th>Color</th>
+            <th>Topic</th>
+            <th>Category</th>
+            <th>Weight</th>
+        </tr>
     """
-    for _, row in topic_counts.iterrows():
+    
+    # Sort by weight descending for better table readability
+    topic_counts_sorted = topic_counts.sort_values(by="weight", ascending=False)
+    
+    for _, row in topic_counts_sorted.iterrows():
         color = color_map[row['topic']]
         table_html += f"""
         <tr>
-            <td><div class='color-box' style='background-color:{color};'></div></td>
+            <td style="text-align: center;"><div class='color-box' style='background-color:{color};'></div></td>
             <td>{row['topic']}</td>
             <td>{row['category']}</td>
-            <td>{row['count']}</td>
+            <td>{row['weight']}</td>
         </tr>"""
-    table_html += "</table>"
+    table_html += "</table></div>"
     
-    return html_string + table_html, topic_counts
+    return html_string, table_html
+
 
 # --- 8. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
@@ -474,21 +470,15 @@ with tab2:
     st.write("Visualizing your research scope (Click and drag the bubbles to interact)")
     
     if research_scope:
-        interactive_html, topic_counts = generate_interactive_bubble_chart(research_scope, current_user)
+        interactive_html, table_html = generate_interactive_bubble_chart(research_scope, current_user)
+        
         if interactive_html:
             col1, col2 = st.columns([3, 1])
             with col1:
                 components.html(interactive_html, height=620)
             with col2:
-                st.markdown("### Legend & Frequencies")
-                st.dataframe(
-                    topic_counts[['topic', 'category', 'count']].rename(columns={
-                        'topic': 'Topic', 'category': 'Category', 'count': 'Frequency'
-                    }), 
-                    hide_index=True, 
-                    use_container_width=True,
-                    height=580
-                )
+                st.markdown("### Legend & Weights")
+                st.markdown(table_html, unsafe_allow_html=True)
         else: 
             st.info("Awaiting sufficient data for this scope and user.")
     else:
