@@ -20,7 +20,8 @@ st.set_page_config(page_title="π-Index Assessment Engine", layout="wide")
 
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
-MAX_TEXT_TOKENS = 32000  # Safe threshold to avoid "Payload Too Large" API errors
+# Reduced to 12000 chars (~2500 tokens) to safely stay below the 6000 TPM limit
+MAX_TEXT_TOKENS = 12000 
 SEED_NUMBER = 42
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
@@ -106,27 +107,7 @@ def init_system():
 
 conn = init_system()
 
-# --- 3. RECALCULATION ENGINE ---
-def recalculate_pi_indices():
-    cursor = conn.cursor()
-    # Get latest weights from the blockchain
-    cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
-    weights = cursor.fetchone()
-    
-    # Get all stored assessments
-    cursor.execute("SELECT eval_hash, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment")
-    rows = cursor.fetchall()
-    
-    for row in rows:
-        eval_hash, *scores = row
-        # Recalculate based on current epoch weights
-        final_score = float(np.dot(scores, weights)) / 8.0
-        cursor.execute("UPDATE papers_assessment SET final_score = ? WHERE eval_hash = ?", (final_score, eval_hash))
-        
-    conn.commit()
-    st.toast("✅ Global π-Index values recalculated successfully against current epoch weights.")
-
-# --- 4. CORE ENGINE LOGIC ---
+# --- 3. CORE ENGINE LOGIC ---
 def calculate_model_driven_weights(old_weights, scores, model_name, block_height):
     v, s = (3.3, 70.0) if "70b" in model_name else (3.1, 8.0)
     pi_acc = get_pi_float(block_height)
@@ -145,9 +126,15 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
     sum_w = sum(new_weights)
     return [round((w / sum_w) * 8.0, 6) for w in new_weights]
 
-def evaluate_pdf_text(text, scope, model):
-    if len(text) > MAX_TEXT_TOKENS:
-        text = text[:MAX_TEXT_TOKENS]
+def evaluate_pdf_text(text, scope, model, text_limit):
+    if len(text) > text_limit:
+        text = text[:text_limit]
+
+    # Dynamically inject the scope instruction based on whether the user provided one
+    if scope.strip():
+        scope_instruction = f'After scoring the paper objectively, evaluate its "Scope_Alignment" (0-100) specifically to this user project/scope: "{scope}"'
+    else:
+        scope_instruction = 'Set "Scope_Alignment" to 0, as no specific project scope was provided.'
 
     prompt = f"""You are a brutally critical expert peer reviewer contributing to the π-Index.
 
@@ -155,7 +142,7 @@ Evaluate the provided academic paper based PURELY on its own inherent absolute m
 
 CRITICAL INSTRUCTION: You MUST use the full 0-100 scale for scores. Do NOT cluster scores around 70-80. If a paper is weak in an area, give it a 10 or 20. If exceptional, 90+. Force extreme variance based on actual merit.
 
-After scoring the paper objectively, evaluate its "Scope_Alignment" (0-100) specifically to this user project/scope: "{scope}"
+{scope_instruction}
 
 Return ONLY a valid JSON object matching exactly this structure:
 {{
@@ -193,7 +180,7 @@ def get_recommendation_spectrum(score, drift):
     return "Tier VI: Orthogonal / Unrelated Noise"
 
 def process_single_pdf(file_bytes, filename, scope, user_id):
-    # Hash uniquely isolates the paper independent of the chosen scope
+    # Hash uniquely isolates the paper
     file_hash = hashlib.sha256(file_bytes + user_id.encode('utf-8')).hexdigest()
     cursor = conn.cursor()
     cursor.execute("SELECT final_score, scope_alignment, title, fields, subfields, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
@@ -204,26 +191,31 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
         fields = json.loads(fields_str) if fields_str else ["General Science"]
         subfields = json.loads(subfields_str) if subfields_str else ["General"]
         scores_array = [c1, c2, c3, c4, c5, c6, c7, c8]
-        drift = calculate_complex_drift(alignment, scores_array)
+        
+        drift = calculate_complex_drift(alignment, scores_array) if scope.strip() else "N/A"
+        rec = get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
         scores_dict = {"C1_Originality": c1, "C2_Methodological_Rigor": c2, "C3_Interdisciplinary": c3, "C4_Societal_Impact": c4, "C5_Open_Science_Potential": c5, "C6_Literature_Integration": c6, "C7_Empirical_Density": c7, "C8_Future_Actionability": c8}
-        return title, score, drift, get_recommendation_spectrum(score, drift), fields, subfields, scores_dict
+        
+        return title, score, drift, rec, fields, subfields, scores_dict
 
     # Extract all pages
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     text = " ".join([page.get_text() for page in doc]) 
     
-    # Rate Limit & Error Handling Fallback
+    # Rate Limit & Payload Size Error Handling Fallback
     try:
-        raw_data = evaluate_pdf_text(text, scope, PRIMARY_MODEL)
+        raw_data = evaluate_pdf_text(text, scope, PRIMARY_MODEL, MAX_TEXT_TOKENS)
         model_used = PRIMARY_MODEL
     except Exception as e:
         st.warning(f"Primary model hit a limit/error. Failing over to {FALLBACK_MODEL}...")
         try:
-            raw_data = evaluate_pdf_text(text, scope, FALLBACK_MODEL)
+            # If the error is specific to payload size (413 or TPM limit), halve the payload for safety
+            reduced_limit = MAX_TEXT_TOKENS // 2 if 'limit' in str(e).lower() or '413' in str(e) else MAX_TEXT_TOKENS
+            raw_data = evaluate_pdf_text(text, scope, FALLBACK_MODEL, reduced_limit)
             model_used = FALLBACK_MODEL
         except Exception as e2:
             st.error(f"Both models failed. API Error: {str(e2)}")
-            return "Extraction Failed", 0.0, 0.0, "N/A", ["Unknown"], ["Unknown"], {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
+            return "Extraction Failed", 0.0, "N/A", "N/A", ["Unknown"], ["Unknown"], {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
         
     # Increment and grab global evaluations
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
@@ -247,21 +239,24 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     else:
         new_weights = old_weights
 
-    scope_alignment = raw_data.get("Scope_Alignment", 50.0)
+    scope_alignment = raw_data.get("Scope_Alignment", 0.0)
     title = raw_data.get("Extracted_Title", filename)
     fields, subfields = raw_data.get("fields", ["General Science"]), raw_data.get("subfields", ["General"])
     final_score = float(np.dot(scores, new_weights)) / 8.0
-    drift = calculate_complex_drift(scope_alignment, scores)
+    
+    drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
+    rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     timestamp = datetime.now().isoformat()
     cursor.execute('''INSERT INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, scope_alignment, subfields, fields, final_score, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                    (file_hash, user_id, title, filename, scope, *scores, scope_alignment, json.dumps(subfields), json.dumps(fields), final_score, timestamp))
     conn.commit()
-    return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
+    return title, final_score, drift, rec, fields, subfields, scores_dict
 
-# --- 5. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK) ---
+# --- 4. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK) ---
 def generate_interactive_bubble_chart(scope, user_id):
     cursor = conn.cursor()
+    # If scope is empty, we still query by exactly that empty string
     cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
     data = cursor.fetchall()
     
@@ -349,7 +344,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     
     return html_string, table_html
 
-# --- 6. USER INTERFACE ---
+# --- 5. USER INTERFACE ---
 st.sidebar.title("System Access")
 
 if 'orcid_id' not in st.session_state:
@@ -417,13 +412,11 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
 tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Active Epoch Constants"])
 
 with tab1:
-    research_scope = st.text_input("Define your specific Research Topic / Scope", placeholder="e.g., Application of deep learning in vascular imaging...")
+    research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...")
     uploaded_files = st.file_uploader("Upload Academic Papers (PDFs)", type=["pdf"], accept_multiple_files=True)
     
     if st.button("Run Batch Assessment", type="primary"):
-        if not research_scope.strip():
-            st.warning("⚠️ Please define a Research Topic / Scope before running the assessment.")
-        elif not uploaded_files:
+        if not uploaded_files:
             st.warning("⚠️ Please upload at least one academic paper (PDF) to proceed.")
         else:
             # Clear user's bubble cache before processing new batch
@@ -443,14 +436,23 @@ with tab1:
                 )
                 
                 combined_fields = f"Fields: {', '.join(fields)} | Subfields: {', '.join(subfields)}"
-                results.append({
+                
+                # Base structure of a record
+                record = {
                     "No.": i + 1,
                     "File Name": file.name,
-                    "Topic": research_scope,
                     "Fields & Subfields": combined_fields,
                     "π-Index (0-100)": round(score, 1),
-                    "Recommendation Spectrum": rec,
-                    "Scope Drift %": round(drift, 1),
+                }
+                
+                # Append Scope-specific columns only if a scope was provided
+                if research_scope.strip():
+                    record["Topic"] = research_scope
+                    record["Recommendation Spectrum"] = rec
+                    record["Scope Drift %"] = round(drift, 1) if drift != "N/A" else "N/A"
+                    
+                # Append C1-C8 criteria scores
+                record.update({
                     "C1": scores_dict.get("C1_Originality", 0.0),
                     "C2": scores_dict.get("C2_Methodological_Rigor", 0.0),
                     "C3": scores_dict.get("C3_Interdisciplinary", 0.0),
@@ -460,6 +462,8 @@ with tab1:
                     "C7": scores_dict.get("C7_Empirical_Density", 0.0),
                     "C8": scores_dict.get("C8_Future_Actionability", 0.0)
                 })
+                
+                results.append(record)
                 progress_bar.progress((i + 1) / len(uploaded_files))
                 
             status_text.text("Batch processing complete!")
@@ -489,23 +493,19 @@ with tab1:
         st.warning("🔒 Please connect your ORCID iD in the sidebar to view your private assessment history.")
 
 with tab2:
-    st.subheader("Field & Subfield Epistemic Bubbles")
-    st.write("Visualizing your research scope (Click and drag the bubbles to interact)")
+    st.subheader("Epistemic Bubbles")
     
-    if research_scope:
-        interactive_html, table_html = generate_interactive_bubble_chart(research_scope, current_user)
-        
-        if interactive_html:
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                components.html(interactive_html, height=620)
-            with col2:
-                st.markdown("### Legend")
-                st.markdown(table_html, unsafe_allow_html=True)
-        else: 
-            st.info("Awaiting sufficient data for this scope and user.")
-    else:
-        st.info("Please define a research scope in the 'Batch Assessment' tab first.")
+    interactive_html, table_html = generate_interactive_bubble_chart(research_scope, current_user)
+    
+    if interactive_html:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            components.html(interactive_html, height=620)
+        with col2:
+            st.markdown("### Legend")
+            st.markdown(table_html, unsafe_allow_html=True)
+    else: 
+        st.info("Awaiting sufficient data for this scope and user.")
 
 with tab3:
     cursor = conn.cursor()
@@ -571,13 +571,6 @@ with tab3:
             cursor.execute("SELECT block_height, timestamp, model_used, block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 10")
             df_blocks = pd.DataFrame(cursor.fetchall(), columns=["Height", "Timestamp", "Model", "Block Hash"])
             st.dataframe(df_blocks, use_container_width=True, hide_index=True)
-            
-        st.markdown("---")
-        st.markdown("### Advanced Utilities")
-        if st.button("🔄 Recalculate Global π-Index"):
-            with st.spinner("Re-evaluating historical papers against current epoch weights..."):
-                recalculate_pi_indices()
-                st.rerun()
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Università degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
