@@ -293,15 +293,17 @@ def generate_interactive_bubble_chart(scope, user_id):
     # --- TIGHTENED PHYSICS FOR OVERLAP ---
     physics_options = """
     {
+      {
       "physics": {
         "forceAtlas2Based": {
-          "gravitationalConstant": -20,
-          "centralGravity": 0.8,
-          "springLength": 1,
-          "avoidOverlap": 0
+          "gravitationalConstant": -60,
+          "centralGravity": 0.1,
+          "springLength": 100,
+          "avoidOverlap": 0.5
         },
         "solver": "forceAtlas2Based"
       }
+    }
     }
     """
     net.set_options(physics_options)
