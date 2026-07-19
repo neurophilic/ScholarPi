@@ -293,22 +293,22 @@ def generate_interactive_bubble_chart(scope, user_id):
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
     
     # --- PHYSICS SET TO STOP JIGGLING ---
-    # 1. Physics set to stabilize and then stop
+    # 1. Physics set to BarnesHut for better spacing control
     physics_options = """
     {
       "physics": {
-        "forceAtlas2Based": {
-          "gravitationalConstant": -50,
-          "centralGravity": 0.01,
-          "springLength": 10,
+        "barnesHut": {
+          "gravitationalConstant": -8000,
+          "centralGravity": 0.3,
+          "springLength": 100,
           "avoidOverlap": 1.0
         },
         "stabilization": {
           "enabled": true,
-          "iterations": 200,
+          "iterations": 500,
           "fit": true
         },
-        "solver": "forceAtlas2Based"
+        "solver": "barnesHut"
       }
     }
     """
@@ -322,8 +322,9 @@ def generate_interactive_bubble_chart(scope, user_id):
             label=' ', 
             title=f"Topic: {row['topic']} | Weight: {row['weight']}",
             size=node_size,
-            mass=node_size / 2,
-            physics=False,  # <--- DISABLE PHYSICS FOR INDIVIDUAL NODES
+            # Removing mass prevents the engine from trying to "squish" 
+            # them based on mass, relying on size/overlap settings instead.
+            physics=True,  # Enable physics during stabilization
             color=color_map[row['topic']]
         )
     
