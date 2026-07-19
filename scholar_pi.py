@@ -25,7 +25,7 @@ SEED_NUMBER = 42
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
 os.makedirs(BASE_DIR, exist_ok=True)
-DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v9_pos.db')
+DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v10_pos.db')
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
 if not GROQ_API_KEY:
@@ -33,14 +33,19 @@ if not GROQ_API_KEY:
     st.stop()
 client = Groq(api_key=GROQ_API_KEY)
 
-# --- 2. PI PROGRESSION (EPOCH ACCURACY) ---
+# --- 2. SYSTEM ACCESS (USER SIMULATION) ---
+st.sidebar.title("System Access")
+current_user = st.sidebar.text_input("Researcher ID", value="researcher_01")
+st.sidebar.caption("Switch IDs to simulate different users. Assessment histories and maps are isolated, but the PoS blockchain remains global.")
+
+# --- 3. PI PROGRESSION (EPOCH ACCURACY) ---
 def get_pi_float(block_height):
     """Increases Pi accuracy by revealing more decimals as epochs (blocks) progress."""
     pi_str = "3.141592653589793238462643383279502884197169399375105820974944592"
     length = min(block_height + 3, len(pi_str))
     return float(pi_str[:length])
 
-# --- 3. BLOCKCHAIN (PROOF OF STAKE) & DATABASE INITIALIZATION ---
+# --- 4. BLOCKCHAIN (PROOF OF STAKE) & DATABASE INITIALIZATION ---
 def validate_block_pos(block_index, weights, timestamp, previous_hash, eval_hash, model_used):
     validator_node = "Validator_Pi_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
     data = f"{block_index}{weights}{timestamp}{previous_hash}{validator_node}{eval_hash}{model_used}".encode('utf-8')
@@ -52,13 +57,15 @@ def init_system():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
     
+    # Added user_id to isolate user data
     cursor.execute('''CREATE TABLE IF NOT EXISTS papers_assessment 
-                      (eval_hash TEXT PRIMARY KEY, title TEXT, filename TEXT, scope TEXT,
+                      (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
                        c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
                        c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
                        scope_alignment REAL,
                        subfields TEXT, fields TEXT, final_score REAL, timestamp DATETIME)''')
                        
+    # Blockchain remains global and untouched
     cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_pos_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
                        w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
@@ -82,7 +89,7 @@ def init_system():
 
 conn = init_system()
 
-# --- 4. DYNAMIC WEIGHT ADAPTATION (LLM DEPENDENT) ---
+# --- 5. DYNAMIC WEIGHT ADAPTATION (LLM DEPENDENT) ---
 def calculate_model_driven_weights(old_weights, scores, model_name, block_height):
     if "70b" in model_name:
         v, s = 3.3, 70.0
@@ -104,7 +111,7 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
     
     return [round(w, 6) for w in normalized_weights]
 
-# --- 5. SEMANTIC LLM EXTRACTION & MATHEMATICAL DRIFT ---
+# --- 6. SEMANTIC LLM EXTRACTION & MATHEMATICAL DRIFT ---
 def evaluate_pdf_text(text, scope, model):
     prompt = f"""You are an expert peer reviewer contributing to the π-Index.
 The user is a researcher currently working on this specific project/scope: "{scope}"
@@ -154,11 +161,12 @@ def get_recommendation_spectrum(score, drift):
     elif synergy >= 25: return "Tier V: Epistemic Divergence"
     else: return "Tier VI: Orthogonal / Unrelated Noise"
 
-def process_single_pdf(file_bytes, filename, scope):
-    file_hash = hashlib.sha256(file_bytes + scope.encode('utf-8')).hexdigest()
+def process_single_pdf(file_bytes, filename, scope, user_id):
+    # Hash includes user_id to isolate records
+    file_hash = hashlib.sha256(file_bytes + scope.encode('utf-8') + user_id.encode('utf-8')).hexdigest()
     
     cursor = conn.cursor()
-    cursor.execute("SELECT final_score, scope_alignment, title, fields, subfields, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE eval_hash=?", (file_hash,))
+    cursor.execute("SELECT final_score, scope_alignment, title, fields, subfields, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
     cached = cursor.fetchone()
     
     if cached:
@@ -197,8 +205,10 @@ def process_single_pdf(file_bytes, filename, scope):
     scores_dict = raw_data.get("scores", {})
     scores = [scores_dict.get(k, 50.0) for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
     
+    # Calculate global weight evolution
     new_weights = calculate_model_driven_weights(old_weights, scores, model_used, block_height)
     
+    # Validate global block (Seed generation untouched)
     timestamp = datetime.now().isoformat()
     new_height = block_height + 1
     val_node, block_hash = validate_block_pos(new_height, new_weights, timestamp, previous_hash, file_hash, model_used)
@@ -216,20 +226,22 @@ def process_single_pdf(file_bytes, filename, scope):
     final_score = float(np.dot(scores, new_weights)) / 8.0
     drift = calculate_complex_drift(scope_alignment, scores)
     
+    # Save assessment specific to the user
     cursor.execute('''INSERT INTO papers_assessment 
-                      (eval_hash, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, scope_alignment, subfields, fields, final_score, timestamp) 
-                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                   (file_hash, title, filename, scope, *scores,
+                      (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, scope_alignment, subfields, fields, final_score, timestamp) 
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                   (file_hash, user_id, title, filename, scope, *scores,
                     scope_alignment,
                     json.dumps(subfields), json.dumps(fields), final_score, timestamp))
     conn.commit()
     
     return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
 
-# --- 6. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK) ---
-def generate_interactive_bubble_chart(scope):
+# --- 7. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK) ---
+def generate_interactive_bubble_chart(scope, user_id):
     cursor = conn.cursor()
-    cursor.execute("SELECT fields, subfields FROM papers_assessment WHERE scope=?", (scope,))
+    # Scope Cartography now isolates based on the logged-in user
+    cursor.execute("SELECT fields, subfields FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
     data = cursor.fetchall()
     
     if not data: return None
@@ -254,7 +266,6 @@ def generate_interactive_bubble_chart(scope):
     max_size = 85
     topic_counts['bubble_size'] = min_size + (topic_counts['count'] / max_count) * (max_size - min_size)
     
-    # Initialize physics-enabled Network
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50')
     net.barnes_hut(gravity=-3000, central_gravity=0.1, spring_length=150, spring_strength=0.05, damping=0.09, overlap=0)
     
@@ -263,8 +274,8 @@ def generate_interactive_bubble_chart(scope):
     for i, row in topic_counts.iterrows():
         net.add_node(
             n_id=row['topic'],
-            label=" ",  # Hidden labels
-            title=f"{row['topic']}<br>Category: {row['category']}<br>Focus Frequency: {row['count']}", # Shows on hover
+            label=" ",  
+            title=f"{row['topic']}<br>Category: {row['category']}<br>Focus Frequency: {row['count']}",
             size=row['bubble_size'],
             color=color_palette[i % len(color_palette)],
             shape='dot'
@@ -276,7 +287,7 @@ def generate_interactive_bubble_chart(scope):
         
     return html_string
 
-# --- 7. USER INTERFACE ---
+# --- 8. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
 st.markdown("**Upload papers, define your scope of research, let π-index filter noise and have better results**")
 
@@ -327,7 +338,8 @@ with tab1:
             status_text.text(f"Analyzing {i+1} of {len(uploaded_files)}: {file.name}...")
             if i > 0: time.sleep(1.5) 
             
-            title, score, drift, rec, fields, subfields, scores_dict = process_single_pdf(file.read(), file.name, research_scope)
+            # Pass user_id to process_single_pdf
+            title, score, drift, rec, fields, subfields, scores_dict = process_single_pdf(file.read(), file.name, research_scope, current_user)
             
             combined_fields = f"Fields: {', '.join(fields)} | Subfields: {', '.join(subfields)}"
             
@@ -360,17 +372,29 @@ with tab1:
             
         csv = df_display.to_csv(index=False).encode('utf-8')
         st.download_button(label="Download Summary as CSV", data=csv, file_name="pi_index_assessment_results.csv", mime="text/csv")
+        
+    st.markdown("---")
+    st.markdown("### Your Assessment History")
+    cursor = conn.cursor()
+    cursor.execute("SELECT title, scope, final_score, timestamp, eval_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
+    history_data = cursor.fetchall()
+    if history_data:
+        df_hist = pd.DataFrame(history_data, columns=["Paper Title", "Scope", "π-Index Score", "Date", "Evaluation Hash"])
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+    else:
+        st.info("No assessment history found for this Researcher ID.")
 
 with tab2:
     st.subheader("Field & Subfield Epistemic Bubbles")
     st.write("Visualizing your research scope (Click and drag the bubbles to interact)")
     
     if research_scope:
-        interactive_html = generate_interactive_bubble_chart(research_scope)
+        # Generate chart filtered by user_id
+        interactive_html = generate_interactive_bubble_chart(research_scope, current_user)
         if interactive_html: 
             components.html(interactive_html, height=620)
         else: 
-            st.info("Awaiting sufficient data for this scope.")
+            st.info("Awaiting sufficient data for this scope and user.")
     else:
         st.info("Please define a research scope in the 'Batch Assessment' tab first.")
 
@@ -448,7 +472,7 @@ with tab3:
         **How to Verify via the Explorer:**
         1.  **Locate the Eval Hash:** Copy the Evaluation Hash (Document) associated with a paper you assessed (found in the "Batch Assessment" table or the Ledger).
         2.  **Use the Explorer:** Paste that hash into the PoS Blockchain Explorer input field below.
-        3.  **Click "Verify Record":** The system will query the blockchain database.
+        3.  **Click "Verify Record":** The system will query the global blockchain database.
         4.  **Result:** It will return a JSON object containing the exact Weights Matrix ($\varpi_1$ through $\varpi_8$) as they existed at the moment that specific block was mined, alongside the immutable Block Hash.
         """)
         
@@ -478,7 +502,7 @@ with tab3:
             else:
                 st.error("No block matching that signature was found on the ledger.")
                 
-        with st.expander("View Recent Ledger Blocks"):
+        with st.expander("View Recent Global Ledger Blocks"):
             cursor.execute("SELECT block_height, timestamp, model_used, block_hash FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 10")
             recent_blocks = cursor.fetchall()
             df_blocks = pd.DataFrame(recent_blocks, columns=["Height", "Timestamp", "Model", "Block Hash"])
