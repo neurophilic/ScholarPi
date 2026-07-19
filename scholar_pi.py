@@ -299,7 +299,7 @@ def generate_interactive_bubble_chart(scope, user_id):
           "centralGravity": 0.01,
           "springLength": 200,
           "springConstant": 0.08,
-          "avoidOverlap": 1.0
+          "avoidOverlap": 10.0
         },
         "solver": "forceAtlas2Based"
       }
