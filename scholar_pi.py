@@ -297,7 +297,7 @@ def generate_interactive_bubble_chart(scope, user_id):
         "forceAtlas2Based": {
           "gravitationalConstant": -200,
           "centralGravity": 0.01,
-          "springLength": 500,
+          "springLength": 100,
           "springConstant": 0.08,
           "avoidOverlap": 0.5
         },
@@ -309,7 +309,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     
     for _, row in topic_counts.iterrows():
         # Size tied to weight
-        node_size = 50 + (row['weight'] * 3) 
+        node_size = 100 + (row['weight'] * 3) 
         
         net.add_node(
             n_id=row['topic'],
