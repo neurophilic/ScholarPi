@@ -1,4 +1,6 @@
 streamlit
+numpy
+networkx
+plotly
+PyMuPDF
 groq
-pymupdf
-requests
