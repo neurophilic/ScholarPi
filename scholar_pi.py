@@ -13,7 +13,7 @@ import fitz  # PyMuPDF
 from groq import Groq, RateLimitError
 
 # --- 1. CONFIGURATION & ENVIRONMENT ---
-st.set_page_config(page_title="Pi-Index XAI Batch Triage", layout="wide")
+st.set_page_config(page_title="π-Index XAI Batch Triage", layout="wide")
 
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
@@ -107,13 +107,13 @@ def trigger_epoch_recalculation():
 
 # --- 4. SEMANTIC LLM EXTRACTION & XAI ---
 def evaluate_pdf_text(text, scope, model):
-    prompt = f"""You are an expert peer reviewer contributing to the Pi-Index.
+    prompt = f"""You are an expert peer reviewer contributing to the π-Index.
 The user is a researcher currently working on this specific project/scope: "{scope}"
 
 Analyze the following excerpt from an academic paper (usually Title, Abstract, Intro).
 1. Extract the Title.
 2. Evaluate 'Scope_Alignment' from 0.0 to 10.0 (10.0 = highly relevant to scope, 0.0 = completely unrelated).
-3. Evaluate the 8 Pi-Index criteria (0.0 to 10.0).
+3. Evaluate the 8 π-Index criteria (0.0 to 10.0).
 4. Provide a short 'justification' for each of the 8 scores.
 5. Identify 5 research keywords.
 6. Map to up to 3 standard Science Departments.
@@ -210,7 +210,7 @@ def process_single_pdf(file_bytes, filename, scope):
     
     return title, final_score, drift, get_recommendation(final_score, drift), rationale, depts, scores_dict
 
-# --- 5. TOPOLOGICAL MAPPING (CENTERED NETWORK) ---
+# --- 5. TOPOLOGICAL MAPPING (ONION MAP) ---
 def generate_centered_network(scope):
     cursor = conn.cursor()
     cursor.execute("SELECT title, keywords, departments FROM papers_triage WHERE scope=?", (scope,))
@@ -222,6 +222,9 @@ def generate_centered_network(scope):
     topic_node = f"Topic: {scope}"
     G.add_node(topic_node, type='topic')
     
+    papers = []
+    outer_nodes = set()
+    
     for title, kw_json, dept_json in data:
         try:
             keywords = [k.title().strip() for k in json.loads(kw_json)]
@@ -229,17 +232,24 @@ def generate_centered_network(scope):
             
             G.add_node(title, type='paper')
             G.add_edge(topic_node, title)
+            papers.append(title)
             
             for dept in depts:
                 G.add_node(dept, type='department')
                 G.add_edge(title, dept)
+                outer_nodes.add(dept)
             for kw in keywords:
                 G.add_node(kw, type='keyword')
                 G.add_edge(title, kw)
+                outer_nodes.add(kw)
         except: continue
             
-    pos = nx.spring_layout(G, k=0.7, seed=SEED_NUMBER)
-    pos[topic_node] = np.array([0, 0])  # Lock scope to center
+    if not papers: return None
+
+    # Implement "Onion Map" visualization using Concentric Shells
+    # Center: Topic | Ring 1: Papers | Ring 2: Keywords & Departments
+    shells = [[topic_node], list(set(papers)), list(outer_nodes)]
+    pos = nx.shell_layout(G, nlist=shells)
     
     edge_x, edge_y = [], []
     for edge in G.edges():
@@ -273,8 +283,8 @@ def generate_centered_network(scope):
     ))
 
 # --- 6. USER INTERFACE ---
-st.title("Pi-Index XAI Batch Triage Engine")
-st.markdown("**Upload PDFs, define your scope, let the Pi-Index filter the noise, and explain its reasoning.**")
+st.title("π-Index XAI Batch Triage Engine")
+st.markdown("**Upload papers, define your scope of research, let π-index filter noise and have better results**")
 
 tab1, tab2, tab3 = st.tabs(["Batch Triage & XAI", "Scope Cartography", "Weight Matrix"])
 
@@ -301,7 +311,7 @@ with tab1:
                 "Extracted Title": title,
                 "Primary Department": primary_dept,
                 "All Departments": ", ".join(depts),
-                "Pi-Index": round(score, 3),
+                "π-Index": round(score, 3),
                 "C1: Originality": scores_dict.get("C1_Originality", 0.0),
                 "C2: Rigor": scores_dict.get("C2_Methodological_Rigor", 0.0),
                 "C3: Interdisciplinary": scores_dict.get("C3_Interdisciplinary", 0.0),
@@ -321,7 +331,7 @@ with tab1:
         # DataFrame Processing
         df = pd.DataFrame(results)
         df_display = df.drop(columns=["Rationale"])  # Hide rationale from the main table
-        df_display = df_display.sort_values(by=["Recommendation", "Pi-Index"], ascending=[False, False])
+        df_display = df_display.sort_values(by=["Recommendation", "π-Index"], ascending=[False, False])
         
         st.markdown("### Triage Summary")
         if group_by_dept:
@@ -338,24 +348,23 @@ with tab1:
         # Explainability (XAI) Expanders
         st.markdown("### Evaluation Rationale (XAI)")
         for i, row in df.iterrows():
-            with st.expander(f"{row['Extracted Title']} (Score: {row['Pi-Index']})"):
+            with st.expander(f"{row['Extracted Title']} (Score: {row['π-Index']})"):
                 st.markdown(f"**Recommendation:** {row['Recommendation']} | **Drift:** {row['Scope Drift %']}%")
                 for crit, reason in row['Rationale'].items():
                     st.markdown(f"**{crit}**: {reason}")
 
 with tab2:
     st.subheader("Scope-Centered Epistemic Network")
-    st.write("Visualizes how your uploaded papers branch out into specific departments and keywords around your topic.")
+    st.write("Visualizing your research scope")
     
-    # Text input syncs with Tab 1, or can be changed directly. Re-renders automatically on input.
-    search_scope = st.text_input("Enter scope to map:", value=research_scope)
-    
-    if search_scope:
-        fig = generate_centered_network(search_scope)
+    if research_scope:
+        fig = generate_centered_network(research_scope)
         if fig: 
             st.plotly_chart(fig, use_container_width=True)
         else: 
             st.info("Awaiting sufficient data for this scope.")
+    else:
+        st.info("Please define a research scope in the 'Batch Triage & XAI' tab first.")
 
 with tab3:
     st.subheader("Recursive Weight Adaptations (EWM)")
