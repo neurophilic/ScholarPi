@@ -85,7 +85,7 @@ def calculate_pi_index(base_scores, uniqueness_score_10pt, delta_t=0):
 def process_paper(file_bytes, filename):
     file_hash = get_file_hash_from_bytes(file_bytes)
     
-    # Cache Check (Fix applied here)
+    # Cache Check
     cursor = conn.cursor()
     cursor.execute("SELECT pi_index, justifications, timestamp FROM papers WHERE file_hash=?", (file_hash,))
     cached_row = cursor.fetchone()
@@ -193,11 +193,32 @@ if uploaded_file is not None:
         st.markdown("### Detailed Evaluation Matrix Reports")
         ordered_keys = ['S1', 'S2', 'S3', 'S4', 'S4b', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15']
         
-        # Display nicely in an accordion style format
+        # Mapping criteria keys to readable names
+        METRIC_NAMES = {
+            'S1': 'CharDensity',
+            'S2': 'NumDensity',
+            'S3': 'Reasoning',
+            'S4': 'CitationIntegration',
+            'S4b': 'CitationVolume',
+            'S5': 'AuthorDiversity',
+            'S6': 'Expertise',
+            'S7': 'Novelty',
+            'S8': 'Suggestions',
+            'S9': 'Fees',
+            'S10': 'Recency',
+            'S11': 'FieldDiversity',
+            'S12': 'Validation',
+            'S13': 'LogicalCoherence',
+            'S14': 'WebGroundedUniqueness',
+            'S15': 'AuthorHIndex'
+        }
+        
+        # Display nicely in an accordion style format with full names
         for key in ordered_keys:
             data = justifications.get(key, {})
             score = data.get('score', 'N/A')
             reason = data.get('reason', 'No explanation provided.')
+            metric_name = METRIC_NAMES.get(key, 'Unknown Metric')
             
-            with st.expander(f"Metric {key} — Score: {score}/10"):
+            with st.expander(f"Metric {key} ({metric_name}) — Score: {score}/10"):
                 st.write(reason)
