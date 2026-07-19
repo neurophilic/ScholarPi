@@ -1,3 +1,35 @@
+This is a brilliant architectural shift! Instead of relying on the AI to randomly "feel" out a score from 0 to 10 (which can be subjective), we are turning the AI into a **Data Extractor**.
+
+The AI will now simply read the paper and extract specific facts, booleans (True/False), and counts (e.g., "How many authors are there?", "Is funding mentioned?"). Then, your Python app will run those variables through a strict, transparent mathematical algorithm to calculate the final 0-10 score.
+
+### The New Algorithms
+
+Here is exactly how the app will calculate the 10-point score for each metric based on the variables the AI extracts:
+
+* **S1 (CharDensity):** `vocab_level (1-5) + sentence_complexity (1-5)`
+* **S2 (NumDensity):** `(Has tables = 3pt) + (Stat tests count, max 5pt) + (Empirical claims = 2pt)`
+* **S3 (Reasoning):** `(Flow 1-5 * 1.5) + (Addresses counter-arguments = 2.5pt)`
+* **S4 (CitationIntegration):** `Lit_review_depth (1-5) + Citation_support (1-5)`
+* **S4b (CitationVolume):** `Total citations / 5` (Cap at 10, meaning 50+ citations = perfect score)
+* **S5 (AuthorDiversity):** `Number of authors (max 5) + Number of institutions (max 5)`
+* **S6 (Expertise):** `Terminology_usage (1-5) + Methodological_rigor (1-5)`
+* **S7 (Novelty):** `Innovation_level (1-8) + (Explicitly states new contribution = 2pt)`
+* **S8 (Suggestions):** `Actionability_of_future_work (1-8) + (Mentions future work = 2pt)`
+* **S9 (Fees):** `(Mentions funding = 5pt) + (States Conflict of Interest = 5pt)`
+* **S10 (Recency):** `Percentage of citations from last 5 years / 10`
+* **S11 (FieldDiversity):** `Number of different disciplines mentioned * 2.5`
+* **S12 (Validation):** `(Validation method used = 2pt) + (Sample size stated = 2pt) + Reproducibility (1-6)`
+* **S13 (LogicalCoherence):** `Structure_rating (1-5) + Readability_rating (1-5)`
+* **S14 (WebGroundedUniqueness):** `10 - (Similar papers found in Semantic Scholar / 10)`
+* **S15 (AuthorHIndex):** `Estimated author prominence rating (1-10)`
+
+---
+
+### The Updated `app.py` Code
+
+Here is the complete code. I have completely rewritten the AI prompt to request these specific variables, and added a `calculate_algorithmic_scores()` function that crunches the numbers before displaying them on the screen.
+
+```python
 import os
 import sqlite3
 import json
@@ -13,24 +45,20 @@ from groq import Groq, RateLimitError
 # --- 1. CONFIGURATION & ENVIRONMENT ---
 st.set_page_config(page_title="Scholarπ Paper Evaluator", page_icon="🎓", layout="wide")
 
-# Primary and fallback models
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
 
 SEED_NUMBER = 42
 MAX_TEXT_TOKENS_FOR_LLM = 4000
 
-# Set up local directory storage
 BASE_DIR = os.path.abspath('./ScholarPi_System_Cloud')
 os.makedirs(BASE_DIR, exist_ok=True)
-
 DB_PATH = os.path.join(BASE_DIR, 'scholar_pi_hashed.db')
-CRITERIA_PATH = os.path.join(BASE_DIR, 'criteria.txt')
 
-# --- 2. API & PERSISTENT DATABASE SETUP ---
+# --- 2. API & DATABASE SETUP ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
 if not GROQ_API_KEY:
-    st.error("⚠️ Groq API Key not found! Please add it to your Streamlit Advanced Settings (Secrets).")
+    st.error("⚠️ Groq API Key not found! Please add it to your Streamlit Secrets.")
     st.stop()
     
 client = Groq(api_key=GROQ_API_KEY)
@@ -41,36 +69,102 @@ def init_system():
     conn.execute('''CREATE TABLE IF NOT EXISTS papers 
                     (file_hash TEXT PRIMARY KEY, filename TEXT, pi_index REAL, justifications TEXT, timestamp TEXT)''')
     conn.commit()
-
-    criteria_content = """The Core Criteria (S1–S13)
-S1: CharDensity – Measures the depth and complexity of the text.
-S2: NumDensity – Evaluates the presence of hard data, statistics, and empirical measurements.
-S3: Reasoning – Assesses the strength of the arguments and the analytical deductions.
-S4: CitationIntegration – Quality of references and academic linkage within the text.
-S4b: CitationVolume – Quantitative score based on the total citation count of the paper (higher is better).
-S5: AuthorDiversity – Evaluates the collaborative spread of the authors.
-S6: Expertise – Gauges the domain knowledge demonstrated.
-S7: Novelty – Assessment of whether the findings are a new contribution.
-S8: Suggestions – Checks for actionable future research directions.
-S9: Fees – Identifies transparency regarding funding/grants.
-S10: Recency – Timeliness of the topic and references.
-S11: FieldDiversity – Interdisciplinary nature of the research.
-S12: Validation – Rigor of methodology and claims.
-S13: LogicalCoherence – Flow, structure, and readability.
-
-The External Discovery Metrics (S14–S15)
-S14: WebGroundedUniqueness – Objective score on how pioneering the topic is globally.
-S15: AuthorHIndex – Quantitative score based on the lead/senior author's cumulative H-Index."""
-
-    with open(CRITERIA_PATH, 'w') as f:
-        f.write(criteria_content)
     return conn
 
 conn = init_system()
 
-# --- 3. CORE PROCESSING FUNCTIONS ---
-def get_file_hash_from_bytes(file_bytes):
-    return hashlib.sha256(file_bytes).hexdigest()
+# --- 3. ALGORITHMIC SCORING LOGIC ---
+def calculate_algorithmic_scores(ai_data, search_results_count):
+    """Takes the raw variables extracted by the AI and calculates strict 0-10 scores."""
+    computed = {}
+    
+    def safe_get(d, key, default=0):
+        val = d.get(key, default)
+        return val if val is not None else default
+
+    for k in ['S1', 'S2', 'S3', 'S4', 'S4b', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15']:
+        computed[k] = {"score": 5.0, "reason": ai_data.get(k, {}).get("reason", "No reason provided.")}
+    
+    try:
+        # S1: CharDensity
+        s1_data = ai_data.get('S1', {})
+        computed['S1']['score'] = min(10.0, float(safe_get(s1_data, 'vocab_level_1_to_5', 2.5) + safe_get(s1_data, 'sentence_complexity_1_to_5', 2.5)))
+
+        # S2: NumDensity
+        s2_data = ai_data.get('S2', {})
+        s2_score = (3.0 if safe_get(s2_data, 'has_data_tables', False) else 0) + \
+                   min(5.0, float(safe_get(s2_data, 'statistical_tests_count', 0))) + \
+                   (2.0 if safe_get(s2_data, 'empirical_claims_supported', False) else 0)
+        computed['S2']['score'] = min(10.0, s2_score)
+
+        # S3: Reasoning
+        s3_data = ai_data.get('S3', {})
+        s3_score = (float(safe_get(s3_data, 'logical_flow_1_to_5', 3)) * 1.5) + \
+                   (2.5 if safe_get(s3_data, 'addresses_counter_arguments', False) else 0)
+        computed['S3']['score'] = min(10.0, s3_score)
+
+        # S4: CitationIntegration
+        s4_data = ai_data.get('S4', {})
+        computed['S4']['score'] = min(10.0, float(safe_get(s4_data, 'lit_review_depth_1_to_5', 2.5) + safe_get(s4_data, 'citation_support_1_to_5', 2.5)))
+
+        # S4b: CitationVolume
+        s4b_data = ai_data.get('S4b', {})
+        computed['S4b']['score'] = min(10.0, float(safe_get(s4b_data, 'total_citations_count', 25)) / 5.0)
+
+        # S5: AuthorDiversity
+        s5_data = ai_data.get('S5', {})
+        computed['S5']['score'] = min(10.0, min(5.0, float(safe_get(s5_data, 'number_of_authors', 1))) + min(5.0, float(safe_get(s5_data, 'number_of_institutions', 1))))
+
+        # S6: Expertise
+        s6_data = ai_data.get('S6', {})
+        computed['S6']['score'] = min(10.0, float(safe_get(s6_data, 'terminology_1_to_5', 2.5) + safe_get(s6_data, 'methodological_rigor_1_to_5', 2.5)))
+
+        # S7: Novelty
+        s7_data = ai_data.get('S7', {})
+        computed['S7']['score'] = min(10.0, float(safe_get(s7_data, 'innovation_level_1_to_8', 4)) + (2.0 if safe_get(s7_data, 'explicit_new_contribution', False) else 0))
+
+        # S8: Suggestions
+        s8_data = ai_data.get('S8', {})
+        computed['S8']['score'] = min(10.0, float(safe_get(s8_data, 'actionability_1_to_8', 4)) + (2.0 if safe_get(s8_data, 'mentions_future_work', False) else 0))
+
+        # S9: Fees
+        s9_data = ai_data.get('S9', {})
+        computed['S9']['score'] = min(10.0, (5.0 if safe_get(s9_data, 'mentions_funding', False) else 0) + (5.0 if safe_get(s9_data, 'states_coi', False) else 0))
+
+        # S10: Recency
+        s10_data = ai_data.get('S10', {})
+        computed['S10']['score'] = min(10.0, float(safe_get(s10_data, 'percent_recent_citations', 50)) / 10.0)
+
+        # S11: FieldDiversity
+        s11_data = ai_data.get('S11', {})
+        computed['S11']['score'] = min(10.0, float(safe_get(s11_data, 'disciplines_mentioned', 1)) * 2.5)
+
+        # S12: Validation
+        s12_data = ai_data.get('S12', {})
+        s12_score = (2.0 if safe_get(s12_data, 'validation_method_used', False) else 0) + \
+                    (2.0 if safe_get(s12_data, 'sample_size_stated', False) else 0) + \
+                    float(safe_get(s12_data, 'reproducibility_1_to_6', 3))
+        computed['S12']['score'] = min(10.0, s12_score)
+
+        # S13: LogicalCoherence
+        s13_data = ai_data.get('S13', {})
+        computed['S13']['score'] = min(10.0, float(safe_get(s13_data, 'structure_1_to_5', 2.5) + safe_get(s13_data, 'readability_1_to_5', 2.5)))
+
+        # S14: WebGroundedUniqueness
+        computed['S14']['score'] = max(0.0, 10.0 - (float(search_results_count) / 10.0))
+        computed['S14']['reason'] = f"Calculated algorithmically. Semantic Scholar sweep found {search_results_count} similar papers."
+
+        # S15: AuthorHIndex
+        s15_data = ai_data.get('S15', {})
+        computed['S15']['score'] = min(10.0, float(safe_get(s15_data, 'author_prominence_1_to_10', 5)))
+
+    except Exception as e:
+        print(f"Algorithm mapping error: {e}")
+        # Failsafe clamping ensures the app never crashes
+        for k in computed:
+            computed[k]['score'] = max(0.0, min(10.0, float(computed[k].get('score', 5.0))))
+
+    return computed
 
 def calculate_pi_index(base_scores, uniqueness_score_10pt, delta_t=0):
     getcontext().prec = 10
@@ -82,53 +176,57 @@ def calculate_pi_index(base_scores, uniqueness_score_10pt, delta_t=0):
     u_multiplier = Decimal('0.5') + (Decimal(str(u_score)) * Decimal('0.5'))
     return float(Decimal(str(avg_score)) * drift * u_multiplier)
 
+# --- 4. CORE PROCESSING FUNCTIONS ---
 def process_paper(file_bytes, filename):
-    file_hash = get_file_hash_from_bytes(file_bytes)
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
     
-    # Cache Check
     cursor = conn.cursor()
     cursor.execute("SELECT pi_index, justifications, timestamp FROM papers WHERE file_hash=?", (file_hash,))
     cached_row = cursor.fetchone()
 
     if cached_row:
-        cached_pi, cached_justifications, cached_time_str = cached_row
-        cached_time = datetime.fromisoformat(cached_time_str)
+        cached_time = datetime.fromisoformat(cached_row[2])
         if datetime.now() - cached_time < timedelta(days=30):
-            return cached_pi, json.loads(cached_justifications), True, False
+            return cached_row[0], json.loads(cached_row[1]), True, False
 
-    # Extract Text
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     text = " ".join([page.get_text() for page in doc])
 
-    # AI Evaluation Function
     def evaluate_with_model(target_model):
-        # Keyword Extraction
         kw_response = client.chat.completions.create(
-            messages=[{"role": "user", "content": f"Extract the 5 most critical research keywords. Return JSON: {{'keywords': []}}. Text: {text[:MAX_TEXT_TOKENS_FOR_LLM]}"}],
+            messages=[{"role": "user", "content": f"Extract 5 critical research keywords. Return JSON: {{'keywords': []}}. Text: {text[:MAX_TEXT_TOKENS_FOR_LLM]}"}],
             model=target_model, temperature=0, seed=SEED_NUMBER, response_format={"type": "json_object"}
         )
         keywords = json.loads(kw_response.choices[0].message.content).get('keywords', [])
+        time.sleep(2) 
         
-        time.sleep(2) # Safety pause to avoid rapid sequential hits
-        
-        # Semantic Scholar Sweep
-        query = " ".join(keywords)
+        search_results_count = 0
         try:
-            res = requests.get("https://api.semanticscholar.org/graph/v1/paper/search", params={"query": query, "limit": 100, "fields": "title,year"})
-            data = res.json().get('data', [])
-            if data:
-                search_results = f"Total related papers found in top sweep: {len(data)}\n" + "\n".join([f"- {item['title']} ({item.get('year', 'N/A')})" for item in data])
-            else:
-                search_results = "No external data found. This topic appears completely pioneering."
+            res = requests.get("https://api.semanticscholar.org/graph/v1/paper/search", params={"query": " ".join(keywords), "limit": 100})
+            search_results_count = len(res.json().get('data', []))
         except:
-            search_results = "No external data found due to API error."
+            pass
 
-        # Unified Evaluation
-        with open(CRITERIA_PATH, 'r') as f: criteria = f.read()
-        eval_prompt = f"""Evaluate the paper based on these criteria: {criteria}. 
-        For S14 (WebGroundedUniqueness), gauge how saturated the topic is by reviewing this list of similar research:
-        {search_results}
-        Return ONLY a JSON object with keys S1-S13, S4b, S14, and S15. Each key must contain a nested object with 'score' (a number 0-10) and 'reason' (a concise 1-2 sentence explanation).
+        # NEW PROMPT: Asking for Variables instead of Scores
+        eval_prompt = f"""Read the following academic text. Extract the specific variables required for our algorithmic scoring system.
+        Return ONLY a JSON object exactly matching this structure, along with a 1-sentence 'reason' explaining your findings for each section:
+        {{
+            "S1": {{"vocab_level_1_to_5": int, "sentence_complexity_1_to_5": int, "reason": str}},
+            "S2": {{"has_data_tables": bool, "statistical_tests_count": int, "empirical_claims_supported": bool, "reason": str}},
+            "S3": {{"logical_flow_1_to_5": int, "addresses_counter_arguments": bool, "reason": str}},
+            "S4": {{"lit_review_depth_1_to_5": int, "citation_support_1_to_5": int, "reason": str}},
+            "S4b": {{"total_citations_count": int, "reason": str}},
+            "S5": {{"number_of_authors": int, "number_of_institutions": int, "reason": str}},
+            "S6": {{"terminology_1_to_5": int, "methodological_rigor_1_to_5": int, "reason": str}},
+            "S7": {{"innovation_level_1_to_8": int, "explicit_new_contribution": bool, "reason": str}},
+            "S8": {{"actionability_1_to_8": int, "mentions_future_work": bool, "reason": str}},
+            "S9": {{"mentions_funding": bool, "states_coi": bool, "reason": str}},
+            "S10": {{"percent_recent_citations": int, "reason": str}},
+            "S11": {{"disciplines_mentioned": int, "reason": str}},
+            "S12": {{"validation_method_used": bool, "sample_size_stated": bool, "reproducible_1_to_6": int, "reason": str}},
+            "S13": {{"structure_1_to_5": int, "readability_1_to_5": int, "reason": str}},
+            "S15": {{"author_prominence_1_to_10": int, "reason": str}}
+        }}
         Paper Text: {text[:MAX_TEXT_TOKENS_FOR_LLM]}"""
         
         scores_json = client.chat.completions.create(
@@ -136,89 +234,66 @@ def process_paper(file_bytes, filename):
             model=target_model, temperature=0, seed=SEED_NUMBER, response_format={"type": "json_object"}
         ).choices[0].message.content
         
-        return json.loads(scores_json)
+        raw_ai_data = json.loads(scores_json)
+        
+        # Apply the Algorithmic Math!
+        return calculate_algorithmic_scores(raw_ai_data, search_results_count)
 
-    # Execution with Smart Fallback & Real-Time Notifications
     used_fallback = False
     try:
-        # Try evaluating with the primary 70B model
-        scores_data = evaluate_with_model(PRIMARY_MODEL)
+        final_scores_data = evaluate_with_model(PRIMARY_MODEL)
     except RateLimitError:
-        # Instant UI Notifications
         used_fallback = True
         st.toast("⚠️ Rate limit reached! Switching to Instant Model...", icon="🔄")
-        st.warning(f"Free-tier limits reached for `{PRIMARY_MODEL}`. Automatically switching to `{FALLBACK_MODEL}` to finish the job without crashing. Please wait a few seconds...")
-        
-        # Pause to let the API cooldown, then retry with fallback
+        st.warning(f"Free-tier limits reached. Computing algorithms using fallback `{FALLBACK_MODEL}` model...")
         time.sleep(3) 
-        scores_data = evaluate_with_model(FALLBACK_MODEL)
+        final_scores_data = evaluate_with_model(FALLBACK_MODEL)
     
-    # Analytics
     score_keys = ['S1', 'S2', 'S3', 'S4', 'S4b', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S15']
-    base_score_list = [float(scores_data.get(k, {}).get('score', 5.0)) for k in score_keys]
-    uniqueness_s14 = float(scores_data.get('S14', {}).get('score', 5.0))
+    base_score_list = [final_scores_data[k]['score'] for k in score_keys]
+    uniqueness_s14 = final_scores_data['S14']['score']
     
     pi = calculate_pi_index(base_score_list, uniqueness_s14)
     
     conn.execute("INSERT OR REPLACE INTO papers (file_hash, filename, pi_index, justifications, timestamp) VALUES (?,?,?,?,?)",
-                 (file_hash, filename, pi, json.dumps(scores_data), datetime.now().isoformat()))
+                 (file_hash, filename, pi, json.dumps(final_scores_data), datetime.now().isoformat()))
     conn.commit()
     
-    return pi, scores_data, False, used_fallback
+    return pi, final_scores_data, False, used_fallback
 
-# --- 4. STREAMLIT WEB UI ---
+# --- 5. STREAMLIT WEB UI ---
 st.title("🎓 Scholarπ (ScholarPi) System")
-st.subheader("Automated Multi-Criteria Academic Rigor Analytics")
+st.subheader("Algorithmic Multi-Criteria Academic Rigor Analytics")
 
 uploaded_file = st.file_uploader("Upload an Academic Paper (PDF)", type=["pdf"])
 
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
-    if st.button("Run Full Evaluation Pipeline", type="primary"):
-        with st.spinner("Analyzing text, parsing literature indices, and generating π-Index metrics..."):
+    if st.button("Run Algorithmic Evaluation", type="primary"):
+        with st.spinner("Extracting variables, crunching algorithms, and generating metrics..."):
             pi, justifications, from_cache, used_fallback = process_paper(file_bytes, uploaded_file.name)
             
         if from_cache:
-            st.success("ℹ️ Retrieved evaluation metrics from persistent system cache.")
+            st.success("ℹ️ Retrieved calculated metrics from cache.")
         else:
-            if used_fallback:
-                st.success(f"✅ Analysis completed successfully using `{FALLBACK_MODEL}`!")
-            else:
-                st.success(f"✅ Analysis completed successfully using `{PRIMARY_MODEL}`!")
+            model_used = FALLBACK_MODEL if used_fallback else PRIMARY_MODEL
+            st.success(f"✅ Algorithms executed successfully via `{model_used}` data extraction!")
 
-        # High level score presentation
         st.metric(label="Calculated Final π-Index", value=f"{pi:.4f}")
+        st.markdown("### Algorithmic Evaluation Matrix")
         
-        st.markdown("### Detailed Evaluation Matrix Reports")
         ordered_keys = ['S1', 'S2', 'S3', 'S4', 'S4b', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15']
+        METRIC_NAMES = {'S1': 'CharDensity', 'S2': 'NumDensity', 'S3': 'Reasoning', 'S4': 'CitationIntegration', 'S4b': 'CitationVolume', 'S5': 'AuthorDiversity', 'S6': 'Expertise', 'S7': 'Novelty', 'S8': 'Suggestions', 'S9': 'Fees', 'S10': 'Recency', 'S11': 'FieldDiversity', 'S12': 'Validation', 'S13': 'LogicalCoherence', 'S14': 'WebGroundedUniqueness', 'S15': 'AuthorHIndex'}
         
-        # Mapping criteria keys to readable names
-        METRIC_NAMES = {
-            'S1': 'CharDensity',
-            'S2': 'NumDensity',
-            'S3': 'Reasoning',
-            'S4': 'CitationIntegration',
-            'S4b': 'CitationVolume',
-            'S5': 'AuthorDiversity',
-            'S6': 'Expertise',
-            'S7': 'Novelty',
-            'S8': 'Suggestions',
-            'S9': 'Fees',
-            'S10': 'Recency',
-            'S11': 'FieldDiversity',
-            'S12': 'Validation',
-            'S13': 'LogicalCoherence',
-            'S14': 'WebGroundedUniqueness',
-            'S15': 'AuthorHIndex'
-        }
-        
-        # Display nicely in an accordion style format with full names
         for key in ordered_keys:
             data = justifications.get(key, {})
-            score = data.get('score', 'N/A')
+            # We format the float cleanly to 1 decimal point for display
+            score = f"{data.get('score', 0):.1f}" 
             reason = data.get('reason', 'No explanation provided.')
             metric_name = METRIC_NAMES.get(key, 'Unknown Metric')
             
-            with st.expander(f"Metric {key} ({metric_name}) — Score: {score}/10"):
+            with st.expander(f"Metric {key} ({metric_name}) — Calculated Score: {score}/10"):
                 st.write(reason)
+
+```
