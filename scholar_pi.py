@@ -390,43 +390,63 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$")
 
 tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Active Epoch Constants"])
-
 with tab1:
-    if not st.session_state.is_authenticated:
-        st.warning("⚠️ Please connect your ORCID iD in the sidebar to securely record your assessments.")
-        
     research_scope = st.text_input("Define your specific Research Topic / Scope", placeholder="e.g., Application of deep learning in vascular imaging...")
     uploaded_files = st.file_uploader("Upload Academic Papers (PDFs)", type=["pdf"], accept_multiple_files=True)
     
-    if st.button("Run Batch Assessment", type="primary") and uploaded_files and research_scope:
-        results = []
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for i, file in enumerate(uploaded_files):
-            status_text.text(f"Analyzing {i+1} of {len(uploaded_files)}: {file.name}...")
-            if i > 0: time.sleep(1.5) 
-            title, score, drift, rec, fields, subfields, scores_dict = process_single_pdf(file.read(), file.name, research_scope, current_user)
-            combined_fields = f"Fields: {', '.join(fields)} | Subfields: {', '.join(subfields)}"
+    if st.button("Run Batch Assessment", type="primary"):
+        # --- ERROR HANDLING ---
+        if not research_scope.strip():
+            st.warning("⚠️ Please define a Research Topic / Scope before running the assessment.")
+        elif not uploaded_files:
+            st.warning("⚠️ Please upload at least one academic paper (PDF) to proceed.")
+        else:
+            # --- EXECUTION ---
+            results = []
+            progress_bar = st.progress(0)
+            status_text = st.empty()
             
-            results.append({
-                "No.": i + 1, "File Name": file.name, "Topic": research_scope, "Fields & Subfields": combined_fields,
-                "π-Index (0-100)": round(score, 1), "Recommendation Spectrum": rec, "Scope Drift %": round(drift, 1),
-                "C1": scores_dict.get("C1_Originality", 0.0), "C2": scores_dict.get("C2_Methodological_Rigor", 0.0),
-                "C3": scores_dict.get("C3_Interdisciplinary", 0.0), "C4": scores_dict.get("C4_Societal_Impact", 0.0),
-                "C5": scores_dict.get("C5_Open_Science_Potential", 0.0), "C6": scores_dict.get("C6_Literature_Integration", 0.0),
-                "C7": scores_dict.get("C7_Empirical_Density", 0.0), "C8": scores_dict.get("C8_Future_Actionability", 0.0)
-            })
-            progress_bar.progress((i + 1) / len(uploaded_files))
+            for i, file in enumerate(uploaded_files):
+                status_text.text(f"Analyzing {i+1} of {len(uploaded_files)}: {file.name}...")
+                
+                # Logic execution
+                title, score, drift, rec, fields, subfields, scores_dict = process_single_pdf(
+                    file.read(), file.name, research_scope, current_user
+                )
+                
+                # Appending data...
+                combined_fields = f"Fields: {', '.join(fields)} | Subfields: {', '.join(subfields)}"
+                results.append({
+                    "No.": i + 1,
+                    "File Name": file.name,
+                    "Topic": research_scope,
+                    "Fields & Subfields": combined_fields,
+                    "π-Index (0-100)": round(score, 1),
+                    "Recommendation Spectrum": rec,
+                    "Scope Drift %": round(drift, 1),
+                    "C1": scores_dict.get("C1_Originality", 0.0),
+                    "C2": scores_dict.get("C2_Methodological_Rigor", 0.0),
+                    "C3": scores_dict.get("C3_Interdisciplinary", 0.0),
+                    "C4": scores_dict.get("C4_Societal_Impact", 0.0),
+                    "C5": scores_dict.get("C5_Open_Science_Potential", 0.0),
+                    "C6": scores_dict.get("C6_Literature_Integration", 0.0),
+                    "C7": scores_dict.get("C7_Empirical_Density", 0.0),
+                    "C8": scores_dict.get("C8_Future_Actionability", 0.0)
+                })
+                progress_bar.progress((i + 1) / len(uploaded_files))
+                
+            status_text.text("Batch processing complete!")
             
-        status_text.text("Batch processing complete!")
-        df = pd.DataFrame(results)
-        df_display = df.sort_values(by=["π-Index (0-100)"], ascending=False)
-        st.markdown("### Assessment Summary")
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-        csv = df_display.to_csv(index=False).encode('utf-8')
-        st.download_button(label="Download Summary as CSV", data=csv, file_name="pi_index_assessment_results.csv", mime="text/csv")
-        
+            # Rendering Results
+            df = pd.DataFrame(results)
+            df_display = df.sort_values(by=["π-Index (0-100)"], ascending=False)
+            st.markdown("### Assessment Summary")
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            csv = df_display.to_csv(index=False).encode('utf-8')
+            st.download_button(label="Download Summary as CSV", data=csv, file_name="pi_index_assessment_results.csv", mime="text/csv")
+
+    # Display History below the form
     st.markdown("---")
     st.markdown("### Your Assessment History")
     cursor = conn.cursor()
@@ -435,8 +455,6 @@ with tab1:
     if history_data:
         df_hist = pd.DataFrame(history_data, columns=["Paper Title", "Scope", "π-Index Score", "Date", "Evaluation Hash"])
         st.dataframe(df_hist, use_container_width=True, hide_index=True)
-    else:
-        st.info("No assessment history found for this ORCID iD.")
 
 with tab2:
     st.subheader("Field & Subfield Epistemic Bubbles")
