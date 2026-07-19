@@ -19,13 +19,12 @@ st.set_page_config(page_title="π-Index Assessment Engine", layout="wide")
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
 MAX_TEXT_TOKENS = 6000
-EPOCH_HOURS = 24  # Trigger new blockchain epoch every 24h
+EPOCH_HOURS = 24  
 SEED_NUMBER = 42
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
 os.makedirs(BASE_DIR, exist_ok=True)
-# Updated DB name for Proof of Stake migration
-DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v5_pos.db')
+DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v6_pos.db')
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
 if not GROQ_API_KEY:
@@ -33,7 +32,15 @@ if not GROQ_API_KEY:
     st.stop()
 client = Groq(api_key=GROQ_API_KEY)
 
-# --- 2. BLOCKCHAIN (PROOF OF STAKE) & DATABASE INITIALIZATION ---
+# --- 2. PI PROGRESSION (EPOCH ACCURACY) ---
+def get_pi_base(block_height):
+    """Increases Pi accuracy by revealing more decimals as epochs (blocks) progress."""
+    pi_digits = "3141592653589793238462643383279502884197169399375105820974944592"
+    # Block 1 starts at 3.14 (base 314), Block 2 -> 3141, Block 3 -> 31415, etc.
+    length = min(block_height + 2, len(pi_digits))
+    return int(pi_digits[:length])
+
+# --- 3. BLOCKCHAIN (PROOF OF STAKE) & DATABASE INITIALIZATION ---
 def validate_block_pos(block_index, weights, timestamp, previous_hash):
     """Simulates Proof-of-Stake validation to generate a block hash."""
     validator_node = "Validator_Pi_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
@@ -53,7 +60,6 @@ def init_system():
                        scope_alignment REAL,
                        subfields TEXT, fields TEXT, final_score REAL, timestamp DATETIME)''')
                        
-    # Blockchain Ledger for Weights (Proof of Stake)
     cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_pos_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
                        w1 INTEGER, w2 INTEGER, w3 INTEGER, w4 INTEGER, 
@@ -63,10 +69,11 @@ def init_system():
     
     cursor.execute("SELECT COUNT(*) FROM blockchain_pos_weights")
     if cursor.fetchone()[0] == 0:
-        # Create Genesis Block (Integers summing to 3141, derived from Pi=3.141)
-        base = 3141 // 8
-        genesis_weights = [base] * 8
-        genesis_weights[-1] += (3141 - sum(genesis_weights)) # Remainder
+        # Genesis Block: Derived from Pi=3.14 -> base 314
+        genesis_base = get_pi_base(1)
+        base_val = genesis_base // 8
+        genesis_weights = [base_val] * 8
+        genesis_weights[-1] += (genesis_base - sum(genesis_weights))
         
         prev_hash = "0" * 64
         timestamp = datetime.now().isoformat()
@@ -81,13 +88,13 @@ def init_system():
 
 conn = init_system()
 
-# --- 3. RECURSIVE ENTROPY WEIGHT METHOD (DERIVED FROM PI) ---
-def calculate_ewm_integers(matrix):
+# --- 4. RECURSIVE ENTROPY WEIGHT METHOD (DYNAMIC PI MAPPING) ---
+def calculate_ewm_integers(matrix, target_pi_base):
     m, n = matrix.shape
     if m <= 1:
-        base = 3141 // n
-        weights = [base] * n
-        weights[-1] += (3141 - sum(weights))
+        base_val = target_pi_base // n
+        weights = [base_val] * n
+        weights[-1] += (target_pi_base - sum(weights))
         return weights
     
     norm_matrix = np.zeros_like(matrix)
@@ -113,9 +120,8 @@ def calculate_ewm_integers(matrix):
     else:
         float_weights = d / d_sum
 
-    # Convert to Integer Constants (summing exactly to 3141, derived from Pi)
-    int_weights = [int(round(w * 3141)) for w in float_weights]
-    diff = 3141 - sum(int_weights)
+    int_weights = [int(round(w * target_pi_base)) for w in float_weights]
+    diff = target_pi_base - sum(int_weights)
     int_weights[-1] += diff 
     
     return int_weights
@@ -133,11 +139,11 @@ def trigger_blockchain_epoch():
         rows = cursor.fetchall()
         
         if len(rows) > 5:
-            new_int_weights = calculate_ewm_integers(np.array(rows))
-            timestamp = datetime.now().isoformat()
             new_height = last_block_height + 1
+            current_pi_base = get_pi_base(new_height)
+            new_int_weights = calculate_ewm_integers(np.array(rows), current_pi_base)
             
-            # Validate new PoS block
+            timestamp = datetime.now().isoformat()
             val_node, block_hash = validate_block_pos(new_height, new_int_weights, timestamp, previous_hash)
             
             cursor.execute('''INSERT INTO blockchain_pos_weights 
@@ -146,7 +152,7 @@ def trigger_blockchain_epoch():
                            (*new_int_weights, timestamp, previous_hash, val_node, block_hash))
             conn.commit()
 
-# --- 4. SEMANTIC LLM EXTRACTION & MATHEMATICAL DRIFT ---
+# --- 5. SEMANTIC LLM EXTRACTION & MATHEMATICAL DRIFT ---
 def evaluate_pdf_text(text, scope, model):
     prompt = f"""You are an expert peer reviewer contributing to the π-Index.
 The user is a researcher currently working on this specific project/scope: "{scope}"
@@ -228,8 +234,12 @@ def process_single_pdf(file_bytes, filename, scope):
         time.sleep(2)
         raw_data = evaluate_pdf_text(text, scope, FALLBACK_MODEL)
         
-    cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 1")
-    int_weights = cursor.fetchone()
+    cursor.execute("SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 1")
+    epoch_data = cursor.fetchone()
+    block_height = epoch_data[0]
+    int_weights = epoch_data[1:]
+    
+    current_pi_base = get_pi_base(block_height)
     
     scores_dict = raw_data.get("scores", {})
     scores = [scores_dict.get(k, 50.0) for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
@@ -239,8 +249,7 @@ def process_single_pdf(file_bytes, filename, scope):
     fields = raw_data.get("fields", ["General Science"])
     subfields = raw_data.get("subfields", ["General"])
     
-    # Calculate final score via dot product with Pi-derived integers, then normalize
-    final_score = float(np.dot(scores, int_weights)) / 3141.0
+    final_score = float(np.dot(scores, int_weights)) / float(current_pi_base)
     drift = calculate_complex_drift(scope_alignment, scores)
     
     cursor.execute('''INSERT INTO papers_assessment 
@@ -254,7 +263,7 @@ def process_single_pdf(file_bytes, filename, scope):
     
     return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
 
-# --- 5. TOPOLOGICAL MAPPING (3D REALISTIC BUBBLE CHART) ---
+# --- 6. TOPOLOGICAL MAPPING (3D REALISTIC BUBBLE CHART) ---
 def generate_bubble_chart(scope):
     cursor = conn.cursor()
     cursor.execute("SELECT fields, subfields FROM papers_assessment WHERE scope=?", (scope,))
@@ -309,7 +318,7 @@ def generate_bubble_chart(scope):
         size = row['bubble_size']
         count = row['count']
         
-        # Labels stripped off the bubbles, leaving only color mapping and hover info
+        # Labels removed, completely reliant on color palette and hover
         fig.add_trace(go.Scatter(
             x=[row['x']], y=[row['y']],
             mode='markers',
@@ -338,7 +347,7 @@ def generate_bubble_chart(scope):
                                         
     return fig
 
-# --- 6. USER INTERFACE ---
+# --- 7. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
 st.markdown("**Upload papers, define your scope of research, let π-index filter noise and have better results**")
 
@@ -349,29 +358,29 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
     
     with col1:
         st.markdown("**C1: Originality**  \nEvaluates the uniqueness of the hypothesis, approach, or findings through epistemic gradient fields.")
-        st.markdown(r"$$O = \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^N (\zeta_i \cdot \mathcal{I}_{existing}^{(i)}) \, d\mu} \cdot d\mathbf{S} \times 100$$")
+        st.markdown(r"$$O = \varpi_1 \cdot \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^N (\zeta_i \cdot \mathcal{I}_{existing}^{(i)}) \, d\mu} \cdot d\mathbf{S} \times 100$$")
         
         st.markdown("**C2: Methodological Rigor**  \nAssesses robustness and reproducibility via error-covariance tensors and persistent homology.")
-        st.markdown(r"$$R = \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \prod_{k=1}^{m} \int_{0}^{\infty} \rho_k(x) e^{-\beta x^2} \Gamma\left(k+\frac{1}{2}\right) dx \times 100$$")
+        st.markdown(r"$$R = \varpi_2 \cdot \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \prod_{k=1}^{m} \int_{0}^{\infty} \rho_k(x) e^{-\beta x^2} \Gamma\left(k+\frac{1}{2}\right) dx \times 100$$")
         
         st.markdown("**C3: Interdisciplinary**  \nMeasures network bridge capacity using generalized Rényi entropy over disciplinary graphs.")
-        st.markdown(r"$$I = \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot \frac{\Xi(\mathcal{G})}{\ln K \cdot \mathcal{Z}_{norm}} \times 100$$")
+        st.markdown(r"$$I = \varpi_3 \cdot \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot \frac{\Xi(\mathcal{G})}{\ln K \cdot \mathcal{Z}_{norm}} \times 100$$")
         
         st.markdown("**C4: Societal Impact**  \nProjects real-world macro applications utilizing fractional stochastic integration.")
-        st.markdown(r"$$S = \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau \times 100$$")
+        st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau \times 100$$")
 
     with col2:
         st.markdown("**C5: Open Science Potential**  \nGauges transparent reporting optimization via multi-objective integration over FAIR limits.")
-        st.markdown(r"$$O_s = \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left( \sup_{t} \mathcal{D}_{total}(t), \inf_{\epsilon>0} \mathcal{C}_{total}(\epsilon) \right)} \times \mathcal{P}_{FAIR} \times 100$$")
+        st.markdown(r"$$O_s = \varpi_5 \cdot \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left( \sup_{t} \mathcal{D}_{total}(t), \inf_{\epsilon>0} \mathcal{C}_{total}(\epsilon) \right)} \times \mathcal{P}_{FAIR} \times 100$$")
         
         st.markdown("**C6: Literature Integration**  \nEvaluates topological foundational embedding via non-Euclidean manifold PageRank distances.")
-        st.markdown(r"$$L = \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum_j \text{PR}(x_j)} \times 100$$")
+        st.markdown(r"$$L = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum_j \text{PR}(x_j)} \times 100$$")
         
         st.markdown("**C7: Empirical Density**  \nEvaluates data depth utilizing Fisher information metrics and Kullback-Leibler divergences.")
-        st.markdown(r"$$E_d = \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma \omega_{data}} \right) \times \sum_{d=1}^D \lambda_d \kappa_d \times 100$$")
+        st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma \omega_{data}} \right) \times \sum_{d=1}^D \lambda_d \kappa_d \times 100$$")
         
         st.markdown("**C8: Future Actionability**  \nDetermines theoretical continuation potential using Lyapunov exponents on phase space logistics.")
-        st.markdown(r"$$F_a = \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$")
+        st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$")
 
 tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Active Epoch Integer Constants"])
 
@@ -438,27 +447,36 @@ with tab2:
 
 with tab3:
     cursor = conn.cursor()
-    cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 1")
-    weights = cursor.fetchone()
+    cursor.execute("SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 1")
+    epoch_data = cursor.fetchone()
     
-    if weights:
+    if epoch_data:
+        block_height = epoch_data[0]
+        weights = epoch_data[1:]
+        current_pi_base = get_pi_base(block_height)
+        
         cols = st.columns(4)
         labels = [
-            "C1 Originality (O)", 
-            "C2 Method Rigor (R)", 
-            "C3 Interdisciplinary (I)", 
-            "C4 Societal Impact (S)", 
-            "C5 Open Science (O_s)", 
-            "C6 Lit Integration (L)", 
-            "C7 Empirical Density (E_d)", 
-            "C8 Actionability (F_a)"
+            ("C1 Originality", r"$\varpi_1$"), 
+            ("C2 Method Rigor", r"$\varpi_2$"), 
+            ("C3 Interdisciplinary", r"$\varpi_3$"), 
+            ("C4 Societal Impact", r"$\varpi_4$"), 
+            ("C5 Open Science", r"$\varpi_5$"), 
+            ("C6 Lit Integration", r"$\varpi_6$"), 
+            ("C7 Empirical Density", r"$\varpi_7$"), 
+            ("C8 Actionability", r"$\varpi_8$")
         ]
         
         for i, col in enumerate(cols * 2):
             if i < 8: 
-                col.markdown(f"**{labels[i]}**")
-                col.markdown(f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]}</h3>", unsafe_allow_html=True)
-                col.markdown("<p style='color:gray; font-size: 0.85em;'>an integer that is derived from Pi=3.14 and saved on blockchain hash with proof of stake</p>", unsafe_allow_html=True)
+                name, symbol = labels[i]
+                col.markdown(f"**{name} ({symbol})**")
+                col.markdown(f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]} / {current_pi_base}</h3>", unsafe_allow_html=True)
+                col.markdown("<p style='color:gray; font-size: 0.8em; margin-bottom: 5px;'>an integer derived from Pi=3.14</p>", unsafe_allow_html=True)
+                
+                with col.expander("Proof of Stake Seed"):
+                    seed_hash = hashlib.sha256(f"{weights[i]}_pos_{block_height}_{current_pi_base}".encode()).hexdigest()
+                    st.code(f"Seed: {seed_hash[:24]}...\nPrecision Acc: {current_pi_base}", language="text")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Università degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
