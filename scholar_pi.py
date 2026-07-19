@@ -254,14 +254,45 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
 
 # --- 7. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK WITH WEIGHTS) ---
-
 def generate_interactive_bubble_chart(scope, user_id):
-    # ... [keep your data fetching and topic_counts logic the same] ...
+    cursor = conn.cursor()
+    cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
+    data = cursor.fetchall()
     
-    # 1. INITIALIZE THE NETWORK FIRST
+    # Initialize variables to avoid NameError if function exits early
+    html_string, table_html = "", ""
+    
+    if not data: return html_string, table_html
+    
+    all_topics = []
+    for fields_json, subfields_json, final_score in data:
+        try:
+            fields = [f.title().strip() for f in json.loads(fields_json)]
+            subfields = [s.title().strip() for s in json.loads(subfields_json)]
+            score = float(final_score) if final_score else 50.0
+            for f in fields: all_topics.append({'topic': f, 'weight': score})
+            for s in subfields: all_topics.append({'topic': s, 'weight': score})
+        except: continue
+            
+    if not all_topics: return html_string, table_html
+    
+    df_topics = pd.DataFrame(all_topics)
+    topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
+    
+    if topic_counts.empty: return html_string, table_html
+    
+    unique_topics = topic_counts['topic'].unique()
+    
+    def get_color(i, n):
+        h, s, v = i/n, 0.7, 0.9
+        rgb = colorsys.hsv_to_rgb(h, s, v)
+        return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb)
+    
+    color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
+    
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
     
-    # 2. NOW YOU CAN SAFELY SET OPTIONS
+    # Physics set for "sticky" cluster
     physics_options = """
     {
       "physics": {
@@ -269,7 +300,6 @@ def generate_interactive_bubble_chart(scope, user_id):
           "gravitationalConstant": -50,
           "centralGravity": 0.2,
           "springLength": 10,
-          "springConstant": 0.05,
           "avoidOverlap": 0
         },
         "solver": "forceAtlas2Based"
@@ -278,7 +308,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     """
     net.set_options(physics_options)
     
-    # 3. ADD NODES
+    # Now iterating over a guaranteed defined topic_counts
     for _, row in topic_counts.iterrows():
         node_size = 30 + (row['weight'] * 2.5) 
         net.add_node(
@@ -290,8 +320,18 @@ def generate_interactive_bubble_chart(scope, user_id):
             color=color_map[row['topic']]
         )
         
-    # ... [rest of your legend/table generation] ...
-    return net.generate_html(), table_html
+    html_string = net.generate_html()
+    
+    # Table logic
+    table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; } .table-big td { border-bottom: 1px solid #ddd; padding: 8px; vertical-align: middle; } .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; margin: 0 auto;} .legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }</style>"
+    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
+    
+    for _, row in topic_counts.sort_values(by="weight", ascending=False).iterrows():
+        table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td>{row['topic']}</td></tr>"
+        
+    table_html += "</tbody></table></div>"
+    
+    return html_string, table_html
 # --- 8. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
 st.markdown("**Upload papers, define your scope of research, let π-index filter noise and have better results**")
