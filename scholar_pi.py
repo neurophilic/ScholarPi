@@ -292,7 +292,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
     
-    # Physics set for "sticky" cluster
+    # --- PHYSICS SET TO STOP JIGGLING ---
     physics_options = """
     {
       "physics": {
@@ -301,6 +301,13 @@ def generate_interactive_bubble_chart(scope, user_id):
           "centralGravity": 0.2,
           "springLength": 10,
           "avoidOverlap": 0
+        },
+        "stabilization": {
+          "enabled": true,
+          "iterations": 1000,
+          "updateInterval": 25,
+          "onlyDynamicEdges": false,
+          "fit": true
         },
         "solver": "forceAtlas2Based"
       }
