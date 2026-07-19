@@ -324,26 +324,29 @@ def generate_interactive_bubble_chart(scope, user_id):
         
     html_string = net.generate_html()
     
-    # Custom CSS/HTML for the Table (Replaces Streamlit's default DataFrame)
+    # Custom CSS/HTML for the Table
     table_html = """
     <style>
-        .table-big { width: 100%; font-size: 15px; border-collapse: collapse; margin-top: 10px; }
+        .table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; }
         .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; }
         .table-big td { border-bottom: 1px solid #ddd; padding: 8px; }
         .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; }
-        .legend-container { max-height: 550px; overflow-y: auto; }
+        .legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }
     </style>
     <div class="legend-container">
     <table class='table-big'>
-        <tr>
-            <th>Color</th>
-            <th>Topic</th>
-            <th>Category</th>
-            <th>Weight</th>
-        </tr>
+        <thead>
+            <tr>
+                <th style="width: 15%;">Color</th>
+                <th>Topic</th>
+                <th>Category</th>
+                <th>Weight</th>
+            </tr>
+        </thead>
+        <tbody>
     """
     
-    # Sort by weight descending for better table readability
+    # Sort by weight descending
     topic_counts_sorted = topic_counts.sort_values(by="weight", ascending=False)
     
     for _, row in topic_counts_sorted.iterrows():
@@ -355,7 +358,8 @@ def generate_interactive_bubble_chart(scope, user_id):
             <td>{row['category']}</td>
             <td>{row['weight']}</td>
         </tr>"""
-    table_html += "</table></div>"
+        
+    table_html += "</tbody></table></div>"
     
     return html_string, table_html
 
