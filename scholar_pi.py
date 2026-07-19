@@ -303,7 +303,7 @@ def generate_interactive_bubble_chart(scope, user_id):
         },
         "solver": "forceAtlas2Based"
       }
-    }
+    
     }
     """
     net.set_options(physics_options)
