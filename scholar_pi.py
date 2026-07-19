@@ -1,3 +1,6 @@
+Here is the complete, fully updated project code. The file incorporates the mathematical variance adjustments for the weights, the strict LLM prompt for a broader criteria distribution, and the corrected interactive bubble chart with the simplified Color/Topic legend.
+
+```python
 import os
 import sqlite3
 import json
@@ -6,6 +9,7 @@ import time
 import tempfile
 import re
 import requests
+import colorsys
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -33,7 +37,6 @@ if not GROQ_API_KEY:
     st.error("API Key not found! Please configure your environment variables or Streamlit Secrets.")
     st.stop()
 client = Groq(api_key=GROQ_API_KEY)
-
 
 # --- ORCID LIVE API VERIFICATION ---
 def verify_orcid_live(orcid_id):
@@ -98,13 +101,11 @@ else:
 current_user = st.session_state.orcid_id
 st.sidebar.caption("Assessment histories and maps are isolated to your ORCID, but the PoS blockchain remains globally synchronized.")
 
-
 # --- 3. PI PROGRESSION (EPOCH ACCURACY) ---
 def get_pi_float(block_height):
     pi_str = "3.141592653589793238462643383279502884197169399375105820974944592"
     length = min(block_height + 3, len(pi_str))
     return float(pi_str[:length])
-
 
 # --- 4. BLOCKCHAIN & DATABASE ---
 def validate_block_pos(block_index, weights, timestamp, previous_hash, eval_hash, model_used):
@@ -146,40 +147,47 @@ def init_system():
 
 conn = init_system()
 
-
 # --- 5. DYNAMIC WEIGHT ADAPTATION ---
 def calculate_model_driven_weights(old_weights, scores, model_name, block_height):
     v, s = (3.3, 70.0) if "70b" in model_name else (3.1, 8.0)
     pi_acc = get_pi_float(block_height)
     delta_models = abs((3.3 * 70.0) - (3.1 * 8.0)) 
     
+    # 1. Apply a mathematical stretch to force variance from the mean
+    mean_score = np.mean(scores)
+    stretched_scores = [max(1.0, min(100.0, mean_score + (score - mean_score) * 3.0)) for score in scores]
+    
     new_weights = []
     for i, old_w in enumerate(old_weights):
-        c_score = scores[i]
-        delta_w = ((v * s) / (delta_models * pi_acc)) * (c_score / 100.0)
+        c_score = stretched_scores[i]
+        
+        # 2. Exponentiate the score impact ((c_score/100)^2) to widen the distribution
+        delta_w = ((v * s) / (delta_models * pi_acc)) * ((c_score / 100.0) ** 2)
         w_new = old_w * 0.85 + (1.0 + delta_w * 0.15) * 0.15
         new_weights.append(w_new)
         
     sum_w = sum(new_weights)
     return [round((w / sum_w) * 8.0, 6) for w in new_weights]
 
-
 # --- 6. SEMANTIC EXTRACTION & DRIFT ---
 def evaluate_pdf_text(text, scope, model):
-    prompt = f"""You are an expert peer reviewer contributing to the π-Index.
+    # Strict instructions to force the LLM to use the full 0-100 scale
+    prompt = f"""You are a brutally critical expert peer reviewer contributing to the π-Index.
 The user is a researcher currently working on this specific project/scope: "{scope}"
-... (Extract Title, Scope_Alignment 0-100, 8 criteria scores 0-100, fields, subfields) ...
+
+CRITICAL INSTRUCTION: You MUST use the full 0-100 scale for scores. Do NOT cluster scores around 70-80. If a paper is weak in an area, give it a 10 or 20. If exceptional, 90+. Force extreme variance based on actual merit.
+
 Return ONLY a valid JSON object matching exactly this structure:
 {{
     "Extracted_Title": "Title", "Scope_Alignment": 85,
-    "scores": {{"C1_Originality": 80, "C2_Methodological_Rigor": 70, "C3_Interdisciplinary": 60, "C4_Societal_Impact": 50, "C5_Open_Science_Potential": 60, "C6_Literature_Integration": 70, "C7_Empirical_Density": 80, "C8_Future_Actionability": 70}},
+    "scores": {{"C1_Originality": 20, "C2_Methodological_Rigor": 95, "C3_Interdisciplinary": 40, "C4_Societal_Impact": 15, "C5_Open_Science_Potential": 60, "C6_Literature_Integration": 80, "C7_Empirical_Density": 55, "C8_Future_Actionability": 30}},
     "fields": ["Field1", "Field2"], "subfields": ["Subfield1"]
 }}
 Text: {text[:MAX_TEXT_TOKENS]}
 """
     response = client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model=model, temperature=0.1, seed=SEED_NUMBER, response_format={"type": "json_object"}
+        model=model, temperature=0.3, seed=SEED_NUMBER, response_format={"type": "json_object"}
     )
     return json.loads(response.choices[0].message.content)
 
@@ -248,11 +256,9 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     conn.commit()
     return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
 
-
 # --- 7. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK WITH WEIGHTS) ---
 def generate_interactive_bubble_chart(scope, user_id):
     cursor = conn.cursor()
-    # Fetch final_score along with fields to calculate the weight
     cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
     data = cursor.fetchall()
     
@@ -265,22 +271,20 @@ def generate_interactive_bubble_chart(scope, user_id):
             subfields = [s.title().strip() for s in json.loads(subfields_json)]
             score = float(final_score) if final_score else 50.0
             
-            # Append each topic with its paper's score
-            for f in fields: all_topics.append({'topic': f, 'category': 'Field', 'weight': score})
-            for s in subfields: all_topics.append({'topic': s, 'category': 'Subfield', 'weight': score})
+            for f in fields: all_topics.append({'topic': f, 'weight': score})
+            for s in subfields: all_topics.append({'topic': s, 'weight': score})
         except: continue
             
     if not all_topics: return None, None
     
     df_topics = pd.DataFrame(all_topics)
     
-    # Group by topic and calculate the sum of the scores as the new "Weight"
-    topic_counts = df_topics.groupby(['topic', 'category'])['weight'].sum().reset_index(name='weight')
+    # Group solely by topic to ensure clean, distinct bubbles
+    topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
     topic_counts['weight'] = topic_counts['weight'].round(1)
     
-    # Generate a unique color for every unique topic
     unique_topics = topic_counts['topic'].unique()
-    import colorsys
+    
     def get_color(i, n):
         h, s, v = i/n, 0.7, 0.9
         rgb = colorsys.hsv_to_rgb(h, s, v)
@@ -288,7 +292,6 @@ def generate_interactive_bubble_chart(scope, user_id):
     
     color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
     
-    # Initialize Network
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
     
     physics_options = """
@@ -309,8 +312,8 @@ def generate_interactive_bubble_chart(scope, user_id):
     for _, row in topic_counts.iterrows():
         topic_weight = row['weight']
         
-        # DYNAMIC SCALING based on weight instead of frequency
-        node_size = 20 + (topic_weight / 5.0) 
+        # Exponential scaling to make weight differences highly visible
+        node_size = 15 + (topic_weight ** 0.6) * 1.5 
         node_mass = 1 + (topic_weight / 20.0)
         
         net.add_node(
@@ -324,29 +327,26 @@ def generate_interactive_bubble_chart(scope, user_id):
         
     html_string = net.generate_html()
     
-    # Custom CSS/HTML for the Table
+    # Updated HTML Table - Contains ONLY Color and Topic
     table_html = """
     <style>
         .table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; }
         .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; }
-        .table-big td { border-bottom: 1px solid #ddd; padding: 8px; }
-        .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; }
+        .table-big td { border-bottom: 1px solid #ddd; padding: 8px; vertical-align: middle; }
+        .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; margin: 0 auto;}
         .legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }
     </style>
     <div class="legend-container">
     <table class='table-big'>
         <thead>
             <tr>
-                <th style="width: 15%;">Color</th>
+                <th style="width: 25%; text-align: center;">Color</th>
                 <th>Topic</th>
-                <th>Category</th>
-                <th>Weight</th>
             </tr>
         </thead>
         <tbody>
     """
     
-    # Sort by weight descending
     topic_counts_sorted = topic_counts.sort_values(by="weight", ascending=False)
     
     for _, row in topic_counts_sorted.iterrows():
@@ -355,14 +355,11 @@ def generate_interactive_bubble_chart(scope, user_id):
         <tr>
             <td style="text-align: center;"><div class='color-box' style='background-color:{color};'></div></td>
             <td>{row['topic']}</td>
-            <td>{row['category']}</td>
-            <td>{row['weight']}</td>
         </tr>"""
         
     table_html += "</tbody></table></div>"
     
     return html_string, table_html
-
 
 # --- 8. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
@@ -391,6 +388,7 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$")
 
 tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Active Epoch Constants"])
+
 with tab1:
     research_scope = st.text_input("Define your specific Research Topic / Scope", placeholder="e.g., Application of deep learning in vascular imaging...")
     uploaded_files = st.file_uploader("Upload Academic Papers (PDFs)", type=["pdf"], accept_multiple_files=True)
@@ -481,7 +479,7 @@ with tab2:
             with col1:
                 components.html(interactive_html, height=620)
             with col2:
-                st.markdown("### Legend & Weights")
+                st.markdown("### Legend")
                 st.markdown(table_html, unsafe_allow_html=True)
         else: 
             st.info("Awaiting sufficient data for this scope and user.")
@@ -555,3 +553,5 @@ with tab3:
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Università degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
+
+```
