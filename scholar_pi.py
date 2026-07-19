@@ -436,27 +436,31 @@ with tab1:
             csv = df_display.to_csv(index=False).encode('utf-8')
             st.download_button(label="Download Summary as CSV", data=csv, file_name="pi_index_assessment_results.csv", mime="text/csv")
 
-    # Display History below the form
+    # --- Display History below the form ---
     st.markdown("---")
     st.markdown("### Latest Assessment History")
     
-    # Clear History Logic
-    if st.button("🗑️ Clear All History"):
+    if st.session_state.is_authenticated:
+        # Clear History Logic
+        if st.button("🗑️ Clear All History"):
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM papers_assessment WHERE user_id=?", (current_user,))
+            conn.commit()
+            st.rerun() 
+            
+        # Fetch and display history
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM papers_assessment WHERE user_id=?", (current_user,))
-        conn.commit()
-        st.rerun() # Refresh the app to update the view
+        cursor.execute("SELECT title, scope, final_score, timestamp, eval_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
+        history_data = cursor.fetchall()
         
-    # Fetch and display history
-    cursor = conn.cursor()
-    cursor.execute("SELECT title, scope, final_score, timestamp, eval_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
-    history_data = cursor.fetchall()
-    
-    if history_data:
-        df_hist = pd.DataFrame(history_data, columns=["Paper Title", "Scope", "π-Index Score", "Date", "Evaluation Hash"])
-        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        if history_data:
+            df_hist = pd.DataFrame(history_data, columns=["Paper Title", "Scope", "π-Index Score", "Date", "Evaluation Hash"])
+            st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        else:
+            st.info("No assessment history found for your account.")
     else:
-        st.info("No assessment history found.")
+        st.warning("🔒 Please connect your ORCID iD in the sidebar to view your private assessment history.")
+        
 
 with tab2:
     st.subheader("Field & Subfield Epistemic Bubbles")
