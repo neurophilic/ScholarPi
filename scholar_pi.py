@@ -6,6 +6,7 @@ import time
 import re
 import requests
 import colorsys
+import math
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -26,7 +27,7 @@ SEED_NUMBER = 42
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
 os.makedirs(BASE_DIR, exist_ok=True)
-DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v10_por.db')
+DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v11_por.db')
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
 if not GROQ_API_KEY:
@@ -36,6 +37,7 @@ client = Groq(api_key=GROQ_API_KEY)
 
 # --- UTILITY FUNCTIONS ---
 def verify_orcid_live(orcid_id):
+    """Pings the real ORCID Public API to verify the ID and fetch the user's name."""
     try:
         url = f"https://pub.orcid.org/v3.0/{orcid_id}/person"
         headers = {"Accept": "application/json"}
@@ -128,38 +130,72 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
 def compute_formulaic_criteria(v, w):
     """
     Actively utilizes the extracted variables to compute the theoretical LaTeX formulas.
-    Outputs are bounded between 0 and 100.
+    Variables bounded mostly [0.0, 1.0]. Outputs scaled to [0.0, 100.0].
     """
     scores = {}
     
-    # C1: Originality (Gradient/Curl estimation) -> O = w1 * ((H_novel * K_epistemic) / zeta) * 100
-    scores["C1_Originality"] = min(100.0, w[0] * ((v.get('H_novel', 0.5) * v.get('K_epistemic', 0.5)) / max(0.1, v.get('zeta', 1.0))) * 100)
+    # Defaults and fail-safes extracted from LLM JSON
+    H_novel = v.get('H_novel', 0.5)
+    K_epistemic = v.get('K_epistemic', 0.5)
+    zeta = v.get('zeta', 0.5)
+    I_existing = v.get('I_existing', 0.5)
+    Sigma_error = v.get('Sigma_error', 0.1)
+    mu_signal = v.get('mu_signal', 0.8)
+    rho_k = v.get('rho_k', 0.8)
+    p_disc = np.array(v.get('p_disciplines', [0.5, 0.5]))
+    bridge_cap = v.get('bridge_capacity', 0.5)
+    Utility_vec = v.get('Utility_vector', 0.5)
+    decay_rate = v.get('decay_rate', 0.5)
+    q_frac = v.get('q_fractional', 1.5)
+    D_open = v.get('D_open', 0.2)  # Baseline > 0 to prevent total zero-out
+    J_code = v.get('J_code', 0.1)
+    P_FAIR = v.get('P_FAIR', 0.3)
+    d_g_dist = v.get('d_g_distance', 0.5)
+    R_xi = v.get('R_xi', 0.7)
+    PR_xi = v.get('PR_xi', 0.5)
+    I_Fisher = v.get('I_Fisher', 0.5)
+    KL_div = v.get('KL_divergence', 0.5)
+    V_base = v.get('V_baseline', 0.5)
+    omega_data = v.get('omega_data', 0.5)
+    sum_lam = v.get('sum_lambda_kappa', 1.0)
+    eta_steps = v.get('eta_steps', 2.0)
+    Lambda_Lyap = v.get('Lambda_Lyapunov', 0.5)
+
+    # C1: Originality (Gradient/Curl estimation cross-product over existing integral)
+    denom1 = zeta * I_existing + 1e-9
+    scores["C1_Originality"] = min(100.0, w[0] * ((H_novel * K_epistemic) / denom1) * 100)
     
-    # C2: Methodological Rigor (Error Covariance) -> R = w2 * (1 - Sigma_error / mu_signal) * 100
-    scores["C2_Methodological_Rigor"] = min(100.0, max(0.0, w[1] * (1.0 - (v.get('Sigma_error', 0.5) / max(0.1, v.get('mu_signal', 0.5)))) * 100))
+    # C2: Methodological Rigor (Error Covariance mapping with Gamma integration)
+    # Using math.gamma(1.5) as the proxy evaluation of the structural density
+    gamma_val = math.gamma(1.5) 
+    rigor_inner = max(0.0, 1.0 - (Sigma_error / (mu_signal + 1e-9)))
+    scores["C2_Methodological_Rigor"] = min(100.0, w[1] * rigor_inner * rho_k * gamma_val * 100)
     
-    # C3: Interdisciplinary (Rényi Entropy) -> I = w3 * (H2 + bridge_capacity) * 100
-    p = np.array(v.get('p_disciplines', [1.0]))
-    p = p / p.sum() if p.sum() > 0 else np.array([1.0])
-    renyi = -np.log(np.sum(p**2) + 1e-9)
-    scores["C3_Interdisciplinary"] = min(100.0, w[2] * (((renyi / 1.1) * 0.5) + (v.get('bridge_capacity', 0.5) * 0.5)) * 100)
+    # C3: Interdisciplinary (Generalized Rényi entropy)
+    p_disc = p_disc / (p_disc.sum() + 1e-9)
+    alpha = 2.0 # Collision entropy
+    renyi = (1.0 / (1.0 - alpha)) * np.log(np.sum(p_disc**alpha) + 1e-9)
+    scores["C3_Interdisciplinary"] = min(100.0, w[2] * (abs(renyi) + bridge_cap) * 50)
     
-    # C4: Societal Impact (Fractional Stochastic) -> S = w4 * (Utility * exp(-decay)) * 100
-    scores["C4_Societal_Impact"] = min(100.0, w[3] * (v.get('Utility_vector', 0.5) * np.exp(-v.get('decay_rate', 0.5))) * 100)
+    # C4: Societal Impact (Fractional stochastic integration)
+    gamma_q = math.gamma(max(0.1, q_frac))
+    scores["C4_Societal_Impact"] = min(100.0, w[3] * (1.0 / gamma_q) * (Utility_vec * np.exp(-decay_rate)) * 100)
     
-    # C5: Open Science (Multi-objective integration) -> Os = w5 * (D_open + J_code) * P_FAIR * 100
-    scores["C5_Open_Science_Potential"] = min(100.0, w[4] * ((0.7 * v.get('D_open', 0.5) + 0.3 * v.get('J_code', 0.0)) * v.get('P_FAIR', 0.5)) * 100)
+    # C5: Open Science Potential (Multi-objective integration scaling)
+    scores["C5_Open_Science_Potential"] = min(100.0, w[4] * (0.7 * D_open + 0.3 * J_code) * P_FAIR * 100)
     
-    # C6: Literature Integration (PageRank proxy) -> L = w6 * (Relevance * exp(-d_g)) * 100
-    scores["C6_Literature_Integration"] = min(100.0, w[5] * (v.get('Relevance', 0.5) * np.exp(-1.5 * v.get('d_g_distance', 0.5))) * 100)
+    # C6: Literature Integration (Non-Euclidean PageRank mapping)
+    scores["C6_Literature_Integration"] = min(100.0, w[5] * (np.exp(-1.5 * d_g_dist) * R_xi) * PR_xi * 100)
     
-    # C7: Empirical Density (Fisher Information) -> Ed = w7 * tanh(I_Fisher / V_baseline) * 100
-    scores["C7_Empirical_Density"] = min(100.0, w[6] * np.tanh(v.get('I_Fisher', 0.5) / max(0.1, v.get('V_baseline', 0.5))) * 100)
+    # C7: Empirical Density (Fisher information hyperbolic scaling)
+    density_inner = (I_Fisher * KL_div) / (V_base * omega_data + 1e-9)
+    scores["C7_Empirical_Density"] = min(100.0, w[6] * np.tanh(density_inner) * sum_lam * 100)
     
-    # C8: Future Actionability (Lyapunov Exponent) -> Fa = w8 * (1 / (1 + exp(-eta + Lambda))) * 100
-    scores["C8_Future_Actionability"] = min(100.0, w[7] * (1.0 / (1.0 + np.exp(-(v.get('eta_steps', 2.0) - v.get('Lambda_Lyapunov', 0.5))))) * 100)
+    # C8: Future Actionability (Lyapunov exponents trajectory continuation)
+    scores["C8_Future_Actionability"] = min(100.0, w[7] * (1.0 / (1.0 + np.exp(-(eta_steps - Lambda_Lyap)))) * 100)
     
-    return scores
+    # Safety catch to ensure no negative numbers or NaNs
+    return {k: max(0.0, float(v)) for k, v in scores.items()}
 
 def evaluate_pdf_text(text, scope, model, text_limit):
     if len(text) > text_limit:
@@ -171,39 +207,47 @@ def evaluate_pdf_text(text, scope, model, text_limit):
         scope_instruction = 'Set "Scope_Alignment" to 0, as no specific project scope was provided.'
 
     prompt = f"""You are the theoretical parser for the π-Index Assessment Engine.
-Instead of assigning arbitrary scores, you must extract the underlying mathematical proxy variables for this paper.
+Instead of assigning arbitrary scores, you must read the academic paper and extract the underlying mathematical proxy variables.
 
-Evaluate the text and extract these exact variables (all values must be floats between 0.0 and 1.0, unless specified otherwise):
+Extract these exact variables (all values must be floats between 0.0 and 1.0, unless specified otherwise). Be harshly realistic:
 - `H_novel`: Degree of conceptual novelty introduced.
-- `K_epistemic`: Degree of epistemic shift (paradigm change).
-- `zeta`: Citation density/reliance on existing works.
-- `Sigma_error`: Probability of methodological error/bias.
+- `K_epistemic`: Degree of epistemic shift / paradigm change.
+- `zeta`: Reliance on existing standard works.
+- `I_existing`: Volume of foundational literature cited.
+- `Sigma_error`: Probability of methodological error/bias (0.0 = perfect, 1.0 = deeply flawed).
 - `mu_signal`: Robustness and clarity of the core methodology.
-- `p_disciplines`: Array of 2 to 4 floats representing the distribution of fields used (e.g., [0.7, 0.3]).
-- `bridge_capacity`: The success of bridging these disciplines.
+- `rho_k`: Density of empirical testing.
+- `p_disciplines`: Array of 2 to 4 floats representing field distribution (e.g., [0.7, 0.3] means 70% one field, 30% another).
+- `bridge_capacity`: Success of bridging these disciplines.
 - `Utility_vector`: Direct real-world application potential.
-- `decay_rate`: How quickly the research will become obsolete (0.1 = slow, 0.9 = fast).
-- `D_open`: Availability of open data.
-- `J_code`: Availability of open source code/scripts.
-- `P_FAIR`: Compliance with FAIR data principles.
-- `Relevance`: Relevance to core literature.
+- `decay_rate`: Obsolescence rate (0.1 = eternal relevance, 0.9 = obsolete next year).
+- `q_fractional`: Time-domain impact scaling (float from 0.5 to 2.5).
+- `D_open`: Availability/Description of open data (0.2 for basic description, 0.9 for linked repo).
+- `J_code`: Availability of code/scripts (0.1 for described math, 0.9 for GitHub).
+- `P_FAIR`: Compliance with FAIR principles.
 - `d_g_distance`: Distance to the central core of the subject (0.1 = foundational, 0.9 = niche/fringe).
-- `I_Fisher`: Information density (empirical depth).
-- `V_baseline`: Standard variance/noise in the data.
-- `eta_steps`: Integer 1 to 5, number of concrete actionable future steps identified.
-- `Lambda_Lyapunov`: Trajectory divergence (0.1 = predictable continuation, 0.9 = chaotic/disruptive future).
+- `R_xi`: Relevance to future research.
+- `PR_xi`: Expected PageRank / citation magnet potential.
+- `I_Fisher`: Information density (empirical data depth).
+- `KL_divergence`: Statistical separation from the null hypothesis.
+- `V_baseline`: Standard variance/noise in the data field.
+- `omega_data`: Volume of data analyzed.
+- `sum_lambda_kappa`: Quality metric for data dimensions (float 0.5 to 1.5).
+- `eta_steps`: Number of concrete actionable future steps identified (Integer 1 to 5).
+- `Lambda_Lyapunov`: Trajectory divergence (0.1 = highly predictable continuation, 0.9 = chaotic/disruptive future).
 
 {scope_instruction}
 
-Return ONLY a JSON object exactly matching this structure:
+Return ONLY a valid JSON object matching exactly this structure:
 {{
     "Extracted_Title": "Title", 
     "Scope_Alignment": 85,
     "variables": {{
-        "H_novel": 0.8, "K_epistemic": 0.7, "zeta": 0.5, "Sigma_error": 0.1, "mu_signal": 0.9,
-        "p_disciplines": [0.6, 0.4], "bridge_capacity": 0.8, "Utility_vector": 0.7, "decay_rate": 0.2,
-        "D_open": 0.0, "J_code": 0.0, "P_FAIR": 0.3, "Relevance": 0.9, "d_g_distance": 0.2,
-        "I_Fisher": 0.8, "V_baseline": 0.4, "eta_steps": 3, "Lambda_Lyapunov": 0.4
+        "H_novel": 0.8, "K_epistemic": 0.7, "zeta": 0.5, "I_existing": 0.5, "Sigma_error": 0.1, "mu_signal": 0.9, "rho_k": 0.8,
+        "p_disciplines": [0.6, 0.4], "bridge_capacity": 0.8, "Utility_vector": 0.7, "decay_rate": 0.2, "q_fractional": 1.2,
+        "D_open": 0.2, "J_code": 0.1, "P_FAIR": 0.3, "d_g_distance": 0.2, "R_xi": 0.9, "PR_xi": 0.8,
+        "I_Fisher": 0.8, "KL_divergence": 0.7, "V_baseline": 0.4, "omega_data": 0.8, "sum_lambda_kappa": 1.1,
+        "eta_steps": 3, "Lambda_Lyapunov": 0.4
     }},
     "fields": ["Field1", "Field2"], 
     "subfields": ["Subfield1"]
@@ -249,6 +293,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
         drift = calculate_complex_drift(alignment, scores_array) if scope.strip() else "N/A"
         rec = get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
         scores_dict = {"C1_Originality": c1, "C2_Methodological_Rigor": c2, "C3_Interdisciplinary": c3, "C4_Societal_Impact": c4, "C5_Open_Science_Potential": c5, "C6_Literature_Integration": c6, "C7_Empirical_Density": c7, "C8_Future_Actionability": c8}
+        
         return title, score, drift, rec, fields, subfields, scores_dict
 
     doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -258,7 +303,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
         raw_data = evaluate_pdf_text(text, scope, PRIMARY_MODEL, MAX_TEXT_TOKENS)
         model_used = PRIMARY_MODEL
     except Exception as e:
-        st.warning(f"Primary model hit a limit/error. Failing over to {FALLBACK_MODEL}...")
+        st.warning(f"Primary model limit hit. Failing over to {FALLBACK_MODEL}...")
         try:
             reduced_limit = MAX_TEXT_TOKENS // 2 if 'limit' in str(e).lower() or '413' in str(e) else MAX_TEXT_TOKENS
             raw_data = evaluate_pdf_text(text, scope, FALLBACK_MODEL, reduced_limit)
@@ -275,7 +320,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     epoch_data = cursor.fetchone()
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
     
-    # Mathematical computation using Extracted Variables and Blockchain Weights
+    # Map extracted variables to rigorous mathematical formulas
     variables = raw_data.get("variables", {})
     scores_dict = compute_formulaic_criteria(variables, old_weights)
     scores = [scores_dict[k] for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
@@ -293,7 +338,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     title = raw_data.get("Extracted_Title", filename)
     fields, subfields = raw_data.get("fields", ["General Science"]), raw_data.get("subfields", ["General"])
     
-    # Final Score is average of the formulaically derived criterion scores
     final_score = float(np.mean(scores))
     
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
