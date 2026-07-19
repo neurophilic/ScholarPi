@@ -254,51 +254,23 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
 
 # --- 7. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK WITH WEIGHTS) ---
+
 def generate_interactive_bubble_chart(scope, user_id):
-    cursor = conn.cursor()
-    cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
-    data = cursor.fetchall()
+    # ... [keep your data fetching logic the same] ...
+
+    net = Network(height='600px', width='100%', bgcolor='#ffffff', notebook=False)
     
-    if not data: return None, None
-    
-    all_topics = []
-    for fields_json, subfields_json, final_score in data:
-        try:
-            fields = [f.title().strip() for f in json.loads(fields_json)]
-            subfields = [s.title().strip() for s in json.loads(subfields_json)]
-            score = float(final_score) if final_score else 50.0
-            
-            for f in fields: all_topics.append({'topic': f, 'weight': score})
-            for s in subfields: all_topics.append({'topic': s, 'weight': score})
-        except: continue
-            
-    if not all_topics: return None, None
-    
-    df_topics = pd.DataFrame(all_topics)
-    
-    # Group solely by topic to ensure clean, distinct bubbles
-    topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
-    topic_counts['weight'] = topic_counts['weight'].round(1)
-    
-    unique_topics = topic_counts['topic'].unique()
-    
-    def get_color(i, n):
-        h, s, v = i/n, 0.7, 0.9
-        rgb = colorsys.hsv_to_rgb(h, s, v)
-        return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb)
-    
-    color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
-    
-    net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
-    
+    # 1. ADJUSTED PHYSICS: 
+    # Decrease 'gravitationalConstant' (e.g., -80) for less repulsion (tighter space)
+    # Increase 'centralGravity' (e.g., 0.2) to pull bubbles into a tighter cluster
     physics_options = """
     {
       "physics": {
         "forceAtlas2Based": {
-          "gravitationalConstant": -150,
-          "centralGravity": 0.08,
-          "springLength": 120,
-          "avoidOverlap": 0.8
+          "gravitationalConstant": -80,
+          "centralGravity": 0.2,
+          "springLength": 50,
+          "avoidOverlap": 1.0
         },
         "solver": "forceAtlas2Based"
       }
@@ -309,18 +281,20 @@ def generate_interactive_bubble_chart(scope, user_id):
     for _, row in topic_counts.iterrows():
         topic_weight = row['weight']
         
-        # Exponential scaling to make weight differences highly visible
-        node_size = 15 + (topic_weight ** 0.6) * 1.5 
-        node_mass = 1 + (topic_weight / 20.0)
+        # 2. DYNAMIC SIZE & MASS:
+        # Scaling size/mass based on relevancy (topic_weight)
+        node_size = 20 + (topic_weight * 0.5) 
+        node_mass = 2 + (topic_weight * 0.1)
         
         net.add_node(
             n_id=row['topic'],
-            label=row['topic'],
-            title=f"Topic: {row['topic']} | Accumulated Weight: {topic_weight}",
+            label="", # 3. REMOVE LABEL: Set to empty string
+            title=f"Topic: {row['topic']} | Weight: {topic_weight}",
             size=node_size,
             mass=node_mass,
             color=color_map[row['topic']]
         )
+      
         
     html_string = net.generate_html()
     
