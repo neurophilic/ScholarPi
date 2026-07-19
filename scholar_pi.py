@@ -295,9 +295,9 @@ def generate_interactive_bubble_chart(scope, user_id):
     {
       "physics": {
         "forceAtlas2Based": {
-          "gravitationalConstant": -100,
+          "gravitationalConstant": 0,
           "centralGravity": 0.5,
-          "springLength": 200,
+          "springLength": 150,
           "avoidOverlap": 0.5
         },
         "solver": "forceAtlas2Based"
