@@ -1,3 +1,10 @@
+The issue you are experiencing is due to how Python interprets standard strings vs. "raw" strings. In standard Python strings, combinations like `\f` and `\n` are interpreted as form feeds and newlines, which destroys the LaTeX commands (e.g., `\frac` becomes `rac`).
+
+To fix this, we must explicitly declare the text containing the formulas as raw strings using the `r"..."` prefix so the backslashes are preserved for Streamlit's LaTeX engine. I have explicitly separated the text and math blocks to guarantee they render perfectly.
+
+Here is the fully corrected code:
+
+```python
 import os
 import sqlite3
 import json
@@ -298,42 +305,30 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("""
-        **C1: Originality**  
-        Evaluates the uniqueness of the hypothesis, approach, or findings through epistemic gradient fields.
-        $$O = \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^N (\zeta_i \cdot \mathcal{I}_{existing}^{(i)}) \, d\mu} \cdot d\mathbf{S} \times 100$$
+        st.markdown("**C1: Originality**  \nEvaluates the uniqueness of the hypothesis, approach, or findings through epistemic gradient fields.")
+        st.markdown(r"$$O = \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^N (\zeta_i \cdot \mathcal{I}_{existing}^{(i)}) \, d\mu} \cdot d\mathbf{S} \times 100$$")
         
-        **C2: Methodological Rigor**  
-        Assesses robustness and reproducibility via error-covariance tensors and persistent homology.
-        $$R = \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \prod_{k=1}^{m} \int_{0}^{\infty} \rho_k(x) e^{-\beta x^2} \Gamma\left(k+\frac{1}{2}\right) dx \times 100$$
+        st.markdown("**C2: Methodological Rigor**  \nAssesses robustness and reproducibility via error-covariance tensors and persistent homology.")
+        st.markdown(r"$$R = \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \prod_{k=1}^{m} \int_{0}^{\infty} \rho_k(x) e^{-\beta x^2} \Gamma\left(k+\frac{1}{2}\right) dx \times 100$$")
         
-        **C3: Interdisciplinary**  
-        Measures network bridge capacity using generalized Rényi entropy over disciplinary graphs.
-        $$I = \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot \frac{\Xi(\mathcal{G})}{\ln K \cdot \mathcal{Z}_{norm}} \times 100$$
+        st.markdown("**C3: Interdisciplinary**  \nMeasures network bridge capacity using generalized Rényi entropy over disciplinary graphs.")
+        st.markdown(r"$$I = \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot \frac{\Xi(\mathcal{G})}{\ln K \cdot \mathcal{Z}_{norm}} \times 100$$")
         
-        **C4: Societal Impact**  
-        Projects real-world macro applications utilizing fractional stochastic integration.
-        $$S = \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau \times 100$$
-        """)
+        st.markdown("**C4: Societal Impact**  \nProjects real-world macro applications utilizing fractional stochastic integration.")
+        st.markdown(r"$$S = \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau \times 100$$")
 
     with col2:
-        st.markdown("""
-        **C5: Open Science Potential**  
-        Gauges transparent reporting optimization via multi-objective integration over FAIR limits.
-        $$O_s = \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left( \sup_{t} \mathcal{D}_{total}(t), \inf_{\epsilon>0} \mathcal{C}_{total}(\epsilon) \right)} \times \mathcal{P}_{FAIR} \times 100$$
+        st.markdown("**C5: Open Science Potential**  \nGauges transparent reporting optimization via multi-objective integration over FAIR limits.")
+        st.markdown(r"$$O_s = \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left( \sup_{t} \mathcal{D}_{total}(t), \inf_{\epsilon>0} \mathcal{C}_{total}(\epsilon) \right)} \times \mathcal{P}_{FAIR} \times 100$$")
         
-        **C6: Literature Integration**  
-        Evaluates topological foundational embedding via non-Euclidean manifold PageRank distances.
-        $$L = \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum_j \text{PR}(x_j)} \times 100$$
+        st.markdown("**C6: Literature Integration**  \nEvaluates topological foundational embedding via non-Euclidean manifold PageRank distances.")
+        st.markdown(r"$$L = \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum_j \text{PR}(x_j)} \times 100$$")
         
-        **C7: Empirical Density**  
-        Evaluates data depth utilizing Fisher information metrics and Kullback-Leibler divergences.
-        $$E_d = \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma \omega_{data}} \right) \times \sum_{d=1}^D \lambda_d \kappa_d \times 100$$
+        st.markdown("**C7: Empirical Density**  \nEvaluates data depth utilizing Fisher information metrics and Kullback-Leibler divergences.")
+        st.markdown(r"$$E_d = \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma \omega_{data}} \right) \times \sum_{d=1}^D \lambda_d \kappa_d \times 100$$")
         
-        **C8: Future Actionability**  
-        Determines theoretical continuation potential using Lyapunov exponents on phase space logistics.
-        $$F_a = \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$
-        """)
+        st.markdown("**C8: Future Actionability**  \nDetermines theoretical continuation potential using Lyapunov exponents on phase space logistics.")
+        st.markdown(r"$$F_a = \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$")
 
 tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Weight Matrix"])
 
@@ -415,3 +410,5 @@ with tab3:
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Università degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
+
+```
