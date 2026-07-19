@@ -256,9 +256,12 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
 # --- 7. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK WITH WEIGHTS) ---
 
 def generate_interactive_bubble_chart(scope, user_id):
-    # ... [keep data fetching and setup logic the same] ...
+    # ... [keep your data fetching and topic_counts logic the same] ...
     
-    # --- PHYSICS SET TO CLUSTER/STICK TOGETHER ---
+    # 1. INITIALIZE THE NETWORK FIRST
+    net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
+    
+    # 2. NOW YOU CAN SAFELY SET OPTIONS
     physics_options = """
     {
       "physics": {
@@ -275,10 +278,9 @@ def generate_interactive_bubble_chart(scope, user_id):
     """
     net.set_options(physics_options)
     
+    # 3. ADD NODES
     for _, row in topic_counts.iterrows():
-        # Large size as requested
         node_size = 30 + (row['weight'] * 2.5) 
-        
         net.add_node(
             n_id=row['topic'],
             label=' ', 
@@ -288,8 +290,8 @@ def generate_interactive_bubble_chart(scope, user_id):
             color=color_map[row['topic']]
         )
         
-    # ... [keep the rest of your legend/table generation logic] ...
-    return html_string, table_html
+    # ... [rest of your legend/table generation] ...
+    return net.generate_html(), table_html
 # --- 8. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
 st.markdown("**Upload papers, define your scope of research, let π-index filter noise and have better results**")
