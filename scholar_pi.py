@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import fitz  # PyMuPDF
 from groq import Groq, RateLimitError
+from collections import Counter
 
 # --- 1. CONFIGURATION & ENVIRONMENT ---
 st.set_page_config(page_title="π-Index Assessment Engine", layout="wide")
@@ -200,16 +201,15 @@ def process_single_pdf(file_bytes, filename, scope):
     
     return title, final_score, drift, get_recommendation(final_score, drift), fields, subfields, scores_dict
 
-# --- 5. TOPOLOGICAL MAPPING (2-CIRCLE VENN DIAGRAM) ---
-def generate_venn_network(scope):
+# --- 5. TOPOLOGICAL MAPPING (BUBBLE CHART) ---
+def generate_bubble_chart(scope):
     cursor = conn.cursor()
     cursor.execute("SELECT fields, subfields FROM papers_assessment WHERE scope=?", (scope,))
     data = cursor.fetchall()
     
     if not data: return None
     
-    G = nx.Graph()
-    field_nodes, subfield_nodes = set(), set()
+    all_topics = []
     
     for fields_json, subfields_json in data:
         try:
@@ -217,60 +217,74 @@ def generate_venn_network(scope):
             subfields = [s.title().strip() for s in json.loads(subfields_json)]
             
             for f in fields:
-                G.add_node(f, type='field')
-                field_nodes.add(f)
+                all_topics.append({'topic': f, 'category': 'Field'})
             for s in subfields:
-                G.add_node(s, type='subfield')
-                subfield_nodes.add(s)
-                
-            for f in fields:
-                for s in subfields:
-                    G.add_edge(f, s)
+                all_topics.append({'topic': s, 'category': 'Subfield'})
         except: continue
             
-    if not field_nodes and not subfield_nodes: return None
-
-    initial_pos = {}
+    if not all_topics: return None
     
-    for f in field_nodes: 
-        initial_pos[f] = [-0.5 + np.random.uniform(-0.3, 0.3), np.random.uniform(-0.5, 0.5)]
-    for s in subfield_nodes: 
-        initial_pos[s] = [0.5 + np.random.uniform(-0.3, 0.3), np.random.uniform(-0.5, 0.5)]
-
-    pos = nx.spring_layout(G, pos=initial_pos, k=0.05, iterations=15, seed=SEED_NUMBER)
+    # Calculate frequencies
+    df_topics = pd.DataFrame(all_topics)
+    topic_counts = df_topics.groupby(['topic', 'category']).size().reset_index(name='count')
+    
+    # Normalize sizes for the bubbles
+    max_count = topic_counts['count'].max()
+    min_size = 25
+    max_size = 80
+    topic_counts['bubble_size'] = min_size + (topic_counts['count'] / max_count) * (max_size - min_size)
+    
+    # Create organic scatter positions
+    np.random.seed(SEED_NUMBER)
+    topic_counts['x'] = np.random.normal(0, 1, len(topic_counts))
+    topic_counts['y'] = np.random.normal(0, 1, len(topic_counts))
+    
+    # Add repulsion to avoid massive overlap
+    for _ in range(50):
+        for i in range(len(topic_counts)):
+            for j in range(len(topic_counts)):
+                if i != j:
+                    dx = topic_counts.loc[i, 'x'] - topic_counts.loc[j, 'x']
+                    dy = topic_counts.loc[i, 'y'] - topic_counts.loc[j, 'y']
+                    dist = np.sqrt(dx**2 + dy**2)
+                    if dist < 0.5:
+                        topic_counts.loc[i, 'x'] += dx * 0.1
+                        topic_counts.loc[i, 'y'] += dy * 0.1
+    
+    fig = go.Figure()
+    
+    categories = {'Field': '#2ecc71', 'Subfield': '#3498db'}
+    
+    for cat, color in categories.items():
+        subset = topic_counts[topic_counts['category'] == cat]
+        if subset.empty: continue
         
-    node_traces = []
-    types = {'field': ('#2ecc71', 16, 'square', 'Fields'), 
-             'subfield': ('#3498db', 12, 'circle', 'Subfields')}
-             
-    for n_type, (color, size, symbol, name) in types.items():
-        nodes = [n for n, d in G.nodes(data=True) if d.get('type') == n_type]
-        if not nodes: continue
-        trace = go.Scatter(
-            x=[pos[n][0] for n in nodes], y=[pos[n][1] for n in nodes],
+        fig.add_trace(go.Scatter(
+            x=subset['x'], y=subset['y'],
             mode='markers+text',
-            text=[f"<b>{n}</b>" for n in nodes],
-            textposition="top center",
-            hovertext=nodes, hoverinfo="text",
-            marker=dict(symbol=symbol, size=size, color=color, line=dict(width=1, color='white')),
-            name=name
-        )
-        node_traces.append(trace)
+            marker=dict(
+                size=subset['bubble_size'],
+                color=color,
+                line=dict(width=2, color='white'),
+                sizemode='diameter',
+                opacity=0.85
+            ),
+            text=subset['topic'],
+            textposition="middle center",
+            textfont=dict(color='white', size=11, family="Arial Black"),
+            name=cat,
+            hovertext=[f"Category: {cat}<br>Topic: {row['topic']}<br>Focus Frequency: {row['count']}" for _, row in subset.iterrows()],
+            hoverinfo="text"
+        ))
         
-    fig = go.Figure(data=node_traces)
-    
     fig.update_layout(
-        shapes=[
-            dict(type="circle", xref="x", yref="y", x0=-1.5, y0=-1.0, x1=0.5, y1=1.0, fillcolor="rgba(46, 204, 113, 0.15)", line_color="rgba(46, 204, 113, 0.4)", layer="below"),
-            dict(type="circle", xref="x", yref="y", x0=-0.5, y0=-1.0, x1=1.5, y1=1.0, fillcolor="rgba(52, 152, 219, 0.15)", line_color="rgba(52, 152, 219, 0.4)", layer="below"),
-        ],
-        showlegend=True, hovermode='closest', margin=dict(b=0,l=0,r=0,t=0),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1.8, 1.8]), 
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-1.2, 1.2])
+        showlegend=True,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        margin=dict(l=10, r=10, b=10, t=10),
+        hovermode='closest',
+        plot_bgcolor='rgba(0,0,0,0)'
     )
-    
-    fig.add_annotation(x=-1.0, y=1.1, text="Fields", showarrow=False, font=dict(size=16, color="#2ecc71"))
-    fig.add_annotation(x=1.0, y=1.1, text="Subfields", showarrow=False, font=dict(size=16, color="#3498db"))
                                         
     return fig
 
@@ -284,38 +298,42 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("**C1: Originality**")
-        st.markdown("Evaluates the uniqueness of the hypothesis, approach, or findings through epistemic gradient fields.")
-        st.latex(r"$$O = \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^N (\zeta_i \cdot \mathcal{I}_{existing}^{(i)}) \, d\mu} \cdot d\mathbf{S} \times 100$$")
+        st.markdown("""
+        **C1: Originality**  
+        Evaluates the uniqueness of the hypothesis, approach, or findings through epistemic gradient fields.
+        $$O = \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^N (\zeta_i \cdot \mathcal{I}_{existing}^{(i)}) \, d\mu} \cdot d\mathbf{S} \times 100$$
         
-        st.markdown("**C2: Methodological Rigor**")
-        st.markdown("Assesses robustness and reproducibility via error-covariance tensors and persistent homology.")
-        st.latex(r"$$R = \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \prod_{k=1}^{m} \int_{0}^{\infty} \rho_k(x) e^{-\beta x^2} \Gamma\left(k+\frac{1}{2}\right) dx \times 100$$")
+        **C2: Methodological Rigor**  
+        Assesses robustness and reproducibility via error-covariance tensors and persistent homology.
+        $$R = \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \prod_{k=1}^{m} \int_{0}^{\infty} \rho_k(x) e^{-\beta x^2} \Gamma\left(k+\frac{1}{2}\right) dx \times 100$$
         
-        st.markdown("**C3: Interdisciplinary**")
-        st.markdown("Measures network bridge capacity using generalized Rényi entropy over disciplinary graphs.")
-        st.latex(r"$$I = \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot \frac{\Xi(\mathcal{G})}{\ln K \cdot \mathcal{Z}_{norm}} \times 100$$")
+        **C3: Interdisciplinary**  
+        Measures network bridge capacity using generalized Rényi entropy over disciplinary graphs.
+        $$I = \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot \frac{\Xi(\mathcal{G})}{\ln K \cdot \mathcal{Z}_{norm}} \times 100$$
         
-        st.markdown("**C4: Societal Impact**")
-        st.markdown("Projects real-world macro applications utilizing fractional stochastic integration.")
-        st.latex(r"$$S = \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau \times 100$$")
+        **C4: Societal Impact**  
+        Projects real-world macro applications utilizing fractional stochastic integration.
+        $$S = \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau \times 100$$
+        """)
 
     with col2:
-        st.markdown("**C5: Open Science Potential**")
-        st.markdown("Gauges transparent reporting optimization via multi-objective integration over FAIR limits.")
-        st.latex(r"$$O_s = \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left( \sup_{t} \mathcal{D}_{total}(t), \inf_{\epsilon>0} \mathcal{C}_{total}(\epsilon) \right)} \times \mathcal{P}_{FAIR} \times 100$$")
+        st.markdown("""
+        **C5: Open Science Potential**  
+        Gauges transparent reporting optimization via multi-objective integration over FAIR limits.
+        $$O_s = \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left( \sup_{t} \mathcal{D}_{total}(t), \inf_{\epsilon>0} \mathcal{C}_{total}(\epsilon) \right)} \times \mathcal{P}_{FAIR} \times 100$$
         
-        st.markdown("**C6: Literature Integration**")
-        st.markdown("Evaluates topological foundational embedding via non-Euclidean manifold PageRank distances.")
-        st.latex(r"$$L = \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum_j \text{PR}(x_j)} \times 100$$")
+        **C6: Literature Integration**  
+        Evaluates topological foundational embedding via non-Euclidean manifold PageRank distances.
+        $$L = \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum_j \text{PR}(x_j)} \times 100$$
         
-        st.markdown("**C7: Empirical Density**")
-        st.markdown("Evaluates data depth utilizing Fisher information metrics and Kullback-Leibler divergences.")
-        st.latex(r"$$E_d = \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma \omega_{data}} \right) \times \sum_{d=1}^D \lambda_d \kappa_d \times 100$$")
+        **C7: Empirical Density**  
+        Evaluates data depth utilizing Fisher information metrics and Kullback-Leibler divergences.
+        $$E_d = \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma \omega_{data}} \right) \times \sum_{d=1}^D \lambda_d \kappa_d \times 100$$
         
-        st.markdown("**C8: Future Actionability**")
-        st.markdown("Determines theoretical continuation potential using Lyapunov exponents on phase space logistics.")
-        st.latex(r"$$F_a = \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$")
+        **C8: Future Actionability**  
+        Determines theoretical continuation potential using Lyapunov exponents on phase space logistics.
+        $$F_a = \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$
+        """)
 
 tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Weight Matrix"])
 
@@ -335,7 +353,7 @@ with tab1:
             
             title, score, drift, rec, fields, subfields, scores_dict = process_single_pdf(file.read(), file.name, research_scope)
             
-            # Merging Fields and Subfields into a single display string
+            # Merging Fields and Subfields into a single display string for Column 4
             combined_fields = f"Fields: {', '.join(fields)} | Subfields: {', '.join(subfields)}"
             
             results.append({
@@ -349,7 +367,7 @@ with tab1:
                 "C1": scores_dict.get("C1_Originality", 0.0),
                 "C2": scores_dict.get("C2_Methodological_Rigor", 0.0),
                 "C3": scores_dict.get("C3_Interdisciplinary", 0.0),
-                "C4": scores_dict.get("C4_Societal Impact", 0.0),
+                "C4": scores_dict.get("C4_Societal_Impact", 0.0),
                 "C5": scores_dict.get("C5_Open_Science_Potential", 0.0),
                 "C6": scores_dict.get("C6_Literature_Integration", 0.0),
                 "C7": scores_dict.get("C7_Empirical_Density", 0.0),
@@ -370,11 +388,11 @@ with tab1:
         st.download_button(label="Download Summary as CSV", data=csv, file_name="pi_index_assessment_results.csv", mime="text/csv")
 
 with tab2:
-    st.subheader("Field & Subfield Epistemic Network")
-    st.write("Visualizing the disciplines and specializations involved in your uploaded literature.")
+    st.subheader("Field & Subfield Epistemic Bubbles")
+    st.write("Visualizing the disciplines and specializations involved in your uploaded literature. Bubble size correlates with topic frequency.")
     
     if research_scope:
-        fig = generate_venn_network(research_scope)
+        fig = generate_bubble_chart(research_scope)
         if fig: 
             st.plotly_chart(fig, use_container_width=True)
         else: 
