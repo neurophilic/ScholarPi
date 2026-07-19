@@ -31,6 +31,7 @@ EPOCH_BLOCK_SIZE = 1
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
 os.makedirs(BASE_DIR, exist_ok=True)
+# Unified database name to prevent blockchain resets
 DB_PATH = os.path.join(BASE_DIR, 'pi_index_main.db')
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
@@ -404,7 +405,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     {
       "physics": {
         "barnesHut": {
-          "gravitationalConstant": -1000,
+          "gravitationalConstant": -8000,
           "centralGravity": 0.8,
           "springLength": 100,
           "avoidOverlap": 1.0
@@ -555,7 +556,6 @@ with tab1:
                 record = {
                     "No.": i + 1,
                     "File Name": file.name,
-                    "Eval Hash (Document)": eval_hash,
                     "Fields & Subfields": combined_fields,
                     "Logic Integrity (%)": round(logic_integrity, 1),
                     "π-Index (0-100)": round(score, 1),
@@ -574,7 +574,8 @@ with tab1:
                     "C5": round(scores_dict.get("C5_Open_Science_Potential", 0.0), 1),
                     "C6": round(scores_dict.get("C6_Literature_Integration", 0.0), 1),
                     "C7": round(scores_dict.get("C7_Empirical_Density", 0.0), 1),
-                    "C8": round(scores_dict.get("C8_Future_Actionability", 0.0), 1)
+                    "C8": round(scores_dict.get("C8_Future_Actionability", 0.0), 1),
+                    "Eval Hash (Document)": eval_hash # Moved to the far right side of the results table
                 })
                 
                 results.append(record)
