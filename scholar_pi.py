@@ -1,4 +1,3 @@
-
 import os
 import sqlite3
 import json
@@ -13,7 +12,6 @@ import plotly.express as px
 import streamlit as st
 import fitz  # PyMuPDF
 from groq import Groq, RateLimitError
-from collections import Counter
 
 # --- 1. CONFIGURATION & ENVIRONMENT ---
 st.set_page_config(page_title="π-Index Assessment Engine", layout="wide")
@@ -21,12 +19,13 @@ st.set_page_config(page_title="π-Index Assessment Engine", layout="wide")
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
 MAX_TEXT_TOKENS = 6000
-EPOCH_DAYS = 30
+EPOCH_HOURS = 24  # Trigger new blockchain epoch every 24h
+BLOCKCHAIN_DIFFICULTY = 3 # Number of leading zeros required for PoW hash
 SEED_NUMBER = 42
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
 os.makedirs(BASE_DIR, exist_ok=True)
-DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v3.db')
+DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v4.db')
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
 if not GROQ_API_KEY:
@@ -34,7 +33,17 @@ if not GROQ_API_KEY:
     st.stop()
 client = Groq(api_key=GROQ_API_KEY)
 
-# --- 2. DATABASE INITIALIZATION ---
+# --- 2. BLOCKCHAIN & DATABASE INITIALIZATION ---
+def mine_block(block_index, weights, timestamp, previous_hash):
+    """Performs Proof-of-Work to find a valid block hash."""
+    nonce = 0
+    while True:
+        data = f"{block_index}{weights}{timestamp}{previous_hash}{nonce}".encode('utf-8')
+        block_hash = hashlib.sha256(data).hexdigest()
+        if block_hash.startswith("0" * BLOCKCHAIN_DIFFICULTY):
+            return nonce, block_hash
+        nonce += 1
+
 @st.cache_resource
 def init_system():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -47,26 +56,36 @@ def init_system():
                        scope_alignment REAL,
                        subfields TEXT, fields TEXT, final_score REAL, timestamp DATETIME)''')
                        
-    cursor.execute('''CREATE TABLE IF NOT EXISTS epoch_weights 
-                      (epoch_id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
-                       w5 REAL, w6 REAL, w7 REAL, w8 REAL, timestamp DATETIME)''')
+    # Blockchain Ledger for Weights (Integers)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_weights 
+                      (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       w1 INTEGER, w2 INTEGER, w3 INTEGER, w4 INTEGER, 
+                       w5 INTEGER, w6 INTEGER, w7 INTEGER, w8 INTEGER, 
+                       timestamp DATETIME, previous_hash TEXT, 
+                       nonce INTEGER, block_hash TEXT)''')
     
-    cursor.execute("SELECT COUNT(*) FROM epoch_weights")
+    cursor.execute("SELECT COUNT(*) FROM blockchain_weights")
     if cursor.fetchone()[0] == 0:
-        cursor.execute('''INSERT INTO epoch_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp) 
-                          VALUES (0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, ?)''', 
-                       (datetime.now().isoformat(),))
+        # Create Genesis Block (Equal integer distribution: 125 * 8 = 1000)
+        genesis_weights = [125] * 8
+        prev_hash = "0" * 64
+        timestamp = datetime.now().isoformat()
+        nonce, block_hash = mine_block(1, genesis_weights, timestamp, prev_hash)
+        
+        cursor.execute('''INSERT INTO blockchain_weights 
+                          (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, nonce, block_hash) 
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                       (*genesis_weights, timestamp, prev_hash, nonce, block_hash))
     conn.commit()
     return conn
 
 conn = init_system()
 
-# --- 3. RECURSIVE ENTROPY WEIGHT METHOD ---
-def calculate_ewm_weights(matrix):
+# --- 3. RECURSIVE ENTROPY WEIGHT METHOD (TO INTEGER CONSTANTS) ---
+def calculate_ewm_integers(matrix):
     m, n = matrix.shape
     if m <= 1:
-        return np.ones(n) / n 
+        return [125] * 8
     
     norm_matrix = np.zeros_like(matrix)
     for j in range(n):
@@ -87,24 +106,41 @@ def calculate_ewm_weights(matrix):
     d = 1.0 - entropy
     d_sum = d.sum()
     if d_sum == 0:
-        return np.ones(n) / n
-    return d / d_sum
+        float_weights = np.ones(n) / n
+    else:
+        float_weights = d / d_sum
 
-def trigger_epoch_recalculation():
-    cursor = conn.cursor()
-    cursor.execute("SELECT timestamp FROM epoch_weights ORDER BY epoch_id DESC LIMIT 1")
-    last_epoch_date = datetime.fromisoformat(cursor.fetchone()[0])
+    # Convert to Integer Constants (summing exactly to 1000)
+    int_weights = [int(round(w * 1000)) for w in float_weights]
+    diff = 1000 - sum(int_weights)
+    int_weights[-1] += diff # Adjust last integer to ensure perfect 1000 sum
     
-    if datetime.now() - last_epoch_date >= timedelta(days=EPOCH_DAYS):
-        target_date = (datetime.now() - timedelta(days=EPOCH_DAYS)).isoformat()
+    return int_weights
+
+def trigger_blockchain_epoch():
+    cursor = conn.cursor()
+    cursor.execute("SELECT block_height, block_hash, timestamp FROM blockchain_weights ORDER BY block_height DESC LIMIT 1")
+    last_block = cursor.fetchone()
+    last_block_height, previous_hash, last_timestamp = last_block[0], last_block[1], last_block[2]
+    last_epoch_date = datetime.fromisoformat(last_timestamp)
+    
+    if datetime.now() - last_epoch_date >= timedelta(hours=EPOCH_HOURS):
+        target_date = (datetime.now() - timedelta(hours=EPOCH_HOURS)).isoformat()
         cursor.execute("SELECT c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE timestamp >= ?", (target_date,))
         rows = cursor.fetchall()
         
         if len(rows) > 5:
-            new_weights = calculate_ewm_weights(np.array(rows))
-            cursor.execute('''INSERT INTO epoch_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                           (*new_weights, datetime.now().isoformat()))
+            new_int_weights = calculate_ewm_integers(np.array(rows))
+            timestamp = datetime.now().isoformat()
+            new_height = last_block_height + 1
+            
+            # Mine new block
+            nonce, block_hash = mine_block(new_height, new_int_weights, timestamp, previous_hash)
+            
+            cursor.execute('''INSERT INTO blockchain_weights 
+                              (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, nonce, block_hash) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                           (*new_int_weights, timestamp, previous_hash, nonce, block_hash))
             conn.commit()
 
 # --- 4. SEMANTIC LLM EXTRACTION & MATHEMATICAL DRIFT ---
@@ -142,19 +178,14 @@ Text: {text[:MAX_TEXT_TOKENS]}
     return json.loads(response.choices[0].message.content)
 
 def calculate_complex_drift(alignment, scores):
-    """Calculates non-linear epistemic drift mapped to criteria variance and alignment offset."""
     mu = np.mean(scores)
     sigma = np.std(scores)
     delta = (100.0 - alignment) / 100.0
-    
-    # Utilizing logistic decay modified by standard deviation of quality to amplify structural divergence
     drift_metric = 100.0 * (1.0 - np.exp(-3.0 * (delta ** 1.5) * (1.0 + (sigma / 100.0)) / (0.1 + (mu / 100.0))))
     return float(max(0.0, min(100.0, drift_metric)))
 
 def get_recommendation_spectrum(score, drift):
-    """Generates a multi-tier continuous spectrum rather than static categories."""
     synergy = score * (1.0 - (drift / 100.0)**1.5)
-    
     if synergy >= 85: return "Tier I: Core Paradigm (Optimal Synergy)"
     elif synergy >= 70: return "Tier II: Highly Aligned Framework"
     elif synergy >= 55: return "Tier III: Moderately Synergistic"
@@ -194,8 +225,9 @@ def process_single_pdf(file_bytes, filename, scope):
         time.sleep(2)
         raw_data = evaluate_pdf_text(text, scope, FALLBACK_MODEL)
         
-    cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM epoch_weights ORDER BY epoch_id DESC LIMIT 1")
-    weights = cursor.fetchone()
+    # Get Current Blockchain Weights (Integers)
+    cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_weights ORDER BY block_height DESC LIMIT 1")
+    int_weights = cursor.fetchone()
     
     scores_dict = raw_data.get("scores", {})
     scores = [scores_dict.get(k, 50.0) for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
@@ -205,7 +237,8 @@ def process_single_pdf(file_bytes, filename, scope):
     fields = raw_data.get("fields", ["General Science"])
     subfields = raw_data.get("subfields", ["General"])
     
-    final_score = float(np.dot(scores, weights))
+    # Apply Integer Constants to Criteria (Divided by 1000 to normalize back to 0-100 scale)
+    final_score = float(np.dot(scores, int_weights)) / 1000.0
     drift = calculate_complex_drift(scope_alignment, scores)
     
     cursor.execute('''INSERT INTO papers_assessment 
@@ -215,7 +248,7 @@ def process_single_pdf(file_bytes, filename, scope):
                     scope_alignment,
                     json.dumps(subfields), json.dumps(fields), final_score, datetime.now().isoformat()))
     conn.commit()
-    trigger_epoch_recalculation()
+    trigger_blockchain_epoch()
     
     return title, final_score, drift, get_recommendation_spectrum(final_score, drift), fields, subfields, scores_dict
 
@@ -242,23 +275,19 @@ def generate_bubble_chart(scope):
             
     if not all_topics: return None
     
-    # Calculate frequencies
     df_topics = pd.DataFrame(all_topics)
     topic_counts = df_topics.groupby(['topic', 'category']).size().reset_index(name='count')
     topic_counts = topic_counts.sort_values(by='count', ascending=False).reset_index(drop=True)
     
-    # Normalize sizes for the bubbles
     max_count = topic_counts['count'].max()
     min_size = 35
     max_size = 110
     topic_counts['bubble_size'] = min_size + (topic_counts['count'] / max_count) * (max_size - min_size)
     
-    # Create organic scatter positions
     np.random.seed(SEED_NUMBER)
     topic_counts['x'] = np.random.normal(0, 1.5, len(topic_counts))
     topic_counts['y'] = np.random.normal(0, 1.5, len(topic_counts))
     
-    # Add repulsion to avoid overlap
     for _ in range(60):
         for i in range(len(topic_counts)):
             for j in range(len(topic_counts)):
@@ -271,17 +300,13 @@ def generate_bubble_chart(scope):
                         topic_counts.loc[i, 'y'] += dy * 0.15
     
     fig = go.Figure()
-    
-    # Use a broad qualitative color palette
     color_palette = px.colors.qualitative.Bold + px.colors.qualitative.Pastel + px.colors.qualitative.Vivid
     
-    # Map topics independently to legend and colors
     for i, row in topic_counts.iterrows():
         topic = row['topic']
         size = row['bubble_size']
         count = row['count']
         
-        # 3D Gradient effect styling
         fig.add_trace(go.Scatter(
             x=[row['x']], y=[row['y']],
             mode='markers+text',
@@ -290,14 +315,13 @@ def generate_bubble_chart(scope):
                 color=color_palette[i % len(color_palette)],
                 line=dict(width=1, color='rgba(255, 255, 255, 0.4)'),
                 sizemode='diameter',
-                gradient=dict(type='radial', color='rgba(255, 255, 255, 0.85)'), # Realistic 3D glossy reflection
+                gradient=dict(type='radial', color='rgba(255, 255, 255, 0.85)'),
                 opacity=0.95
             ),
-            # Only display inline text if bubble is large enough to fit it
             text=topic if size > 45 else "",
             textposition="middle center",
             textfont=dict(color='#2c3e50', size=11, family="Arial Black"),
-            name=topic, # Legend will display the specific Field/Subfield Name
+            name=topic, 
             hovertext=f"<b>{topic}</b><br>Category: {row['category']}<br>Focus Frequency: {count}",
             hoverinfo="text"
         ))
@@ -349,7 +373,7 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
         st.markdown("**C8: Future Actionability**  \nDetermines theoretical continuation potential using Lyapunov exponents on phase space logistics.")
         st.markdown(r"$$F_a = \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100$$")
 
-tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Weight Matrix"])
+tab1, tab2, tab3 = st.tabs(["Batch Assessment", "Scope Cartography", "Blockchain Weight Ledger"])
 
 with tab1:
     research_scope = st.text_input("Define your specific Research Topic / Scope", placeholder="e.g., Application of deep learning in vascular imaging...")
@@ -367,7 +391,6 @@ with tab1:
             
             title, score, drift, rec, fields, subfields, scores_dict = process_single_pdf(file.read(), file.name, research_scope)
             
-            # Merging Fields and Subfields into a single display string for Column 4
             combined_fields = f"Fields: {', '.join(fields)} | Subfields: {', '.join(subfields)}"
             
             results.append({
@@ -391,7 +414,6 @@ with tab1:
             
         status_text.text("Batch processing complete!")
         
-        # DataFrame Processing
         df = pd.DataFrame(results)
         df_display = df.sort_values(by=["π-Index (0-100)"], ascending=False)
         
@@ -415,19 +437,29 @@ with tab2:
         st.info("Please define a research scope in the 'Batch Assessment' tab first.")
 
 with tab3:
-    st.subheader("Recursive Weight Adaptations (EWM)")
-    cursor = conn.cursor()
-    cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8, timestamp FROM epoch_weights ORDER BY epoch_id DESC LIMIT 1")
-    weights = cursor.fetchone()
+    st.subheader("Cryptographic Epoch Ledger (PoW)")
+    st.write("The integer constants below sum exactly to 1000. They are multiplied against paper criteria scores and divided by 1000 to determine the final π-Index. A new block is mined every 24 hours based on the latest recursive entropy.")
     
-    if weights:
-        st.caption(f"Last Matrix Update: {weights[8]}")
+    cursor = conn.cursor()
+    cursor.execute("SELECT block_height, block_hash, previous_hash, nonce, timestamp, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_weights ORDER BY block_height DESC LIMIT 1")
+    block_data = cursor.fetchone()
+    
+    if block_data:
+        b_height, b_hash, p_hash, nonce, ts = block_data[0:5]
+        weights = block_data[5:]
+        
+        st.markdown(f"**Block Height:** `{b_height}` | **Mined Timestamp:** `{ts}`")
+        st.markdown(f"**Block Hash:** `{b_hash}`")
+        st.markdown(f"**Previous Hash:** `{p_hash}`")
+        st.markdown(f"**Proof of Work Nonce:** `{nonce}`")
+        
+        st.markdown("---")
+        st.markdown("### Active Epoch Integer Constants")
         cols = st.columns(4)
-        labels = ["Originality", "Method Rigor", "Interdisciplinary", "Societal Impact", "Open Science", "Lit Integration", "Empirical Density", "Actionability"]
+        labels = ["C1 Originality", "C2 Method Rigor", "C3 Interdisciplinary", "C4 Societal Impact", "C5 Open Science", "C6 Lit Integration", "C7 Empirical Density", "C8 Actionability"]
+        
         for i, col in enumerate(cols * 2):
-            if i < 8: col.metric(labels[i], f"{(weights[i]*100):.2f}%")
+            if i < 8: col.metric(labels[i], f"{weights[i]} / 1000")
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Università degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
-
-
