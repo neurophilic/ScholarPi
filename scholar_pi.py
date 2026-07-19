@@ -295,42 +295,45 @@ def generate_interactive_bubble_chart(scope, user_id):
     df_topics = pd.DataFrame(all_topics)
     topic_counts = df_topics.groupby(['topic', 'category']).size().reset_index(name='count')
     
-    # Assign specific colors to categories
-    category_colors = {'Field': '#FF5733', 'Subfield': '#33FF57'} 
+    # 1. Define distinct colors
+    color_map = {'Field': '#FF5733', 'Subfield': '#3380FF'}
     
+    # 2. Initialize Network (Ensure notebook=False for Streamlit)
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
     
-    # Enable the legend in the options
+    # 3. Physics Options
     physics_options = """
     {
-      "nodes": { "font": {"size": 16} },
       "physics": {
-        "forceAtlas2Based": { "gravitationalConstant": -80, "avoidOverlap": 0.5 },
+        "forceAtlas2Based": {
+          "gravitationalConstant": -50,
+          "avoidOverlap": 0.5
+        },
         "solver": "forceAtlas2Based"
-      },
-      "configure": { "enabled": false }
+      }
     }
     """
     net.set_options(physics_options)
     
-    for i, row in topic_counts.iterrows():
-        # Assign color based on category
-        color = category_colors.get(row['category'], '#007bff')
+    for _, row in topic_counts.iterrows():
+        # Sanitize text
+        safe_topic = str(row['topic']).replace("'", "\\'")
+        safe_cat = str(row['category']).replace("'", "\\'")
+        safe_freq = str(row['count'])
+        
+        tooltip_text = f"Topic: {safe_topic} | Category: {safe_cat} | Frequency: {safe_freq}"
+        
         net.add_node(
             n_id=row['topic'],
-            label=row['topic'], # Added label back so it's readable
-            title=f"Category: {row['category']}<br>Frequency: {row['count']}",
-            size=25 + (row['count'] * 5),
-            color=color,
-            group=row['category'] # 'group' automatically creates a legend in pyvis
+            label=row['topic'],
+            title=tooltip_text,
+            size=20 + (row['count'] * 4),
+            color=color_map.get(row['category'], '#808080'),
+            group=row['category']
         )
         
-    # This force enables the legend/grouping
-    net.show_buttons(filter_=['physics'])
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
-        net.save_graph(tmp_file.name)
-        html_string = open(tmp_file.name, 'r', encoding='utf-8').read()
+    # Generate HTML string directly
+    html_string = net.generate_html()
         
     return html_string, topic_counts
 
