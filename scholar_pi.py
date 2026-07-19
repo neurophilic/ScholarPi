@@ -22,12 +22,12 @@ st.set_page_config(page_title="π-Index Assessment Engine", layout="wide")
 
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
-MAX_TEXT_TOKENS = 6000
+MAX_TEXT_TOKENS = 300000  # Drastically increased to support full paper strings
 SEED_NUMBER = 42
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
 os.makedirs(BASE_DIR, exist_ok=True)
-DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v10_pos.db')
+DB_PATH = os.path.join(BASE_DIR, 'pi_index_assessment_v10_por.db')
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
 if not GROQ_API_KEY:
@@ -96,7 +96,7 @@ else:
         st.rerun()
 
 current_user = st.session_state.orcid_id
-st.sidebar.caption("Assessment histories and maps are isolated to your ORCID, but the PoS blockchain remains globally synchronized.")
+st.sidebar.caption("Assessment histories and maps are isolated to your ORCID, but the PoR blockchain remains globally synchronized.")
 
 # --- 3. PI PROGRESSION (EPOCH ACCURACY) ---
 def get_pi_float(block_height):
@@ -105,7 +105,7 @@ def get_pi_float(block_height):
     return float(pi_str[:length])
 
 # --- 4. BLOCKCHAIN & DATABASE ---
-def validate_block_pos(block_index, weights, timestamp, previous_hash, eval_hash, model_used):
+def validate_block_por(block_index, weights, timestamp, previous_hash, eval_hash, model_used):
     validator_node = "Validator_Pi_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
     data = f"{block_index}{weights}{timestamp}{previous_hash}{validator_node}{eval_hash}{model_used}".encode('utf-8')
     block_hash = hashlib.sha256(data).hexdigest()
@@ -122,23 +122,30 @@ def init_system():
                        scope_alignment REAL,
                        subfields TEXT, fields TEXT, final_score REAL, timestamp DATETIME)''')
                        
-    cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_pos_weights 
+    cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
                        w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
                        w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
                        timestamp DATETIME, previous_hash TEXT, 
                        validator_node TEXT, block_hash TEXT, eval_hash TEXT, model_used TEXT)''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)''')
     
-    cursor.execute("SELECT COUNT(*) FROM blockchain_pos_weights")
+    cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
     if cursor.fetchone()[0] == 0:
         genesis_weights = [1.0] * 8
         prev_hash = "0" * 64
         timestamp = datetime.now().isoformat()
-        val_node, block_hash = validate_block_pos(1, genesis_weights, timestamp, prev_hash, "genesis", "none")
-        cursor.execute('''INSERT INTO blockchain_pos_weights 
+        val_node, block_hash = validate_block_por(1, genesis_weights, timestamp, prev_hash, "genesis", "none")
+        cursor.execute('''INSERT INTO blockchain_por_weights 
                           (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used) 
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
                        (*genesis_weights, timestamp, prev_hash, val_node, block_hash, "genesis", "none"))
+                       
+    cursor.execute("SELECT count FROM global_eval_counter")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
+        
     conn.commit()
     return conn
 
@@ -168,23 +175,29 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
 
 # --- 6. SEMANTIC EXTRACTION & DRIFT ---
 def evaluate_pdf_text(text, scope, model):
-    # Strict instructions to force the LLM to use the full 0-100 scale
+    # Strict instructions to isolate score from scope entirely
     prompt = f"""You are a brutally critical expert peer reviewer contributing to the π-Index.
-The user is a researcher currently working on this specific project/scope: "{scope}"
+
+Evaluate the provided academic paper based PURELY on its own inherent absolute merit. Do NOT let any specific project scope influence your scoring of the 8 criteria (C1-C8).
 
 CRITICAL INSTRUCTION: You MUST use the full 0-100 scale for scores. Do NOT cluster scores around 70-80. If a paper is weak in an area, give it a 10 or 20. If exceptional, 90+. Force extreme variance based on actual merit.
 
+After scoring the paper objectively, evaluate its "Scope_Alignment" (0-100) specifically to this user project/scope: "{scope}"
+
 Return ONLY a valid JSON object matching exactly this structure:
 {{
-    "Extracted_Title": "Title", "Scope_Alignment": 85,
+    "Extracted_Title": "Title", 
+    "Scope_Alignment": 85,
     "scores": {{"C1_Originality": 20, "C2_Methodological_Rigor": 95, "C3_Interdisciplinary": 40, "C4_Societal_Impact": 15, "C5_Open_Science_Potential": 60, "C6_Literature_Integration": 80, "C7_Empirical_Density": 55, "C8_Future_Actionability": 30}},
-    "fields": ["Field1", "Field2"], "subfields": ["Subfield1"]
+    "fields": ["Field1", "Field2"], 
+    "subfields": ["Subfield1"]
 }}
 Text: {text[:MAX_TEXT_TOKENS]}
 """
+    # LLM frozen with temperature 0.0 and explicit seed 42 to guarantee deterministic results
     response = client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
-        model=model, temperature=0.3, seed=SEED_NUMBER, response_format={"type": "json_object"}
+        model=model, temperature=0.0, seed=SEED_NUMBER, response_format={"type": "json_object"}
     )
     return json.loads(response.choices[0].message.content)
 
@@ -204,7 +217,8 @@ def get_recommendation_spectrum(score, drift):
     return "Tier VI: Orthogonal / Unrelated Noise"
 
 def process_single_pdf(file_bytes, filename, scope, user_id):
-    file_hash = hashlib.sha256(file_bytes + scope.encode('utf-8') + user_id.encode('utf-8')).hexdigest()
+    # Hash now uniquely isolates the paper independent of the chosen scope
+    file_hash = hashlib.sha256(file_bytes + user_id.encode('utf-8')).hexdigest()
     cursor = conn.cursor()
     cursor.execute("SELECT final_score, scope_alignment, title, fields, subfields, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
     cached = cursor.fetchone()
@@ -218,8 +232,9 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
         scores_dict = {"C1_Originality": c1, "C2_Methodological_Rigor": c2, "C3_Interdisciplinary": c3, "C4_Societal_Impact": c4, "C5_Open_Science_Potential": c5, "C6_Literature_Integration": c6, "C7_Empirical_Density": c7, "C8_Future_Actionability": c8}
         return title, score, drift, get_recommendation_spectrum(score, drift), fields, subfields, scores_dict
 
+    # Extract all pages
     doc = fitz.open(stream=file_bytes, filetype="pdf")
-    text = " ".join([page.get_text() for page in doc[:3]])
+    text = " ".join([page.get_text() for page in doc]) 
     model_used = PRIMARY_MODEL
     try:
         raw_data = evaluate_pdf_text(text, scope, model_used)
@@ -228,26 +243,35 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
         model_used = FALLBACK_MODEL
         raw_data = evaluate_pdf_text(text, scope, model_used)
         
-    cursor.execute("SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 1")
+    # Increment and grab global evaluations
+    cursor.execute("UPDATE global_eval_counter SET count = count + 1")
+    cursor.execute("SELECT count FROM global_eval_counter")
+    total_evals = cursor.fetchone()[0]
+        
+    cursor.execute("SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
     epoch_data = cursor.fetchone()
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
     
     scores_dict = raw_data.get("scores", {})
     scores = [scores_dict.get(k, 50.0) for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
     
-    new_weights = calculate_model_driven_weights(old_weights, scores, model_used, block_height)
-    timestamp = datetime.now().isoformat()
-    val_node, block_hash = validate_block_pos(block_height + 1, new_weights, timestamp, previous_hash, file_hash, model_used)
-    
-    cursor.execute('''INSERT INTO blockchain_pos_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                   (*new_weights, timestamp, previous_hash, val_node, block_hash, file_hash, model_used))
-    
+    # Process epoch progression purely every 10 complete paper analyzes globally
+    if total_evals % 10 == 0:
+        new_weights = calculate_model_driven_weights(old_weights, scores, model_used, block_height)
+        timestamp = datetime.now().isoformat()
+        val_node, block_hash = validate_block_por(block_height + 1, new_weights, timestamp, previous_hash, file_hash, model_used)
+        cursor.execute('''INSERT INTO blockchain_por_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                       (*new_weights, timestamp, previous_hash, val_node, block_hash, file_hash, model_used))
+    else:
+        new_weights = old_weights
+
     scope_alignment = raw_data.get("Scope_Alignment", 50.0)
     title = raw_data.get("Extracted_Title", filename)
     fields, subfields = raw_data.get("fields", ["General Science"]), raw_data.get("subfields", ["General"])
     final_score = float(np.dot(scores, new_weights)) / 8.0
     drift = calculate_complex_drift(scope_alignment, scores)
     
+    timestamp = datetime.now().isoformat()
     cursor.execute('''INSERT INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, scope_alignment, subfields, fields, final_score, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                    (file_hash, user_id, title, filename, scope, *scores, scope_alignment, json.dumps(subfields), json.dumps(fields), final_score, timestamp))
     conn.commit()
@@ -352,6 +376,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     table_html += "</tbody></table></div>"
     
     return html_string, table_html
+
 # --- 8. USER INTERFACE ---
 st.title("π-Index Assessment Engine")
 st.markdown("**Upload papers, define your scope of research, let π-index filter noise and have better results**")
@@ -391,6 +416,11 @@ with tab1:
         elif not uploaded_files:
             st.warning("⚠️ Please upload at least one academic paper (PDF) to proceed.")
         else:
+            # --- CACHE CLEARED UPON NEW UPLOAD BATCH ---
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM papers_assessment WHERE user_id=?", (current_user,))
+            conn.commit()
+
             # --- EXECUTION ---
             results = []
             progress_bar = st.progress(0)
@@ -441,13 +471,6 @@ with tab1:
     st.markdown("### Latest Assessment History")
     
     if st.session_state.is_authenticated:
-        # Clear History Logic
-        if st.button("🗑️ Clear All History"):
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM papers_assessment WHERE user_id=?", (current_user,))
-            conn.commit()
-            st.rerun() 
-            
         # Fetch and display history
         cursor = conn.cursor()
         cursor.execute("SELECT title, scope, final_score, timestamp, eval_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
@@ -483,7 +506,7 @@ with tab2:
 
 with tab3:
     cursor = conn.cursor()
-    cursor.execute("SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used, eval_hash, block_hash FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 1")
+    cursor.execute("SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used, eval_hash, block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
     epoch_data = cursor.fetchone()
     
     if epoch_data:
@@ -517,11 +540,11 @@ with tab3:
                 col.markdown(f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>", unsafe_allow_html=True)
                 
         st.markdown("---")
-        st.markdown("### PoS Blockchain Explorer")
+        st.markdown("### PoR (Proof of Review) Blockchain Explorer")
         st.markdown("""
         **How to Verify via the Explorer:**
         1.  **Locate the Eval Hash:** Copy the Evaluation Hash (Document) associated with a paper you assessed.
-        2.  **Use the Explorer:** Paste that hash into the PoS Blockchain Explorer input field below.
+        2.  **Use the Explorer:** Paste that hash into the PoR Blockchain Explorer input field below.
         3.  **Click "Verify Record":** The system will query the global blockchain database to return the exact Weights Matrix alongside the immutable Block Hash.
         """)
         
@@ -533,7 +556,7 @@ with tab3:
             search_btn = st.button("Verify Record")
             
         if search_btn and search_query:
-            cursor.execute("SELECT * FROM blockchain_pos_weights WHERE block_hash=? OR eval_hash=?", (search_query, search_query))
+            cursor.execute("SELECT * FROM blockchain_por_weights WHERE block_hash=? OR eval_hash=?", (search_query, search_query))
             record = cursor.fetchone()
             if record:
                 st.success("Valid Block Found on Ledger!")
@@ -542,7 +565,7 @@ with tab3:
                 st.error("No block matching that signature was found on the ledger.")
                 
         with st.expander("View Recent Global Ledger Blocks"):
-            cursor.execute("SELECT block_height, timestamp, model_used, block_hash FROM blockchain_pos_weights ORDER BY block_height DESC LIMIT 10")
+            cursor.execute("SELECT block_height, timestamp, model_used, block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 10")
             df_blocks = pd.DataFrame(cursor.fetchall(), columns=["Height", "Timestamp", "Model", "Block Hash"])
             st.dataframe(df_blocks, use_container_width=True, hide_index=True)
 
