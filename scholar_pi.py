@@ -405,8 +405,8 @@ def generate_interactive_bubble_chart(scope, user_id):
     {
       "physics": {
         "barnesHut": {
-          "gravitationalConstant": -8000,
-          "centralGravity": 0.8,
+          "gravitationalConstant": -1000,
+          "centralGravity": 1,
           "springLength": 100,
           "avoidOverlap": 1.0
         },
