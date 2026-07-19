@@ -267,5 +267,3 @@ if uploaded_file is not None:
             
             with st.expander(f"Metric {key} ({metric_name}) — Calculated Score: {score}/10"):
                 st.write(reason)
-
-```
