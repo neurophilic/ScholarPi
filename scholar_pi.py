@@ -268,7 +268,6 @@ def generate_interactive_bubble_chart(scope, user_id):
             fields = [f.title().strip() for f in json.loads(fields_json)]
             subfields = [s.title().strip() for s in json.loads(subfields_json)]
             score = float(final_score) if final_score else 50.0
-            
             for f in fields: all_topics.append({'topic': f, 'weight': score})
             for s in subfields: all_topics.append({'topic': s, 'weight': score})
         except: continue
@@ -279,10 +278,7 @@ def generate_interactive_bubble_chart(scope, user_id):
     topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
     topic_counts['weight'] = topic_counts['weight'].round(1)
     
-    # --- ADDED SAFETY CHECK ---
-    if topic_counts.empty:
-        return None, None
-    # --------------------------
+    if topic_counts.empty: return None, None
     
     unique_topics = topic_counts['topic'].unique()
     
@@ -295,14 +291,14 @@ def generate_interactive_bubble_chart(scope, user_id):
     
     net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
     
-    # Physics adjusted for tighter gravity and reduced repulsion
+    # Physics settings adjusted for TIGHTER spacing and STRONGER central gravity
     physics_options = """
     {
       "physics": {
         "forceAtlas2Based": {
-          "gravitationalConstant": -80,
-          "centralGravity": 0.2,
-          "springLength": 50,
+          "gravitationalConstant": -50,
+          "centralGravity": 0.5,
+          "springLength": 10,
           "avoidOverlap": 1.0
         },
         "solver": "forceAtlas2Based"
@@ -312,32 +308,25 @@ def generate_interactive_bubble_chart(scope, user_id):
     net.set_options(physics_options)
     
     for _, row in topic_counts.iterrows():
-        topic_weight = row['weight']
-        
-        # Scaling size/mass based on relevancy (topic_weight)
-        node_size = 20 + (topic_weight * 0.5) 
-        node_mass = 2 + (topic_weight * 0.1)
+        # Dynamic size based on weight
+        node_size = 20 + (row['weight'] * 0.8)
         
         net.add_node(
             n_id=row['topic'],
-            label="", # Label removed per your request
-            title=f"Topic: {row['topic']} | Weight: {topic_weight}",
+            label="",  # Label removed
+            title=f"Topic: {row['topic']} | Weight: {row['weight']}",
             size=node_size,
-            mass=node_mass,
             color=color_map[row['topic']]
         )
         
     html_string = net.generate_html()
     
-    # HTML Table Legend
+    # Legend Table
     table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; } .table-big td { border-bottom: 1px solid #ddd; padding: 8px; vertical-align: middle; } .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; margin: 0 auto;} .legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }</style>"
     table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
     
-    topic_counts_sorted = topic_counts.sort_values(by="weight", ascending=False)
-    
-    for _, row in topic_counts_sorted.iterrows():
-        color = color_map[row['topic']]
-        table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color};'></div></td><td>{row['topic']}</td></tr>"
+    for _, row in topic_counts.sort_values(by="weight", ascending=False).iterrows():
+        table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td>{row['topic']}</td></tr>"
         
     table_html += "</tbody></table></div>"
     
