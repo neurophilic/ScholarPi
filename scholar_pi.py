@@ -7,6 +7,7 @@ import re
 import requests
 import colorsys
 import math
+import tempfile
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -459,18 +460,14 @@ def generate_interactive_bubble_chart(scope, user_id):
             color=color_map[row['topic']]
         )
     
-    for _, row in topic_counts.iterrows():
-        node_size = 30 + (row['weight'] * 2.5) 
-        net.add_node(
-            n_id=row['topic'],
-            label=' ', 
-            title=f"Topic: {row['topic']} | Weight: {row['weight']}",
-            size=node_size,
-            mass=node_size / 2,
-            color=color_map[row['topic']]
-        )
-        
-    html_string = net.generate_html()
+    # Save safely to a temp file, then read it as a string to avoid PyVis file generation bugs
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
+        net.save_graph(tmp_file.name)
+        with open(tmp_file.name, 'r', encoding='utf-8') as f:
+            html_string = f.read()
+    
+    # Clean up temp file
+    os.remove(tmp_file.name)
     
     table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; } .table-big td { border-bottom: 1px solid #ddd; padding: 8px; vertical-align: middle; } .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; margin: 0 auto;} .legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }</style>"
     table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
