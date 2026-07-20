@@ -348,7 +348,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
         rec = get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
         scores_dict = {"C1_Originality": c1, "C2_Methodological_Rigor": c2, "C3_Interdisciplinary": c3, "C4_Societal_Impact": c4, "C5_Open_Science_Potential": c5, "C6_Literature_Integration": c6, "C7_Empirical_Density": c7, "C8_Future_Actionability": c8}
         
-        return title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash
+        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash
 
     # IF NOT CACHED: Run the heavy Pi-Index calculation and pull the latest active blockchain weights
     try:
@@ -681,7 +681,6 @@ with tab2:
     st.subheader("Epistemic Bubbles (Author & Portfolio Cartography)")
     st.write("Filter the topological network map below by the extracted primary author names of your evaluated papers.")
     
-    # Query database for all unique author names the user has evaluated
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT author_name FROM papers_assessment WHERE user_id=?", (current_user,))
     user_authors = [row[0] for row in cursor.fetchall() if row[0] and row[0].strip()]
