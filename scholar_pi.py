@@ -601,7 +601,7 @@ with st.expander("View π-Index Grading Criteria & Theoretical Formulations"):
         st.markdown("**C8: Future Actionability**\nDetermines continuation potential using Lyapunov exponents.")
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) \times 100 $$")
 
-# Initialize Session State tracking for Tab 2 cartography refresh triggers
+# Initialize Session State tracking for Tab 2 cartography and global updates
 if 'cartography_refresh_key' not in st.session_state:
     st.session_state.cartography_refresh_key = time.time()
 
@@ -659,17 +659,10 @@ with tab1:
                 
             status_text.text("Batch processing complete!")
             
-            # Invalidate all state caches and force immediate real-time refresh of Tab 2 cartography and neural network state
+            # Explicitly force cache invalidation and trigger full app state refresh
             st.session_state['last_trained_blocks'] = -1
             st.session_state.cartography_refresh_key = time.time()
-            
-            df = pd.DataFrame(results)
-            df_display = df.sort_values(by=["π-Index (0-100)"], ascending=False)
-            st.markdown("### Assessment Summary")
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
-            
-            csv = df_display.to_csv(index=False).encode('utf-8')
-            st.download_button(label="Download Summary as CSV", data=csv, file_name="pi_index_assessment_results.csv", mime="text/csv")
+            st.rerun()
 
     st.markdown("---")
     st.markdown("### Latest Assessment History")
@@ -701,13 +694,13 @@ with tab2:
         if filter_choice != "All Authors":
             selected_author = filter_choice
 
-    # Unconditionally rebuild chart on every interaction/request using the fresh state key
+    # Unconditionally query the database and rebuild cartography on every single load/refresh
     interactive_html, table_html = generate_interactive_bubble_chart(current_user, target_author=selected_author)
     
     if interactive_html:
         col1, col2 = st.columns([3, 1])
         with col1:
-            components.html(interactive_html, height=620)
+            components.html(interactive_html, height=620, scrolling=True)
         with col2:
             st.markdown("### Legend")
             st.markdown(table_html, unsafe_allow_html=True)
