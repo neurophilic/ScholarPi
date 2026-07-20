@@ -243,7 +243,7 @@ Failure to create extreme contrast will break the mathematical formulas.
 
 1. Extracted Metadata:
 - `Extracted_Title`: The title of the paper.
-- `Extracted_Author`: The primary author or corresponding author name(s) identified in the paper header/metadata.
+- `Extracted_Author`: The primary author or corresponding author name(s) identified in the paper header/metadata. Cleanly formatted. (Never leave this blank or default to unknown if names are present in the text).
 
 2. Extracted Variables (all values must be floats between 0.0 and 1.0, unless specified):
 - `H_novel`: Conceptual novelty (0.1 = derivative, 0.9 = groundbreaking).
