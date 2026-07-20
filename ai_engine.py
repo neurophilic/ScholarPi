@@ -154,6 +154,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
             return "Extraction Failed", pdf_meta_author or "Research Scholar", 0.0, 0.0, "N/A", "N/A", ["Unknown"], ["Unknown"], empty_scores, "Failed"
          
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
+    conn.commit()
     cursor.execute("SELECT count FROM global_eval_counter")
     total_evals = cursor.fetchone()[0]
          
