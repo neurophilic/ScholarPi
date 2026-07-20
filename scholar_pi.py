@@ -1,3 +1,4 @@
+
 import os
 import sqlite3
 import json
@@ -508,9 +509,9 @@ def generate_interactive_bubble_chart(user_id, target_author=None):
     """Generate the HTML code for the PyVis interactive network map."""
     cursor = conn.cursor()
     
-    # Fetch user's history, optionally filtering by author
+    # Fix: Use LIKE for a more robust match in case there are invisible spaces stored in the DB
     if target_author and target_author != "All Authors":
-        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE user_id=? AND author_name=?", (user_id, target_author))
+        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE user_id=? AND author_name LIKE ?", (user_id, f"%{target_author}%"))
     else:
         cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE user_id=?", (user_id,))
         
@@ -596,6 +597,16 @@ def generate_interactive_bubble_chart(user_id, target_author=None):
             html_string = f.read()
     
     os.remove(tmp_file.name)
+
+    # ----------------------------------------------------------------------
+    # THE ULTIMATE CACHE BUSTER FOR STREAMLIT IFRAMES
+    # ----------------------------------------------------------------------
+    # PyVis hardcodes the CSS ID of the graph container as 'mynetwork'. 
+    # By replacing this with a randomly generated ID on every single click,
+    # the browser DOM physically changes, forcing Streamlit to completely 
+    # wipe the old iframe and draw the updated data.
+    unique_network_id = f"pi_network_{int(time.time() * 1000)}"
+    html_string = html_string.replace('mynetwork', unique_network_id)
 
     # Build an HTML legend table
     table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 10px; text-align: left; } .table-big td { border-bottom: 1px solid #ddd; padding: 8px; vertical-align: middle; } .color-box { width: 18px; height: 18px; display: inline-block; border-radius: 3px; border: 1px solid #ccc; margin: 0 auto;} .legend-container { max-height: 550px; overflow-y: auto; border: 1px solid #eee; }</style>"
@@ -806,13 +817,21 @@ with tab2:
     st.write("Filter the topological network map below by the extracted primary author names of your evaluated papers.")
     
     cursor = conn.cursor()
+    # Fix: Get all authors, clean up whitespace, remove empty entries, and sort alphabetically
     cursor.execute("SELECT DISTINCT author_name FROM papers_assessment WHERE user_id=?", (current_user,))
-    user_authors = [row[0] for row in cursor.fetchall() if row[0] and row[0].strip()]
+    raw_authors = cursor.fetchall()
+    
+    # Use a set to remove accidental duplicates after stripping spaces
+    user_authors = sorted(list(set([row[0].strip() for row in raw_authors if row[0] and row[0].strip()])))
     
     selected_author = None
     if user_authors:
-        # Give selectbox a unique key so it doesn't conflict
-        filter_choice = st.selectbox("Filter Cartography by Primary Author:", ["All Authors"] + user_authors)
+        # Fix: Add a unique key so Streamlit remembers the selection when you switch tabs
+        filter_choice = st.selectbox(
+            "Filter Cartography by Primary Author:", 
+            ["All Authors"] + user_authors,
+            key="author_filter_dropdown"
+        )
         if filter_choice != "All Authors":
             selected_author = filter_choice
 
@@ -822,17 +841,12 @@ with tab2:
     if interactive_html:
         col1, col2 = st.columns([3, 1])
         with col1:
-            # UNIQUE CACHE BUSTER: Add an invisible HTML comment with the exact current timestamp.
-            # Because this string is 100% unique on every single render, Streamlit is forced
-            # to destroy the old iframe and render a fresh one immediately.
-            unique_cache_busted_html = interactive_html + f"\n<!-- Streamlit Cache Buster: {time.time()} -->"
-            
-            components.html(unique_cache_busted_html, height=620, scrolling=True)
+            components.html(interactive_html, height=620, scrolling=True)
         with col2:
             st.markdown("### Legend")
             st.markdown(table_html, unsafe_allow_html=True)
     else: 
-        st.info("Awaiting sufficient data for this user. Upload and process papers to build your author-filtered map.")
+        st.info("Awaiting sufficient data for this selection. Upload and process papers to build your map.")
 
 
 with tab3:
