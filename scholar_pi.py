@@ -394,9 +394,14 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     return title, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash
 
 # --- 4. TOPOLOGICAL MAPPING (INTERACTIVE PYVIS NETWORK) ---
-def generate_interactive_bubble_chart(scope, user_id):
+def generate_interactive_bubble_chart(user_id, target_scope=None):
     cursor = conn.cursor()
-    cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE scope=? AND user_id=?", (scope, user_id))
+    
+    if target_scope:
+        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE user_id=? AND scope=?", (user_id, target_scope))
+    else:
+        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE user_id=?", (user_id,))
+        
     data = cursor.fetchall()
     
     html_string, table_html = "", ""
@@ -657,9 +662,21 @@ with tab1:
         st.warning("🔒 Please connect your ORCID iD in the sidebar to view your private assessment history.")
 
 with tab2:
-    st.subheader("Epistemic Bubbles")
+    st.subheader("Epistemic Bubbles (Portfolio Cartography)")
+    st.write("This map automatically grows to reflect the collective data of all papers you have assessed over time.")
     
-    interactive_html, table_html = generate_interactive_bubble_chart(research_scope, current_user)
+    # Query database for all unique scopes the user has evaluated
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT scope FROM papers_assessment WHERE user_id=?", (current_user,))
+    user_scopes = [row[0] for row in cursor.fetchall() if row[0] and row[0].strip()]
+    
+    selected_scope = None
+    if user_scopes:
+        filter_choice = st.selectbox("Filter Cartography by Scope:", ["All Assessed Papers"] + user_scopes)
+        if filter_choice != "All Assessed Papers":
+            selected_scope = filter_choice
+
+    interactive_html, table_html = generate_interactive_bubble_chart(current_user, target_scope=selected_scope)
     
     if interactive_html:
         col1, col2 = st.columns([3, 1])
@@ -669,7 +686,7 @@ with tab2:
             st.markdown("### Legend")
             st.markdown(table_html, unsafe_allow_html=True)
     else: 
-        st.info("Awaiting sufficient data for this scope and user.")
+        st.info("Awaiting sufficient data for this user. Upload and process papers to build your map.")
 
 with tab3:
     cursor = conn.cursor()
