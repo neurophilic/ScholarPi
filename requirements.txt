@@ -1,9 +1,15 @@
-streamlit
+# Machine Learning & AI
 torch
-torchvision
-numpy
-pandas
-pymupdf
+onnx
+onnxscript
 groq
+
+# Data & Utils
+pandas
+numpy
+pymupdf
 pyvis
 requests
+
+# Streamlit
+streamlit
