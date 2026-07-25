@@ -675,7 +675,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
         improvement_multiplier = min(raw_multiplier, cap)
         
-    # --- FIX 1: Aligned variable name to `piq_minted` which prevents the UnboundLocalError
     piq_minted = 0.0 if extracted_author == "Unidentified" else round((final_score / 10.0) * improvement_multiplier, 2)
     
     zk_email_hash = "None"
@@ -843,7 +842,6 @@ with tab1:
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
         st.markdown("---")
         
-        # --- FIX 3: Added callback to handle modifying OpenAlex "Select All" dynamically
         def toggle_all_alex():
             is_all = st.session_state.get(f"select_all_alex_{st.session_state['reset_token']}", False)
             for i in range(st.session_state.alex_visible_count):
@@ -1180,8 +1178,6 @@ with tab2:
             node_size = max(30, 20 + (avg_weight * 2.5))
             
             base_col = color_map[topic]
-            
-            # --- FIX 2: Pyvis bubbles are properly shaped + labels suppressed with transparent text and 'dot' shape
             net.add_node(
                 n_id=topic, 
                 label=" ", 
