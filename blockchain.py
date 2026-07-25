@@ -3,18 +3,14 @@ import hashlib
 import time
 from datetime import datetime
 from web3 import Web3
-from config import DB_PATH, WEB3_PROVIDER_URI, ETH_ADMIN_PRIVATE_KEY, PICOIN_CONTRACT_ADDRESS
+from config import DB_PATH, WEB3_PROVIDER_URI, ETH_ADMIN_PRIVATE_KEY, EPC_CONTRACT_ADDRESS
 
 # Initialize Web3
 w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
 
 def generate_blockchain_pi(block_height):
-    """
-    Generates Pi algorithmically using the Nilakantha series.
-    The computational depth (iterations) is intrinsically linked to the blockchain's block height,
-    making the generation dynamic rather than relying on a static string.
-    """
-    iterations = max(1, block_height * 50)  # Deeper blocks = more precision
+    """Generates Pi algorithmically using the Nilakantha series. Depth depends on block height."""
+    iterations = max(1, block_height * 50)
     pi_approx = 3.0
     sign = 1.0
     for i in range(1, iterations + 1):
@@ -34,7 +30,7 @@ def init_system():
                        c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
                        scope_alignment REAL, logic_score REAL,
                        subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME,
-                       eth_wallet TEXT, coins_minted REAL, tx_hash TEXT, zk_proof TEXT)''')
+                       eth_wallet TEXT, epc_minted REAL, tx_hash TEXT, zk_proof TEXT)''')
                        
     try: cursor.execute("ALTER TABLE papers_assessment ADD COLUMN logic_score REAL DEFAULT 0.0")
     except: pass 
@@ -42,7 +38,7 @@ def init_system():
     except: pass 
     try: cursor.execute("ALTER TABLE papers_assessment ADD COLUMN eth_wallet TEXT DEFAULT 'None'")
     except: pass 
-    try: cursor.execute("ALTER TABLE papers_assessment ADD COLUMN coins_minted REAL DEFAULT 0.0")
+    try: cursor.execute("ALTER TABLE papers_assessment ADD COLUMN epc_minted REAL DEFAULT 0.0")
     except: pass 
     try: cursor.execute("ALTER TABLE papers_assessment ADD COLUMN tx_hash TEXT DEFAULT 'Pending'")
     except: pass 
@@ -99,14 +95,14 @@ def generate_zk_snark_proof(eval_hash, final_score, logic_score):
     circuit_input = f"{eval_hash}:{final_score}:{logic_score}:{time.time()}"
     return "0x0" + hashlib.sha3_256(circuit_input.encode('utf-8')).hexdigest()
 
-def mint_pi_coin(wallet_address, amount, eval_hash, zk_proof):
-    """Interacts with the Ethereum Smart Contract to mint PiCoin ($PIC)."""
+def mint_epistemic_capital(wallet_address, amount, eval_hash, zk_proof):
+    """Interacts with the Ethereum Smart Contract to mint Epistemic Capital ($EPC)."""
     if not w3.is_connected() or wallet_address == "None" or not wallet_address:
         return "Not Connected / No Wallet"
         
     try:
         abi = '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
-        contract = w3.eth.contract(address=w3.to_checksum_address(PICOIN_CONTRACT_ADDRESS), abi=abi)
+        contract = w3.eth.contract(address=w3.to_checksum_address(EPC_CONTRACT_ADDRESS), abi=abi)
         account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
         
         tx = contract.functions.verifyProofAndMint(
