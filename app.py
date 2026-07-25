@@ -340,6 +340,55 @@ def search_openalex_topics(topic_query, limit=100):
   return []
 
 
+def fetch_all_fields_science_papers(limit_per_field=5):
+  """Automatically queries OpenAlex across all major fields of science to harvest fresh articles."""
+  major_fields = [
+      "Computer Science",
+      "Medicine",
+      "Physics and Astronomy",
+      "Biology",
+      "Chemistry",
+      "Environmental Science",
+      "Economics",
+      "Mathematics",
+      "Materials Science",
+      "Neuroscience",
+  ]
+  all_harvested = []
+  for field in major_fields:
+    try:
+      url = f"https://api.openalex.org/works?search={requests.utils.quote(field)}&filter=is_oa:true&per_page={limit_per_field}"
+      res = requests.get(url, timeout=8)
+      if res.status_code == 200:
+        results = res.json().get("results", [])
+        for item in results:
+          title = item.get("title", "Untitled Paper")
+          doi = item.get("doi", "")
+          best_oa = item.get("best_oa_location") or {}
+          pdf_url = best_oa.get("pdf_url") or item.get("open_access", {}).get(
+              "oa_url", ""
+          )
+          authorships = item.get("authorships", [])
+          authors_list = [
+              a.get("author", {}).get("display_name", "") for a in authorships
+          ]
+          authors_str = (
+              ", ".join([a for a in authors_list if a])
+              if authors_list
+              else "Unidentified"
+          )
+          if pdf_url or doi:
+            all_harvested.append({
+                "title": f"[{field}] {title}",
+                "doi": doi,
+                "pdf_url": pdf_url,
+                "authors": authors_str,
+            })
+    except Exception:
+      continue
+  return all_harvested
+
+
 def get_author_piq_dict():
   conn = get_db_connection()
   cursor = conn.cursor()
@@ -1492,6 +1541,23 @@ if "initialized" not in st.session_state:
   st.session_state["initialized"] = True
   st.toast("Application initialized successfully.", icon="🚀")
 
+# Query total analyzed papers count from database for corner metric badge
+conn_cnt = get_db_connection()
+cur_cnt = conn_cnt.cursor()
+cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
+total_analyzed_count = cur_cnt.fetchone()[0]
+conn_cnt.close()
+
+# Display total analyzed count badge in top-right corner using markdown/html injection
+st.markdown(
+    f"""
+    <div style="position: absolute; top: 15px; right: 20px; background-color: #2c3e50; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 999;">
+        📊 Analyzed Papers: {total_analyzed_count}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.info(
     "📬 **Notice:** If you are using this application, please send a notification"
     " email to the author at **a.vafadaryengejeh@campus.unimib.it**.",
@@ -1746,10 +1812,11 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 with tab1:
   st.markdown(
-      "### Unified Multi-Source Intake & Topic Discovery"
+      "### Unified Multi-Source Intake & Global Field Discovery"
       + tooltip(
-          "Define your research scope, upload local PDFs, import via DOI, or"
-          " discover and tick OpenAlex papers all in one place."
+          "Define your scope, upload local files, or automatically query"
+          " OpenAlex across all fields of science to maximize global"
+          " precision."
       ),
       unsafe_allow_html=True,
   )
@@ -1800,8 +1867,22 @@ with tab1:
       )
 
     st.markdown("")
+    st.markdown(
+        "**3. Global Multi-Field Science Query (OpenAlex Automated Harvester)**"
+    )
+    auto_harvest_all = st.checkbox(
+        "Automatically query OpenAlex across all major fields of science"
+        " (Computer Science, Medicine, Physics, Biology, Chemistry, etc.)",
+        value=False,
+        key=f"auto_harvest_{st.session_state['reset_token']}",
+        help=(
+            "Fetches recent open access articles across all primary scientific"
+            " domains simultaneously to maximize evaluation precision."
+        ),
+    )
+
     alex_topic_input = st.text_input(
-        "3. Discover via OpenAlex Topic Search",
+        "Or Custom OpenAlex Topic Search",
         placeholder="e.g., structural integrity, neural networks, oncology",
         key=f"alex_topic_{st.session_state['reset_token']}",
     )
@@ -1810,19 +1891,24 @@ with tab1:
   if "alex_visible_count" not in st.session_state:
     st.session_state.alex_visible_count = 10
 
-  if (
-      "search_alex_btn" in locals()
-      and search_alex_btn
-      and alex_topic_input.strip()
-  ):
+  if "search_alex_btn" in locals() and search_alex_btn:
     st.session_state.alex_visible_count = 10
-    with st.spinner(f"Querying OpenAlex for papers on '{alex_topic_input}'..."):
-      alex_results = search_openalex_topics(alex_topic_input.strip(), limit=100)
+    with st.spinner("Querying OpenAlex databases..."):
+      alex_results = []
+      if auto_harvest_all:
+        alex_results = fetch_all_fields_science_papers(limit_per_field=3)
+      if alex_topic_input.strip():
+        custom_res = search_openalex_topics(alex_topic_input.strip(), limit=50)
+        alex_results.extend(custom_res)
+
       if alex_results:
         st.session_state["alex_search_results"] = alex_results
-        st.success(f"Found {len(alex_results)} Open Access papers.")
+        st.success(
+            f"Successfully harvested {len(alex_results)} papers from OpenAlex"
+            " across fields."
+        )
       else:
-        st.warning("No Open Access papers found matching this topic.")
+        st.warning("No Open Access papers found matching criteria.")
 
   selected_alex_papers = []
   if (
@@ -1833,7 +1919,7 @@ with tab1:
 
     col_res_header, col_close_btn = st.columns([5, 1])
     with col_res_header:
-      st.markdown("#### OpenAlex Search Results")
+      st.markdown("#### OpenAlex Harvested Results")
     with col_close_btn:
       if st.button(
           "❌ Close", key=f"close_alex_{st.session_state['reset_token']}"
