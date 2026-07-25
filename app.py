@@ -53,7 +53,7 @@ PIQ_CONTRACT_ADDRESS = os.getenv(
     "PIQ_CONTRACT_ADDRESS", "0xYourDeployedContractAddressHere"
 )
 
-# Persistent local machine storage directory (User Home Directory) ensuring data is saved automatically
+# Persistent local machine storage directory (User Home Directory)
 BASE_DIR = os.path.expanduser("~/Scientometric_Pi_Index")
 os.makedirs(BASE_DIR, exist_ok=True)
 DB_PATH = os.path.join(BASE_DIR, "pi_index_main.db")
@@ -69,6 +69,21 @@ if not GROQ_API_KEY:
 
 w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
 groq_client = Groq(api_key=GROQ_API_KEY)
+
+# Hardcoded Genesis Block (Bitcoin-style embedded root of trust)
+GENESIS_BLOCK_CONFIG = {
+    "block_height": 1,
+    "weights": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "timestamp": "2026-01-01T00:00:00.000000",
+    "previous_hash": "0" * 64,
+    "validator_node": "Validator_Pi_Genesis",
+    "eval_hash": "genesis",
+    "model_used": "none",
+    "por_proof": "Genesis_Proof_Anchor",
+    "formulas_hash": hashlib.sha256(
+        b"C1:Semantic_Originality|C2:MDAR_Rigor|C3:Citation_Entropy|C4:Open_Infrastructure|C5:Containerized_Execution|C6:Citation_Polarity|C7:Empirical_Density|C8:FAIR_Actionability|CoARA_Dossier_v2.0"
+    ).hexdigest(),
+}
 
 
 # ==========================================
@@ -157,33 +172,24 @@ def get_db_connection():
   cursor = conn.cursor()
   cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
   if cursor.fetchone()[0] == 0:
-    genesis_weights = [1.0] * 8
-    prev_hash = "0" * 64
-    timestamp = datetime.now().isoformat()
-    val_node, block_hash, por_proof = validate_block_por(
-        1,
-        genesis_weights,
-        timestamp,
-        prev_hash,
-        "genesis",
-        "none",
-        100.0,
-        "Genesis_Hash",
-    )
+    g = GENESIS_BLOCK_CONFIG
+    data_string = f"{g['block_height']}{g['weights']}{g['timestamp']}{g['previous_hash']}{g['validator_node']}{g['por_proof']}{g['model_used']}{g['formulas_hash']}"
+    block_hash = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
     cursor.execute(
         """INSERT INTO blockchain_por_weights 
                           (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) 
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            *genesis_weights,
-            timestamp,
-            prev_hash,
-            val_node,
+            g["block_height"],
+            *g["weights"],
+            g["timestamp"],
+            g["previous_hash"],
+            g["validator_node"],
             block_hash,
-            "genesis",
-            "none",
-            por_proof,
-            "Genesis_Hash",
+            g["eval_hash"],
+            g["model_used"],
+            g["por_proof"],
+            g["formulas_hash"],
         ),
     )
     conn.commit()
@@ -1628,7 +1634,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_1 = \alpha \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+        r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
         r" \times (1 - \lambda_{laundering}) $$"
     )
 
@@ -1641,9 +1647,9 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_2 = w_1 \cdot \mathcal{I}_{blinding} + w_2 \cdot"
-        r" \mathcal{I}_{randomization} + w_3 \cdot \mathcal{I}_{power\_calc} +"
-        r" w_4 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+        r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
+        r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
+        r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
         r" \epsilon}\right) $$"
     )
 
@@ -1655,7 +1661,7 @@ with st.expander(
         ),
         unsafe_allow_html=True,
     )
-    st.markdown(r"$$ C_3 = -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
     st.markdown(
         "**C4: Societal & Open Infrastructure Impact** "
@@ -1679,8 +1685,8 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_5 = \beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot"
-        r" \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container} $$"
+        r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+        r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
     )
 
     st.markdown(
@@ -1868,27 +1874,8 @@ with tab1:
           "Staking mechanisms actively filter low-effort, adversarial, or spam"
           " submissions."
       ),
+      key=f"stake_chk_{st.session_state['reset_token']}",
   )
-
-  if st.session_state["is_running"]:
-    col_run, col_stop = st.columns([4, 1])
-    with col_run:
-      st.button(
-          "Working...", type="primary", use_container_width=True, disabled=True
-      )
-    with col_stop:
-      if st.button("Stop", type="secondary", use_container_width=True):
-        st.session_state["cancel_requested"] = True
-        st.session_state["is_running"] = False
-        st.info("Pipeline operation cancelled by user.")
-        st.rerun()
-  else:
-    if st.button(
-        "Run Assessment Pipeline", type="primary", use_container_width=True
-    ):
-      st.session_state["is_running"] = True
-      st.session_state["cancel_requested"] = False
-      st.rerun()
 
   def render_breakdown_item(item):
     title = item["title"]
@@ -1930,11 +1917,7 @@ with tab1:
           f" RRIDs:** `{rrid_count}`"
       )
 
-    scope_val = (
-        research_scope
-        if "research_scope" in locals() and research_scope
-        else ""
-    )
+    scope_val = st.session_state.get("snap_scope", "")
     if scope_val.strip() and drift != "N/A" and rec != "N/A":
       st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
       st.markdown(f"**Recommendation Tier:** `{rec}`")
@@ -2025,137 +2008,47 @@ with tab1:
     )
 
   if st.session_state["is_running"]:
-    if not stake_amount:
-      st.error(
-          "You must agree to the piQ micro-stake to execute the assessment"
-          " pipeline."
+    col_run, col_stop = st.columns([4, 1])
+    with col_run:
+      st.button(
+          "Working...", type="primary", use_container_width=True, disabled=True
       )
-      st.session_state["is_running"] = False
-    elif (
-        not selected_uploaded_files
-        and not (include_doi and doi_input.strip())
-        and not selected_alex_papers
-    ):
-      st.warning("Please tick at least one paper or input source to assess.")
-      st.session_state["is_running"] = False
-    else:
-      progress_bar, status_text = st.progress(0), st.empty()
-      scope_val = (
-          research_scope
-          if "research_scope" in locals() and research_scope
-          else ""
-      )
+    with col_stop:
+      if st.button("Stop", type="secondary", use_container_width=True):
+        st.session_state["is_running"] = False
+        st.session_state["cancel_requested"] = True
+        st.info("Pipeline operation cancelled by user.")
+        st.rerun()
 
-      try:
-        if selected_alex_papers and not st.session_state["cancel_requested"]:
-          for p in selected_alex_papers:
-            if st.session_state["cancel_requested"]:
-              break
-            status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
-            pdf_bytes = None
-            fname = f"OpenAlex_{p['title'][:20]}.pdf"
-            p_doi = p.get("doi", "None")
+    progress_bar, status_text = st.progress(0), st.empty()
+    scope_val = st.session_state.get("snap_scope", "")
+    snap_files = st.session_state.get("snap_files", [])
+    snap_alex = st.session_state.get("snap_alex", [])
+    include_doi_snap = st.session_state.get("snap_include_doi", False)
+    doi_snap = st.session_state.get("snap_doi", "")
 
-            if p.get("pdf_url"):
-              pdf_bytes = download_pdf_from_url(p["pdf_url"])
-
-            if not pdf_bytes and (p.get("title") or p.get("doi")):
-              s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
-              if s2_url:
-                pdf_bytes = download_pdf_from_url(s2_url)
-
-            if not pdf_bytes and p.get("doi"):
-              metadata = fetch_doi_metadata(p["doi"])
-              if metadata and metadata.get("pdf_url"):
-                pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-
-            if pdf_bytes:
-              (
-                  title,
-                  author_name,
-                  score,
-                  logic_integrity,
-                  drift,
-                  rec,
-                  fields,
-                  subfields,
-                  scores_dict,
-                  eval_hash,
-                  piq,
-                  tx_hash,
-                  zk_proof,
-                  used_weights,
-                  mdar_score,
-                  rrid_count,
-                  repro_score,
-                  is_cached,
-              ) = process_single_pdf(
-                  pdf_bytes,
-                  fname,
-                  scope_val,
-                  current_user,
-                  "None",
-                  current_email,
-                  p_doi,
-              )
-              eval_record = {
-                  "title": title,
-                  "author_name": clean_author_name(author_name),
-                  "score": score,
-                  "logic_integrity": logic_integrity,
-                  "drift": drift,
-                  "rec": rec,
-                  "fields": fields,
-                  "subfields": subfields,
-                  "scores_dict": scores_dict,
-                  "eval_hash": eval_hash,
-                  "piq": piq,
-                  "tx_hash": tx_hash,
-                  "zk_proof": zk_proof,
-                  "used_weights": used_weights,
-                  "h_idx": mdar_score,
-                  "i10_idx": rrid_count,
-                  "repro_score": repro_score,
-                  "filename": fname,
-              }
-              st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-            else:
-              clean_doi = (
-                  p_doi.replace("https://doi.org/", "").strip()
-                  if p_doi
-                  else "None"
-              )
-              doi_url = (
-                  f"https://doi.org/{clean_doi}"
-                  if clean_doi and clean_doi != "None"
-                  else (p.get("pdf_url") or "N/A")
-              )
-              err_item = {
-                  "title": p.get("title", "Unknown Title"),
-                  "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
-                  "url": doi_url,
-              }
-              if err_item not in st.session_state["download_errors"]:
-                st.session_state["download_errors"].append(err_item)
-
-        if (
-            include_doi
-            and doi_input.strip()
-            and not st.session_state["cancel_requested"]
-        ):
-          status_text.text(f"Resolving DOI: {doi_input}...")
-          metadata = fetch_doi_metadata(doi_input)
-          fname = f"DOI_{doi_input.replace('/', '_')}.pdf"
+    try:
+      if snap_alex and not st.session_state["cancel_requested"]:
+        for p in snap_alex:
+          if st.session_state["cancel_requested"]:
+            break
+          status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
           pdf_bytes = None
-          if metadata and metadata.get("pdf_url"):
-            pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-          if not pdf_bytes:
-            s2_url = fetch_semantic_scholar_pdf(doi_input)
+          fname = f"OpenAlex_{p['title'][:20]}.pdf"
+          p_doi = p.get("doi", "None")
+
+          if p.get("pdf_url"):
+            pdf_bytes = download_pdf_from_url(p["pdf_url"])
+          if not pdf_bytes and (p.get("title") or p.get("doi")):
+            s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
             if s2_url:
               pdf_bytes = download_pdf_from_url(s2_url)
+          if not pdf_bytes and p.get("doi"):
+            metadata = fetch_doi_metadata(p["doi"])
+            if metadata and metadata.get("pdf_url"):
+              pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
 
           if pdf_bytes:
-            status_text.text("Assessing Open Access document from DOI...")
             (
                 title,
                 author_name,
@@ -2182,7 +2075,7 @@ with tab1:
                 current_user,
                 "None",
                 current_email,
-                doi_input.strip(),
+                p_doi,
             )
             eval_record = {
                 "title": title,
@@ -2206,86 +2099,198 @@ with tab1:
             }
             st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
           else:
-            clean_doi = doi_input.replace("https://doi.org/", "").strip()
-            doi_url = f"https://doi.org/{clean_doi}"
+            clean_doi = (
+                p_doi.replace("https://doi.org/", "").strip()
+                if p_doi
+                else "None"
+            )
+            doi_url = (
+                f"https://doi.org/{clean_doi}"
+                if clean_doi and clean_doi != "None"
+                else (p.get("pdf_url") or "N/A")
+            )
             err_item = {
-                "title": f"DOI Input: {clean_doi}",
-                "doi": clean_doi,
+                "title": p.get("title", "Unknown Title"),
+                "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
                 "url": doi_url,
             }
             if err_item not in st.session_state["download_errors"]:
               st.session_state["download_errors"].append(err_item)
 
-        if selected_uploaded_files and not st.session_state["cancel_requested"]:
-          for i, file in enumerate(selected_uploaded_files):
-            if st.session_state["cancel_requested"]:
-              break
-            status_text.text(
-                f"Analyzing uploaded file {i+1} of"
-                f" {len(selected_uploaded_files)}: {file.name}..."
-            )
-            file_bytes = file.read()
-            (
-                title,
-                author_name,
-                score,
-                logic_integrity,
-                drift,
-                rec,
-                fields,
-                subfields,
-                scores_dict,
-                eval_hash,
-                piq,
-                tx_hash,
-                zk_proof,
-                used_weights,
-                mdar_score,
-                rrid_count,
-                repro_score,
-                is_cached,
-            ) = process_single_pdf(
-                file_bytes,
-                file.name,
-                scope_val,
-                current_user,
-                "None",
-                current_email,
-                "None",
-            )
-            eval_record = {
-                "title": title,
-                "author_name": clean_author_name(author_name),
-                "score": score,
-                "logic_integrity": logic_integrity,
-                "drift": drift,
-                "rec": rec,
-                "fields": fields,
-                "subfields": subfields,
-                "scores_dict": scores_dict,
-                "eval_hash": eval_hash,
-                "piq": piq,
-                "tx_hash": tx_hash,
-                "zk_proof": zk_proof,
-                "used_weights": used_weights,
-                "h_idx": mdar_score,
-                "i10_idx": rrid_count,
-                "repro_score": repro_score,
-                "filename": file.name,
-            }
-            st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-            progress_bar.progress((i + 1) / len(selected_uploaded_files))
+      if (
+          include_doi_snap
+          and doi_snap.strip()
+          and not st.session_state["cancel_requested"]
+      ):
+        status_text.text(f"Resolving DOI: {doi_snap}...")
+        metadata = fetch_doi_metadata(doi_snap)
+        fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
+        pdf_bytes = None
+        if metadata and metadata.get("pdf_url"):
+          pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+        if not pdf_bytes:
+          s2_url = fetch_semantic_scholar_pdf(doi_snap)
+          if s2_url:
+            pdf_bytes = download_pdf_from_url(s2_url)
 
-        if st.session_state["cancel_requested"]:
-          st.warning("Pipeline operation was stopped.")
+        if pdf_bytes:
+          status_text.text("Assessing Open Access document from DOI...")
+          (
+              title,
+              author_name,
+              score,
+              logic_integrity,
+              drift,
+              rec,
+              fields,
+              subfields,
+              scores_dict,
+              eval_hash,
+              piq,
+              tx_hash,
+              zk_proof,
+              used_weights,
+              mdar_score,
+              rrid_count,
+              repro_score,
+              is_cached,
+          ) = process_single_pdf(
+              pdf_bytes,
+              fname,
+              scope_val,
+              current_user,
+              "None",
+              current_email,
+              doi_snap.strip(),
+          )
+          eval_record = {
+              "title": title,
+              "author_name": clean_author_name(author_name),
+              "score": score,
+              "logic_integrity": logic_integrity,
+              "drift": drift,
+              "rec": rec,
+              "fields": fields,
+              "subfields": subfields,
+              "scores_dict": scores_dict,
+              "eval_hash": eval_hash,
+              "piq": piq,
+              "tx_hash": tx_hash,
+              "zk_proof": zk_proof,
+              "used_weights": used_weights,
+              "h_idx": mdar_score,
+              "i10_idx": rrid_count,
+              "repro_score": repro_score,
+              "filename": fname,
+          }
+          st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
         else:
-          status_text.success("Pipeline processing complete.")
-          time.sleep(1)
-      finally:
-        st.session_state["is_running"] = False
+          clean_doi = doi_snap.replace("https://doi.org/", "").strip()
+          doi_url = f"https://doi.org/{clean_doi}"
+          err_item = {
+              "title": f"DOI Input: {clean_doi}",
+              "doi": clean_doi,
+              "url": doi_url,
+          }
+          if err_item not in st.session_state["download_errors"]:
+            st.session_state["download_errors"].append(err_item)
+
+      if snap_files and not st.session_state["cancel_requested"]:
+        total_files = len(snap_files)
+        for i, (fname, file_bytes) in enumerate(snap_files):
+          if st.session_state["cancel_requested"]:
+            break
+          status_text.text(
+              f"Analyzing uploaded file {i+1} of {total_files}: {fname}..."
+          )
+          (
+              title,
+              author_name,
+              score,
+              logic_integrity,
+              drift,
+              rec,
+              fields,
+              subfields,
+              scores_dict,
+              eval_hash,
+              piq,
+              tx_hash,
+              zk_proof,
+              used_weights,
+              mdar_score,
+              rrid_count,
+              repro_score,
+              is_cached,
+          ) = process_single_pdf(
+              file_bytes,
+              fname,
+              scope_val,
+              current_user,
+              "None",
+              current_email,
+              "None",
+          )
+          eval_record = {
+              "title": title,
+              "author_name": clean_author_name(author_name),
+              "score": score,
+              "logic_integrity": logic_integrity,
+              "drift": drift,
+              "rec": rec,
+              "fields": fields,
+              "subfields": subfields,
+              "scores_dict": scores_dict,
+              "eval_hash": eval_hash,
+              "piq": piq,
+              "tx_hash": tx_hash,
+              "zk_proof": zk_proof,
+              "used_weights": used_weights,
+              "h_idx": mdar_score,
+              "i10_idx": rrid_count,
+              "repro_score": repro_score,
+              "filename": fname,
+          }
+          st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+          progress_bar.progress((i + 1) / total_files)
+
+      if st.session_state["cancel_requested"]:
+        st.warning("Pipeline operation was stopped.")
+      else:
+        status_text.success("Pipeline processing complete.")
+        time.sleep(1)
+    finally:
+      st.session_state["is_running"] = False
+      st.session_state["cancel_requested"] = False
+      st.session_state["reset_token"] += 1
+      st.session_state["assessment_update_token"] = time.time()
+      st.rerun()
+
+  else:
+    if st.button(
+        "Run Assessment Pipeline", type="primary", use_container_width=True
+    ):
+      if not stake_amount:
+        st.error(
+            "You must agree to the piQ micro-stake to execute the assessment"
+            " pipeline."
+        )
+      elif (
+          not selected_uploaded_files
+          and not (include_doi and doi_input.strip())
+          and not selected_alex_papers
+      ):
+        st.warning("Please tick at least one paper or input source to assess.")
+      else:
+        st.session_state["snap_files"] = [
+            (f.name, f.read()) for f in selected_uploaded_files
+        ]
+        st.session_state["snap_scope"] = research_scope
+        st.session_state["snap_doi"] = doi_input
+        st.session_state["snap_include_doi"] = include_doi
+        st.session_state["snap_alex"] = selected_alex_papers
+        st.session_state["is_running"] = True
         st.session_state["cancel_requested"] = False
-        st.session_state["reset_token"] += 1
-        st.session_state["assessment_update_token"] = time.time()
         st.rerun()
 
   if (
