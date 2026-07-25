@@ -12,10 +12,14 @@ jobs:
   background-assessment:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: true
+      - name: Configure Git Identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout repository manually
+        run: |
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,8 +36,9 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python background_assessor.py
 
-      - name: Commit updated SQLite database back to repo
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "🤖 Autonomous background assessment update (5-min interval)"
-          file_pattern: "pi_index_main.db"
+      - name: Commit and push updated database
+        run: |
+          git status
+          git add pi_index_main.db
+          git diff --quiet && git diff --staged --quiet || git commit -m "🤖 Autonomous background assessment update (5-min interval)"
+          git push origin main
