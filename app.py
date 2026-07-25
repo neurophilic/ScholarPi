@@ -659,6 +659,7 @@ st.sidebar.title("System Access")
 
 if 'assessment_update_token' not in st.session_state: st.session_state['assessment_update_token'] = time.time()
 if 'reset_token' not in st.session_state: st.session_state['reset_token'] = 0
+if 'evaluated_papers_buffer' not in st.session_state: st.session_state['evaluated_papers_buffer'] = []
 if 'orcid_id' not in st.session_state:
     st.session_state.orcid_id = "0000-0000-0000-0000"
     st.session_state.orcid_name = ""
@@ -785,11 +786,28 @@ with tab1:
 
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
 
-    def render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, scope, h_index, i10_index, repro_score, filename):
+    def render_breakdown_item(item):
+        title = item['title']
+        author_name = item['author_name']
+        score = item['score']
+        logic_integrity = item['logic_integrity']
+        scores_dict = item['scores_dict']
+        used_weights = item['used_weights']
+        eval_hash = item['eval_hash']
+        piq = item['piq']
+        tx_hash = item['tx_hash']
+        zk_proof = item['zk_proof']
+        drift = item['drift']
+        rec = item['rec']
+        h_index = item['h_idx']
+        i10_index = item['i10_idx']
+        repro_score = item['repro_score']
+        filename = item['filename']
+
         st.markdown("---")
         st.subheader(f"{title} by {author_name}")
         
-        with st.expander("Ledger Data, Cryptographic Proofs & Reproducibility Audit"):
+        with st.expander(f"Ledger Data & Dossier Details ({filename})"):
             st.write(f"**File Name:** `{filename}`")
             st.write(f"**Evaluation Hash:** `{eval_hash}`")
             st.write(f"**piQ Minted:** `{piq}`")
@@ -797,7 +815,7 @@ with tab1:
             st.write(f"**Tx Hash:** `{tx_hash}`")
             st.write(f"**Executable Reproducibility Score (C5/C7 audit):** `{repro_score * 100:.1f}%`")
             
-        if scope.strip() and drift != "N/A" and rec != "N/A":
+        if research_scope.strip() and drift != "N/A" and rec != "N/A":
             st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
             st.markdown(f"**Recommendation Tier:** `{rec}`")
         
@@ -839,11 +857,11 @@ with tab1:
 - Tx Hash: {tx_hash}
 """
         st.download_button(
-            label="Download DORA-Aligned Research Integrity Dossier (JSON/MD)",
+            label=f"Download DORA-Aligned Research Integrity Dossier ({filename})",
             data=dossier_content,
             file_name=f"Dossier_{eval_hash[:10]}.md",
             mime="text/markdown",
-            key=f"download_dossier_{eval_hash}"
+            key=f"download_dossier_{eval_hash}_{time.time()}"
         )
 
     if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
@@ -854,26 +872,34 @@ with tab1:
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
-            # 1. Process OpenAlex Papers
+            # 1. Process OpenAlex Papers with robust DOI fallback
             if selected_alex_papers:
                 for p in selected_alex_papers:
                     status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
                     pdf_bytes = None
                     fname = f"OpenAlex_{p['title'][:20]}.pdf"
                     
-                    if p.get('doi'):
+                    if p.get('pdf_url'):
+                        pdf_bytes = download_pdf_from_url(p['pdf_url'])
+                    
+                    if not pdf_bytes and p.get('doi'):
                         metadata = fetch_doi_metadata(p['doi'])
                         if metadata and metadata.get('pdf_url'):
                             pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
-                    
-                    if not pdf_bytes and p.get('pdf_url'):
-                        pdf_bytes = download_pdf_from_url(p['pdf_url'])
 
                     if pdf_bytes:
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
                             pdf_bytes, fname, research_scope, current_user, current_book, current_email
                         )
-                        render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, fname)
+                        eval_record = {
+                            'title': title, 'author_name': author_name, 'score': score, 
+                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                            'zk_proof': zk_proof, 'used_weights': used_weights, 
+                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+                        }
+                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else:
                         st.warning(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
 
@@ -889,7 +915,15 @@ with tab1:
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
                             pdf_bytes, fname, research_scope, current_user, current_book, current_email
                         )
-                        render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, fname)
+                        eval_record = {
+                            'title': title, 'author_name': author_name, 'score': score, 
+                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                            'zk_proof': zk_proof, 'used_weights': used_weights, 
+                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+                        }
+                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
@@ -897,10 +931,19 @@ with tab1:
             if selected_uploaded_files:
                 for i, file in enumerate(selected_uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
+                    file_bytes = file.read()
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                        file.read(), file.name, research_scope, current_user, current_book, current_email
+                        file_bytes, file.name, research_scope, current_user, current_book, current_email
                     )
-                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, file.name)
+                    eval_record = {
+                        'title': title, 'author_name': author_name, 'score': score, 
+                        'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                        'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                        'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                        'zk_proof': zk_proof, 'used_weights': used_weights, 
+                        'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': file.name
+                    }
+                    st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     progress_bar.progress((i + 1) / len(selected_uploaded_files))
             
             # Clear all ticked checkboxes across all input methods by bumping reset_token
@@ -910,6 +953,13 @@ with tab1:
             status_text.success("Pipeline processing complete.")
             time.sleep(1)
             st.rerun()
+
+    # Render persistent evaluated papers buffer so results never disappear
+    if st.session_state['evaluated_papers_buffer']:
+        st.markdown("---")
+        st.markdown("### Active Session Assessment Results")
+        for item in st.session_state['evaluated_papers_buffer']:
+            render_breakdown_item(item)
             
     st.markdown("---")
     st.markdown("### AI Peer Review Defense Strategy " + tooltip("Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy."), unsafe_allow_html=True)
