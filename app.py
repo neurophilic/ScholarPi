@@ -788,6 +788,7 @@ st.sidebar.title("System Access")
 if 'assessment_update_token' not in st.session_state: st.session_state['assessment_update_token'] = time.time()
 if 'reset_token' not in st.session_state: st.session_state['reset_token'] = 0
 if 'evaluated_papers_buffer' not in st.session_state: st.session_state['evaluated_papers_buffer'] = []
+if 'download_errors' not in st.session_state: st.session_state['download_errors'] = []
 if 'is_running' not in st.session_state: st.session_state['is_running'] = False
 if 'cancel_requested' not in st.session_state: st.session_state['cancel_requested'] = False
 
@@ -869,6 +870,20 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of
 with tab1:
     st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and tick OpenAlex papers all in one place."), unsafe_allow_html=True)
     
+    # Persistent Download Errors Container
+    if st.session_state.get('download_errors'):
+        st.markdown("---")
+        st.markdown("### ⚠️ Publisher Access & Download Restrictions")
+        for err_idx, err_data in enumerate(st.session_state['download_errors']):
+            err_col1, err_col2 = st.columns([6, 1])
+            with err_col1:
+                st.warning(f"**Could not directly download PDF for '{err_data['title']}':** Publishers restrict direct binary access.\n\n- **DOI:** `{err_data['doi']}`\n- **PDF URL Link:** [{err_data['url']}]({err_data['url']})")
+            with err_col2:
+                if st.button("❌ Close", key=f"close_err_{err_idx}_{st.session_state['reset_token']}"):
+                    st.session_state['download_errors'].pop(err_idx)
+                    st.rerun()
+        st.markdown("---")
+
     selected_uploaded_files = []
     uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
     if uploaded_files:
@@ -1092,8 +1107,14 @@ with tab1:
                             st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                         else:
                             clean_doi = p_doi.replace("https://doi.org/", "").strip() if p_doi else "None"
-                            doi_url = f"https://doi.org/{clean_doi}" if clean_doi and clean_doi != "None" else "N/A"
-                            st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers restrict direct binary access.\n\n**DOI:** `{clean_doi}` | **URL Link:** {doi_url}")
+                            doi_url = f"https://doi.org/{clean_doi}" if clean_doi and clean_doi != "None" else (p.get('pdf_url') or "N/A")
+                            err_item = {
+                                'title': p.get('title', 'Unknown Title'),
+                                'doi': clean_doi if clean_doi and clean_doi != "None" else "N/A",
+                                'url': doi_url
+                            }
+                            if err_item not in st.session_state['download_errors']:
+                                st.session_state['download_errors'].append(err_item)
 
                 # 2. Process DOI Input
                 if include_doi and doi_input.strip() and not st.session_state['cancel_requested']:
@@ -1124,7 +1145,13 @@ with tab1:
                     else: 
                         clean_doi = doi_input.replace("https://doi.org/", "").strip()
                         doi_url = f"https://doi.org/{clean_doi}"
-                        st.error(f"Could not directly download PDF for DOI '{clean_doi}'. Publishers restrict direct binary access.\n\n**DOI:** `{clean_doi}` | **URL Link:** {doi_url}")
+                        err_item = {
+                            'title': f"DOI Input: {clean_doi}",
+                            'doi': clean_doi,
+                            'url': doi_url
+                        }
+                        if err_item not in st.session_state['download_errors']:
+                            st.session_state['download_errors'].append(err_item)
                 
                 # 3. Process Ticked Local Files
                 if selected_uploaded_files and not st.session_state['cancel_requested']:
