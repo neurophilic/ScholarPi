@@ -574,13 +574,11 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     
     for rec_row in existing_records:
         ex_hash, ex_score, ex_logic, *ex_rest = rec_row
-        # Check title similarity or exact match
         cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
         ex_title_row = cursor.fetchone()
         if ex_title_row:
             ex_norm_title = re.sub(r'[^a-z0-9]', '', ex_title_row[0].lower())
             if (provided_doi != "None" and provided_doi) or (ex_norm_title == normalized_title and normalized_title != ""):
-                # Found existing canonical paper! Return cached/existing values without duplicating.
                 fields = ["Unspecified Domain"]
                 subfields = ["Unspecified Sub-domain"]
                 c_scores = ex_rest[:8]
@@ -933,7 +931,7 @@ with tab1:
                         }
                         st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else:
-                        st.warning(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
+                        st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
 
             # 2. Process DOI Input
             if include_doi and doi_input.strip():
@@ -1075,7 +1073,8 @@ with tab2:
                     if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score})
             except: continue
                 
-        if not all_topics: return html_string, table_html
+        if not all_topics: 
+            all_topics.append({'topic': 'Core Scientific Domain', 'weight': 50.0})
         
         df_topics = pd.DataFrame(all_topics)
         topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
@@ -1093,8 +1092,8 @@ with tab2:
         net.set_options(physics_options)
         
         for _, row in topic_counts.iterrows():
-            node_size = 30 + (row['weight'] * 2.5) 
-            net.add_node(n_id=row['topic'], label=' ', title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
+            node_size = max(30, 20 + (row['weight'] * 2.5))
+            net.add_node(n_id=row['topic'], label=row['topic'], title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
