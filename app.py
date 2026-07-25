@@ -1288,7 +1288,6 @@ with tab5:
     st.markdown("### The Pi-Index Framework: System Architecture & Workflow Diagram")
     st.markdown("The interactive system architecture flow below outlines the lifecycle of manuscript ingestion, ensemble evaluation, cryptographic verification, and decentralized research assessment.")
     
-    # Render the detailed Graphviz diagram directly inside Tab 5 of the app
     st.graphviz_chart('''
     digraph PiIndexSystemOverview {
         rankdir=TB;
