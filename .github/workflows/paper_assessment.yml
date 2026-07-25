@@ -2,9 +2,8 @@ name: Background Hot Topics Assessment
 
 on:
   schedule:
-    # Runs every 6 hours automatically
-    - cron: '0 */6 * * *'
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
   assess-papers:
@@ -12,12 +11,17 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        # Bumping to the latest node-24 compatible checkout
+        uses: actions/checkout@v4 
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11' 
+
+      - name: Debug - Verify Files Exist
+        # This will print the files in your repo to the GitHub Actions log
+        run: ls -la 
 
       - name: Install Dependencies
         run: |
@@ -34,4 +38,5 @@ jobs:
           PIQ_CONTRACT_ADDRESS: ${{ secrets.PIQ_CONTRACT_ADDRESS }}
           WEB3_PROVIDER_URI: "https://ethereum-sepolia-rpc.publicnode.com"
         run: |
+          # If this step still fails, check the "Debug" step above to ensure auto_assessment.py is listed!
           python auto_assessment.py
