@@ -13,7 +13,7 @@ from torch.utils.data import Dataset
 
 from config import GROQ_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, SEED_NUMBER, EPOCH_BLOCK_SIZE
 from math_engine import compute_formulaic_criteria, compute_logical_integrity, calculate_model_driven_weights, calculate_complex_drift, get_recommendation_spectrum, get_formulas_hash
-from blockchain import validate_block_por, init_system, generate_zk_snark_proof, mint_pi_coin
+from blockchain import validate_block_por, init_system, generate_zk_snark_proof, mint_epistemic_capital
 
 if not GROQ_API_KEY:
     st.error("API Key not found! Please configure your environment variables or Streamlit Secrets.")
@@ -97,7 +97,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_wallet="None"):
     file_hash = hashlib.sha256(file_bytes).hexdigest() 
     cursor = conn.cursor()
     
-    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, coins_minted, tx_hash, zk_proof FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
+    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, epc_minted, tx_hash, zk_proof FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
     cached_result = cursor.fetchone()
     
     doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -109,7 +109,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_wallet="None"):
     if cached_result:
         score, logic_score, title, fields_str, subfields_str, author_name, *rest = cached_result
         c_scores = rest[:8]
-        coins_minted, tx_hash, zk_proof = rest[8], rest[9], rest[10]
+        epc_minted, tx_hash, zk_proof = rest[8], rest[9], rest[10]
         fields = json.loads(fields_str) if fields_str else ["General Science"]
         subfields = json.loads(subfields_str) if subfields_str else ["General"]
         if not author_name or author_name in ["Unknown Author", os.path.splitext(filename)[0]]:
@@ -121,7 +121,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_wallet="None"):
             "C1_Originality": c_scores[0], "C2_Methodological_Rigor": c_scores[1], "C3_Interdisciplinary": c_scores[2], "C4_Societal_Impact": c_scores[3],
             "C5_Open_Science_Potential": c_scores[4], "C6_Literature_Integration": c_scores[5], "C7_Empirical_Density": c_scores[6], "C8_Future_Actionability": c_scores[7]
         }
-        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, coins_minted, tx_hash, zk_proof
+        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, epc_minted, tx_hash, zk_proof
 
     try:
         raw_data = evaluate_pdf_text(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS)
@@ -171,7 +171,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_wallet="None"):
     else:
         active_weights = old_weights
 
-    # --- TOKENOMICS & ZK-SNARK LOGIC ---
+    # --- TOKENOMICS & ZK-SNARK LOGIC ($EPC) ---
     cursor.execute("SELECT AVG(final_score) FROM papers_assessment WHERE author_name=?", (extracted_author,))
     past_avg = cursor.fetchone()[0] or 0.0
     
@@ -179,18 +179,18 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_wallet="None"):
     if final_score > past_avg and past_avg > 0:
         improvement_multiplier = 1.5 + ((final_score - past_avg) / 50.0) 
         
-    coins_to_mint = round((final_score / 10.0) * improvement_multiplier, 2)
+    epc_to_mint = round((final_score / 10.0) * improvement_multiplier, 2)
     zk_proof = generate_zk_snark_proof(file_hash, final_score, logic_integrity)
-    tx_hash = mint_pi_coin(eth_wallet, coins_to_mint, file_hash, zk_proof)
+    tx_hash = mint_epistemic_capital(eth_wallet, epc_to_mint, file_hash, zk_proof)
 
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
-    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_wallet, coins_minted, tx_hash, zk_proof) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), eth_wallet, coins_to_mint, tx_hash, zk_proof))
+    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_wallet, epc_minted, tx_hash, zk_proof) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), eth_wallet, epc_to_mint, tx_hash, zk_proof))
     conn.commit()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, coins_to_mint, tx_hash, zk_proof
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, epc_to_mint, tx_hash, zk_proof
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
