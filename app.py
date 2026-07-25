@@ -24,12 +24,10 @@ from services import fetch_doi_metadata, download_pdf_from_url, generate_rebutta
 
 st.set_page_config(page_title="π-Index Assessment Engine", layout="wide")
 
-# --- Database Connection Cache ---
 @st.cache_resource
 def get_db_connection():
     return init_system()
 
-# --- UI Utilities ---
 def verify_orcid_live(orcid_id):
     try:
         url = f"https://pub.orcid.org/v3.0/{orcid_id}/person"
@@ -47,13 +45,14 @@ def verify_orcid_live(orcid_id):
     except Exception as e:
         return False, f"API Error: {str(e)}"
 
-def generate_interactive_bubble_chart(user_id, target_author=None):
+def generate_interactive_bubble_chart(target_author=None):
     conn = get_db_connection()
     cursor = conn.cursor()
+    
     if target_author and target_author != "All Authors":
-        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE user_id=? AND author_name LIKE ?", (user_id, f"%{target_author}%"))
+        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE author_name LIKE ?", (f"%{target_author}%",))
     else:
-        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE user_id=?", (user_id,))
+        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment")
         
     data = cursor.fetchall()
     html_string, table_html = "", ""
@@ -65,7 +64,6 @@ def generate_interactive_bubble_chart(user_id, target_author=None):
             fields = [f.title().strip() for f in json.loads(fields_json)]
             subfields = [s.title().strip() for s in json.loads(subfields_json)]
             score = float(final_score) if final_score else 50.0
-            
             for f in fields: all_topics.append({'topic': f, 'weight': score})
             for s in subfields: all_topics.append({'topic': s, 'weight': score})
         except: continue
@@ -109,18 +107,20 @@ def generate_interactive_bubble_chart(user_id, target_author=None):
     
     return html_string, table_html
 
-# --- UI LAYOUT ---
 st.sidebar.title("System Access")
 
 if 'assessment_update_token' not in st.session_state: st.session_state['assessment_update_token'] = time.time()
 if 'orcid_id' not in st.session_state:
     st.session_state.orcid_id = "0000-0000-0000-0000"
     st.session_state.orcid_name = ""
+    st.session_state.eth_wallet = "None"
     st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown("### Authenticate via ORCID")
+    st.sidebar.markdown("### Authenticate")
     manual_orcid = st.sidebar.text_input("Enter ORCID iD", placeholder="XXXX-XXXX-XXXX-XXXX")
+    wallet_input = st.sidebar.text_input("Ethereum Wallet Address (For $PIC Rewards)", placeholder="0x...")
+    
     if st.sidebar.button("🔗 Validate & Connect"):
         clean_orcid = manual_orcid.strip()
         if re.match(r'^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$', clean_orcid):
@@ -128,17 +128,22 @@ if not st.session_state.is_authenticated:
                 is_valid, user_name = verify_orcid_live(clean_orcid)
             if is_valid:
                 st.session_state.orcid_id, st.session_state.orcid_name, st.session_state.is_authenticated = clean_orcid, user_name, True
+                st.session_state.eth_wallet = wallet_input.strip() if wallet_input.strip() else "None"
                 st.rerun()
             else: st.sidebar.error(user_name)
-        else: st.sidebar.error("Invalid format.")
+        else: st.sidebar.error("Invalid ORCID format.")
 else:
     st.sidebar.success("Securely Connected")
     st.sidebar.markdown(f"**Researcher:** {st.session_state.orcid_name}\n**ORCID iD:** `{st.session_state.orcid_id}`")
+    st.sidebar.markdown(f"**ETH Wallet:** `{st.session_state.eth_wallet[:6]}...{st.session_state.eth_wallet[-4:]}`")
     if st.sidebar.button("Disconnect Session"):
         st.session_state.is_authenticated, st.session_state.orcid_name = False, ""
+        st.session_state.eth_wallet = "None"
         st.rerun()
 
 current_user = st.session_state.orcid_id
+current_wallet = st.session_state.eth_wallet
+
 st.title("π-Index Assessment Engine")
 st.markdown("**Upload papers, define your scope of research, let π-index filter noise and have better results**")
 
@@ -171,102 +176,100 @@ with st.expander("View π-Index Grading Criteria (Math to Plain English Translat
         st.markdown("**C8: Future Actionability**\n*Plain English:* Predicts whether the paper will trigger a cascade of actionable future research.")
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📤 Batch Assessment", "🌐 DOI Import", "📊 Scope Cartography", "🚀 Super Features", "⛓️ Active Epoch constants", "🧠 π-Brain Neural Network"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Assessment & DOI Import", "📊 Global Map of Science", "🚀 Super Features", "⛓️ Active Epoch constants", "🧠 π-Brain Neural Network"])
 
 with tab1:
+    st.subheader("Document Assessment & Import")
     research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...")
-    uploaded_files = st.file_uploader("Upload Academic Papers (PDFs)", type=["pdf"], accept_multiple_files=True)
     
-    if st.button("Run Batch Assessment", type="primary"):
-        if not uploaded_files: st.warning("Please upload at least one academic paper (PDF) to proceed.")
+    col_up, col_doi = st.columns(2)
+    with col_up:
+        st.markdown("#### Upload Local PDF")
+        uploaded_files = st.file_uploader("Upload Academic Papers", type=["pdf"], accept_multiple_files=True)
+    with col_doi:
+        st.markdown("#### Import via Unpaywall (DOI)")
+        doi_input = st.text_input("Enter Document Object Identifier (DOI)", placeholder="10.1038/s41586-020-2649-2")
+    
+    if st.button("🚀 Run Assessment Pipeline & Mint Rewards", type="primary", use_container_width=True):
+        if not uploaded_files and not doi_input.strip():
+            st.warning("Please upload a PDF or provide a valid DOI to proceed.")
         else:
             results_list = []
             progress_bar, status_text = st.progress(0), st.empty()
-            for i, file in enumerate(uploaded_files):
-                status_text.text(f"Analyzing {i+1} of {len(uploaded_files)}: {file.name}...")
-                title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash = process_single_pdf(file.read(), file.name, research_scope, current_user)
-                
-                record = {
-                    "No.": i + 1, "File Name": file.name, "Primary Author": author_name, 
-                    "Fields & Subfields": f"Fields: {', '.join(fields)} | Subfields: {', '.join(subfields)}",
-                    "Logic Integrity (%)": round(logic_integrity, 1), "π-Index (0-100)": round(score, 1),
-                }
-                if research_scope.strip():
-                    record.update({"Topic": research_scope, "Recommendation Spectrum": rec, "Scope Drift %": round(drift, 1) if drift != "N/A" else "N/A"})
-                
-                record.update({f"C{j+1}": round(scores_dict.get(list(scores_dict.keys())[j], 0.0), 1) for j in range(8)})
-                record["Eval Hash"] = eval_hash
-                results_list.append(record)
-                progress_bar.progress((i + 1) / len(uploaded_files))
-                
-            status_text.success("Batch processing complete!")
-            st.session_state['latest_assessment_results'] = pd.DataFrame(results_list)
-            st.session_state['assessment_update_token'] = time.time()
-            st.session_state['last_trained_blocks'] = -1
+            
+            if doi_input.strip():
+                status_text.text(f"Resolving DOI: {doi_input}...")
+                metadata = fetch_doi_metadata(doi_input)
+                if metadata and metadata['pdf_url']:
+                    pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+                    if pdf_bytes:
+                        status_text.text(f"Assessing Open Access document from DOI...")
+                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, coins, tx_hash, zk_proof = process_single_pdf(
+                            pdf_bytes, f"DOI_{doi_input.replace('/', '_')}.pdf", research_scope, current_user, current_wallet
+                        )
+                        record = {
+                            "Source": "DOI", "Title": title, "Primary Author": author_name, 
+                            "π-Index": round(score, 1), "$PIC Minted": coins, "zk-SNARK": f"{zk_proof[:10]}..."
+                        }
+                        results_list.append(record)
+                    else: st.error("Failed to securely download PDF from the Open Access source.")
+                else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
+            
+            if uploaded_files:
+                for i, file in enumerate(uploaded_files):
+                    status_text.text(f"Analyzing uploaded file {i+1} of {len(uploaded_files)}: {file.name}...")
+                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, coins, tx_hash, zk_proof = process_single_pdf(
+                        file.read(), file.name, research_scope, current_user, current_wallet
+                    )
+                    
+                    record = {
+                        "Source": "File", "Title": title, "Primary Author": author_name, 
+                        "π-Index": round(score, 1), "$PIC Minted": coins, "zk-SNARK": f"{zk_proof[:10]}..."
+                    }
+                    results_list.append(record)
+                    progress_bar.progress((i + 1) / len(uploaded_files))
+            
+            status_text.success("Pipeline processing complete!")
+            if results_list:
+                st.session_state['latest_assessment_results'] = pd.DataFrame(results_list)
+                st.session_state['assessment_update_token'] = time.time()
+                st.session_state['last_trained_blocks'] = -1
             
     if 'latest_assessment_results' in st.session_state:
         st.dataframe(st.session_state['latest_assessment_results'], use_container_width=True, hide_index=True)
 
-    st.markdown("### Latest Assessment History")
+    st.markdown("### Your Assessment & Reward History")
     if st.session_state.is_authenticated:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT title, author_name, scope, final_score, timestamp, eval_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
+        cursor.execute("SELECT title, author_name, scope, final_score, coins_minted, zk_proof, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
         history_data = cursor.fetchall()
-        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Primary Author", "Scope", "π-Index Score", "Date", "Evaluation Hash"]), use_container_width=True, hide_index=True)
+        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Primary Author", "Scope", "π-Index Score", "$PIC Minted", "zk-SNARK Proof", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
         else: st.info("No assessment history found.")
     else: st.warning("Please connect your ORCID iD in the sidebar.")
 
 with tab2:
-    st.subheader("🌐 Fetch and Assess via DOI")
-    st.markdown("Import metadata and locate Open Access PDFs directly through the Unpaywall API.")
-    doi_input = st.text_input("Enter Document Object Identifier (DOI)", placeholder="10.1038/s41586-020-2649-2")
+    st.subheader("Global Map of Science (Ledger-Driven Cartography)")
+    st.markdown("This map is permanently updated by every user assessing documents on the blockchain ledger, forming an unalterable topological view of current scientific trends.")
     
-    if st.button("Fetch & Assess", type="primary"):
-        if doi_input.strip():
-            with st.spinner("Resolving DOI..."):
-                metadata = fetch_doi_metadata(doi_input)
-                if metadata:
-                    st.success(f"**Title found:** {metadata['title']} | **Authors:** {metadata['authors']}")
-                    if metadata['pdf_url']:
-                        st.info("Downloading PDF from Open Access source...")
-                        pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
-                        if pdf_bytes:
-                            with st.spinner("Running π-Index Assessment Pipeline..."):
-                                title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash = process_single_pdf(
-                                    pdf_bytes, f"DOI_Import_{doi_input.replace('/', '_')}.pdf", "", current_user
-                                )
-                                st.success(f"Assessment Complete! Final Score: {score:.1f}")
-                                st.json({"Title": title, "Author": author_name, "π-Index": score, "Logic Integrity": logic_integrity, "Evaluation Hash": eval_hash})
-                        else:
-                            st.error("Failed to securely download PDF. It may be paywalled or the host server denied access.")
-                    else:
-                        st.warning("No Open Access PDF is publicly available for this DOI.")
-                else:
-                    st.error("Failed to resolve DOI metadata.")
-        else:
-            st.warning("Please enter a valid DOI.")
-
-with tab3:
-    st.subheader("Epistemic Bubbles (Author & Portfolio Cartography)")
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT author_name FROM papers_assessment WHERE user_id=?", (current_user,))
-    user_authors = sorted(list(set([row[0].strip() for row in cursor.fetchall() if row[0] and row[0].strip()])))
+    cursor.execute("SELECT DISTINCT author_name FROM papers_assessment")
+    all_global_authors = sorted(list(set([row[0].strip() for row in cursor.fetchall() if row[0] and row[0].strip()])))
     
     selected_author = None
-    if user_authors:
-        filter_choice = st.selectbox("Filter Cartography by Primary Author:", ["All Authors"] + user_authors, key=f"author_filter_dropdown_{st.session_state['assessment_update_token']}")
+    if all_global_authors:
+        filter_choice = st.selectbox("Filter Global Cartography by Author:", ["All Authors"] + all_global_authors, key=f"author_filter_dropdown_{st.session_state['assessment_update_token']}")
         if filter_choice != "All Authors": selected_author = filter_choice
 
-    interactive_html, table_html = generate_interactive_bubble_chart(current_user, target_author=selected_author)
+    interactive_html, table_html = generate_interactive_bubble_chart(target_author=selected_author)
     if interactive_html:
         col1, col2 = st.columns([3, 1])
         with col1: components.html(interactive_html, height=620, scrolling=True)
         with col2: st.markdown("### Legend"); st.markdown(table_html, unsafe_allow_html=True)
     else: st.info("Awaiting sufficient data for this selection.")
 
-with tab4:
+with tab3:
     st.subheader("🚀 System Super Features")
     st.markdown("Use these advanced utilities to gain strategic insights into your evaluations.")
     
@@ -293,17 +296,17 @@ with tab4:
             st.success("Defense Strategy Generated Successfully.")
             st.markdown(rebuttal)
 
-with tab5:
+with tab4:
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used, eval_hash, block_hash, por_proof FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
+        cursor.execute("SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used, eval_hash, block_hash, por_proof, formulas_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
         epoch_data = cursor.fetchone()
     except Exception:
         epoch_data = None
     
     if epoch_data:
-        block_height, weights, model_used, eval_hash, block_hash, por_proof = epoch_data[0], epoch_data[1:9], epoch_data[9], epoch_data[10], epoch_data[11], epoch_data[12]
+        block_height, weights, model_used, eval_hash, block_hash, por_proof, formulas_hash = epoch_data[0], epoch_data[1:9], epoch_data[9], epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13]
         cursor.execute("SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE eval_hash != 'genesis'")
         total_papers_processed = cursor.fetchone()[0]
 
@@ -317,7 +320,8 @@ with tab5:
                 col.markdown(f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>", unsafe_allow_html=True)
                 
         st.markdown("### PoR Blockchain Explorer")
-        st.info(f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and sealed to block `{block_hash}`")
+        st.info(f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and sealed to block `{block_hash}`.")
+        st.caption(f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees grading mathematical constants cannot be tampered with).")
         
         explore_col1, explore_col2 = st.columns([3, 1])
         with explore_col1: search_query = st.text_input("Enter Document Evaluation Hash or Block Hash to verify ledger record...")
@@ -329,12 +333,12 @@ with tab5:
                 record = cursor.fetchone()
                 if record:
                     st.success("Valid Block Found on Ledger!")
-                    st.json({"Block Height": record[0], "Timestamp": record[9], "Model Used": record[14], "Validator Node": record[11], "Block Hash": record[12], "Evaluation Hash": record[13], "PoR Signature": record[15], "Weights": dict(zip([f"w{i+1}" for i in range(8)], record[1:9]))})
+                    st.json({"Block Height": record[0], "Timestamp": record[9], "Model Used": record[14], "Validator Node": record[11], "Block Hash": record[12], "Evaluation Hash": record[13], "PoR Signature": record[15], "Formulas Hash": record[16], "Weights": dict(zip([f"w{i+1}" for i in range(8)], record[1:9]))})
                 else: st.error("No block matching that signature was found on the ledger.")
             except:
                 st.error("Error reading database schema. Try refreshing the app.")
 
-with tab6:
+with tab5:
     st.subheader("π-Brain: Meta-Learning on the PoR Blockchain")
     conn = get_db_connection()
     cursor = conn.cursor()
