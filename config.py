@@ -16,4 +16,4 @@ os.makedirs(BASE_DIR, exist_ok=True)
 DB_PATH = os.path.join(BASE_DIR, 'pi_index_main.db')
 
 # Securely grab the API key
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "") 
