@@ -1086,7 +1086,8 @@ with tab2:
         
         for _, row in topic_counts.iterrows():
             node_size = max(30, 20 + (row['weight'] * 2.5))
-            net.add_node(n_id=row['topic'], label=row['topic'], title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
+            # Omit the label property entirely so that bubble labels are hidden while retaining hover tooltips
+            net.add_node(n_id=row['topic'], label="", title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
