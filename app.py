@@ -1127,7 +1127,7 @@ def process_single_pdf(
         if ex_title_row:
             ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
             if (provided_doi != "None" and provided_doi) or (
-                ex_norm_title == normalized_title and normalized_title != ""
+                ex_norm_title == normalized_title && normalized_title != ""
             ):
                 c_scores = ex_rest[:8]
                 piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
@@ -1488,9 +1488,15 @@ if "cancel_requested" not in st.session_state:
     st.session_state["cancel_requested"] = False
 
 if "orcid_id" not in st.session_state:
-    st.session_state.orcid_id = "0000-0000-0000-0000"
-    st.session_state.orcid_name = ""
-    st.session_state.is_authenticated = False
+    saved_orcid = st.query_params.get("orcid", "")
+    if saved_orcid and (re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", saved_orcid) or "did:" in saved_orcid):
+        st.session_state.orcid_id = saved_orcid
+        st.session_state.orcid_name = "Verified Decentralized Identity" if "did:" in saved_orcid else "Verified Researcher (Name Private)"
+        st.session_state.is_authenticated = True
+    else:
+        st.session_state.orcid_id = "0000-0000-0000-0000"
+        st.session_state.orcid_name = ""
+        st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
     st.sidebar.markdown(
@@ -1505,6 +1511,7 @@ if not st.session_state.is_authenticated:
     manual_orcid = st.sidebar.text_input(
         "Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX"
     )
+    remember_user = st.sidebar.checkbox("Remember me", value=True)
 
     if st.sidebar.button("Validate and Connect"):
         clean_orcid = manual_orcid.strip()
@@ -1518,12 +1525,15 @@ if not st.session_state.is_authenticated:
                 else:
                     is_valid, user_name = True, "Verified Researcher (Name Private)"
             if is_valid:
-                (
-                    st.session_state.orcid_id,
-                    st.session_state.orcid_name,
-                    st.session_state.is_authenticated,
-                ) = (clean_orcid, user_name, True)
+                st.session_state.orcid_id = clean_orcid
+                st.session_state.orcid_name = user_name
+                st.session_state.is_authenticated = True
                 st.session_state.inst_email = "None"
+                if remember_user:
+                    st.query_params["orcid"] = clean_orcid
+                else:
+                    if "orcid" in st.query_params:
+                        del st.query_params["orcid"]
                 st.rerun()
             else:
                 st.sidebar.error(user_name)
@@ -1536,7 +1546,11 @@ else:
         f" `{st.session_state.orcid_id}`"
     )
     if st.sidebar.button("Disconnect Session"):
-        st.session_state.is_authenticated, st.session_state.orcid_name = False, ""
+        st.session_state.is_authenticated = False
+        st.session_state.orcid_name = ""
+        st.session_state.orcid_id = "0000-0000-0000-0000"
+        if "orcid" in st.query_params:
+            del st.query_params["orcid"]
         st.rerun()
 
 current_user = st.session_state.orcid_id
