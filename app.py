@@ -167,10 +167,21 @@ def clean_author_name(author_str):
     cleaned = author_str.replace("[", "").replace("]", "").replace("'", "").replace('"', "")
     return cleaned.strip()
 
+def is_likely_institution(name):
+    if not name: return True
+    lower_name = name.lower()
+    inst_keywords = [
+        'university', 'univ.', 'college', 'institute', 'inst.', 'department', 'dept.', 
+        'laboratory', 'lab', 'hospital', 'center', 'centre', 'faculty', 'milano', 
+        'bicocca', 'polytechnic', 'academy', 'school', 'corporation', 'inc', 'llc', 
+        'ltd', 'foundation', 'fund', 'council', 'cnr', 'inps', 'iss', 'università'
+    ]
+    return any(kw in lower_name for kw in inst_keywords)
+
 def fetch_author_metrics(author_name):
     try:
         clean_name = clean_author_name(author_name)
-        if not clean_name or clean_name.lower() in ["unidentified", "unknown"]:
+        if not clean_name or clean_name.lower() in ["unidentified", "unknown"] or is_likely_institution(clean_name):
             return "N/A", "N/A"
         first_author = clean_name.split(',')[0].strip()
         url = f"https://api.openalex.org/authors?search={first_author}"
@@ -223,7 +234,7 @@ def get_author_piq_dict():
     author_piq = {}
     for authors_str, piq in data:
         clean_authors = clean_author_name(authors_str)
-        if not clean_authors or clean_authors.lower() in ["unidentified", "unknown", "research scholar"]: 
+        if not clean_authors or clean_authors.lower() in ["unidentified", "unknown", "research scholar"] or is_likely_institution(clean_authors): 
             continue
         alist = [a.strip() for a in clean_authors.split(',') if a.strip()]
         if not alist: continue
@@ -397,7 +408,6 @@ def download_pdf_from_url(pdf_url):
     if not pdf_url:
         return None
     
-    # Handle arXiv specific landing page conversion to direct PDF link
     if "arxiv.org/abs/" in pdf_url:
         pdf_url = pdf_url.replace("/abs/", "/pdf/") + ".pdf"
     elif "ncbi.nlm.nih.gov/pmc/articles/PMC" in pdf_url and not pdf_url.endswith(".pdf"):
@@ -491,7 +501,7 @@ def extract_unpublished_authors_fallback(text):
     for line in lines[1:12]:
         clean_line = re.sub(r'[\d\*\†\‡\§\¶\(\)]', '', line).strip()
         if re.match(r'^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+(\s*,\s*[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*$', clean_line):
-            if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal']):
+            if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal', 'bicocca', 'milano']):
                 return clean_line
     return "Unidentified"
 
@@ -503,8 +513,9 @@ CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles, alternative structural layouts, or resource-constrained syntax. Normalize linguistic style and evaluate strictly on scientific substance and methodological merit.
 
 CRITICAL INSTRUCTION FOR AUTHORS & TOPICS:
-- Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of names (no brackets, no quotes, no "et al."). If none, output "Unidentified".
-- Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered in this paper (e.g., "Structural Integrity", "Deep Learning", "Vascular Imaging", "Oncology"). Output as a comma-separated list of strings.
+- Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of HUMAN author names (no brackets, no quotes, no "et al."). 
+- NEVER output universities, departments, institutions, or organizational affiliations (e.g., "University of Milano-Bicocca", "Department of Physics") as authors. Output ONLY human author names. If none found, output "Unidentified".
+- Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered in this paper. Output as a comma-separated list of strings.
 
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
 Extract Variables (0.0 to 1.0): `H_novel`, `K_epistemic`, `zeta`, `I_existing`, `Sigma_error`, `mu_signal`, `rho_k`, `p_disciplines` (Array), `bridge_capacity`, `Utility_vector`, `decay_rate`, `q_fractional`, `D_open`, `J_code`, `P_FAIR`, `d_g_distance`, `R_xi`, `PR_xi`, `I_Fisher`, `KL_divergence`, `V_baseline`, `omega_data`, `sum_lambda_kappa`, `eta_steps`, `Lambda_Lyapunov`.
@@ -512,8 +523,8 @@ Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Ju
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
 Return ONLY a valid JSON object. Text: {text}""",
         f"""Perform a deep scientometric extraction on the provided manuscript/preprint text, applying linguistic equity normalization (ignoring stylistic/non-native variations). 
-Identify ALL contributing human authors listed in the title header or affiliations (clean comma-separated list, no brackets/quotes) and extract specific core scientific topics/subfields.
-Output JSON containing `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix (`Evidence_Strength`, `Conclusion_Reach`...) and an `Overall_Confidence` metric. Ensure strictly constrained float values.
+Identify ALL contributing HUMAN authors listed in the title header or affiliations (clean comma-separated list, no brackets/quotes). Exclude any universities, colleges, or research institutions.
+Output JSON containing `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix and an `Overall_Confidence` metric.
 Text: {text}"""
     ]
     
@@ -610,11 +621,14 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     extracted_author = clean_author_name(str(raw_data.get("Extracted_Author", "")))
     extracted_topics = str(raw_data.get("Extracted_Topics", "Core Research Domain")).strip()
     
-    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
-        if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
+    # Institution filtering and robust fallback check
+    if is_likely_institution(extracted_author) or not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
+        if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"] and not is_likely_institution(pdf_meta_author):
             extracted_author = clean_author_name(pdf_meta_author.strip())
         else:
             extracted_author = clean_author_name(extract_unpublished_authors_fallback(full_text))
+            if is_likely_institution(extracted_author):
+                extracted_author = "Unidentified"
 
     if isinstance(extracted_topics, str):
         subfields = [s.strip().title() for s in extracted_topics.split(',') if s.strip()]
@@ -1135,7 +1149,7 @@ with tab2:
         if row[0]:
             cleaned = clean_author_name(row[0])
             for a in cleaned.split(','):
-                if a.strip(): all_global_authors.append(a.strip())
+                if a.strip() and not is_likely_institution(a.strip()): all_global_authors.append(a.strip())
     conn.close()
     all_global_authors = sorted(list(set(all_global_authors)))
     
