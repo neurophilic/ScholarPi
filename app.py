@@ -1317,7 +1317,7 @@ with tab4:
         current_block_count = len(historical_rows)
         lookback_window = max(1, min(5, current_block_count - 1))
         
-       if 'last_trained_blocks' not in st.session_state or st.session_state.last_trained_blocks != current_block_count:
+        if 'last_trained_blocks' not in st.session_state or st.session_state.last_trained_blocks != current_block_count:
             weight_data = np.array(historical_rows, dtype=np.float32)
             dataset = PiBlockchainDataset(weight_data, lookback_window)
             dataloader = DataLoader(dataset, batch_size=min(4, len(dataset)), shuffle=False)
