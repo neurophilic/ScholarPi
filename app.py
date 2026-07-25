@@ -44,7 +44,7 @@ MAX_TEXT_TOKENS = 12000
 EPOCH_BLOCK_SIZE = 1
 
 WEB3_PROVIDER_URI = os.getenv(
-    "WEB3_PROVIDER_URI", "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID"
+    "WEB3_PROVIDER_URI", "https://mainnet.infura.io/v3/330b2fcc6352474ba4b2f60aa4e9ec7a"
 )
 ETH_ADMIN_PRIVATE_KEY = os.getenv(
     "ETH_ADMIN_PRIVATE_KEY",
