@@ -134,22 +134,16 @@ def restore_state_from_web3():
     except Exception as e:
         print(f"Failed to restore state from Web3: {e}")
 
-def backup_state_to_web3(ui_feedback=False):
-    """Zips the local state, pins to IPFS via Pinata, and updates the Sepolia Ethereum registry."""
+def backup_state_to_web3():
+    """Zips the local state, pins to IPFS via Pinata, and updates the Sepolia Ethereum registry automatically."""
     if not w3.is_connected():
-        msg = "Backup Error: Web3 is not connected. Check RPC URI."
-        print(msg)
-        if ui_feedback: st.error(msg)
+        print("Backup Error: Web3 is not connected. Check RPC URI.")
         return False
     if not PINATA_API_KEY:
-        msg = "Backup Error: Pinata API key missing."
-        print(msg)
-        if ui_feedback: st.error(msg)
+        print("Backup Error: Pinata API key missing.")
         return False
     if not REGISTRY_CONTRACT_ADDRESS:
-        msg = "Backup Error: Registry Contract Address is missing."
-        print(msg)
-        if ui_feedback: st.error(msg)
+        print("Backup Error: Registry Contract Address is missing.")
         return False
         
     try:
@@ -172,20 +166,13 @@ def backup_state_to_web3(ui_feedback=False):
             os.remove(zip_path)
         
         if not cid:
-            msg = f"Backup Error: Failed to get CID from Pinata. {res.text}"
-            print(msg)
-            if ui_feedback: st.error(msg)
+            print(f"Backup Error: Failed to get CID from Pinata. {res.text}")
             return False
-
-        if ui_feedback:
-            st.info(f"📁 Ledger zipped and pinned to IPFS! CID: `{cid}`. Securing Hash to Ethereum Blockchain...")
 
         abi = '[{"inputs":[{"internalType":"string","name":"_cid","type":"string"}],"name":"updateCID","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
         
         if len(REGISTRY_CONTRACT_ADDRESS) != 42 or not REGISTRY_CONTRACT_ADDRESS.startswith("0x"):
-            msg = "Backup Error: Invalid Registry Contract Address format."
-            print(msg)
-            if ui_feedback: st.error(msg)
+            print("Backup Error: Invalid Registry Contract Address format.")
             return False
             
         contract = w3.eth.contract(address=w3.to_checksum_address(REGISTRY_CONTRACT_ADDRESS), abi=json.loads(abi))
@@ -193,7 +180,6 @@ def backup_state_to_web3(ui_feedback=False):
         
         estimated_gas = contract.functions.updateCID(cid).estimate_gas({"from": account.address})
         
-        # FIXED: Using legacy gasPrice parameter to avoid EIP-1559 fee discrepancies on testnet
         tx = contract.functions.updateCID(cid).build_transaction({
             "from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address),
@@ -202,16 +188,19 @@ def backup_state_to_web3(ui_feedback=False):
         })
         
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=ETH_ADMIN_PRIVATE_KEY)
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         
-        msg = f"Backup Success! Tx Hash: {tx_hash.hex()}"
-        print(msg)
-        if ui_feedback: st.success(msg)
+        try:
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+            print(f"Automatic Backup Success! Tx Hash: {tx_hash.hex()}")
+        except Exception as send_err:
+            if "already known" in str(send_err):
+                print("Notice: Transaction is already known/pending in the mempool.")
+                return True
+            raise send_err
+            
         return True
     except Exception as e:
-        msg = f"Failed to backup state to Web3: {e}"
-        print(msg)
-        if ui_feedback: st.error(msg)
+        print(f"Failed to backup state to Web3: {e}")
         return False
 
 if "state_restored" not in st.session_state:
@@ -3161,16 +3150,6 @@ with tab3:
 
     st.markdown("---")
     st.markdown(
-        "### 📤 Manual IPFS Ledger Backup & Sync "
-        + tooltip("Zip the local SQLite database and Neural Network weights, pin to IPFS via Pinata, and register the CID on Sepolia Ethereum.")
-        , unsafe_allow_html=True
-    )
-    if st.button("Save Ledger Data to Pinata"):
-        with st.spinner("Zipping data and securely uploading to Pinata..."):
-            backup_state_to_web3(ui_feedback=True)
-
-    st.markdown("---")
-    st.markdown(
         "### DeSci Peer Attestation & Stake-Weighted Validation "
         + tooltip(
             "High-reputation researchers can stake a fraction of their piQ to"
@@ -3394,7 +3373,7 @@ with tab4:
         st.session_state.last_trained_blocks = current_block_count
         
         torch.save(model.state_dict(), weights_path)
-        backup_state_to_web3(ui_feedback=False)
+        backup_state_to_web3()
 
     else:
       st.info(
