@@ -800,6 +800,15 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of
 with tab1:
     st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and tick OpenAlex papers all in one place."), unsafe_allow_html=True)
     
+    selected_uploaded_files = []
+    uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
+    if uploaded_files:
+        st.markdown("**Tick local files to include:**")
+        for i, file in enumerate(uploaded_files):
+            if st.checkbox(f"📄 Local File: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
+                selected_uploaded_files.append(file)
+
+    st.markdown("")
     with st.expander("More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)"):
         research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", key=f"research_scope_input_{st.session_state['reset_token']}")
         
@@ -879,15 +888,6 @@ with tab1:
             if st.button("Show More OpenAlex Results"):
                 st.session_state.alex_visible_count += 10
                 st.rerun()
-
-    st.markdown("---")
-    selected_uploaded_files = []
-    uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
-    if uploaded_files:
-        st.markdown("**Tick local files to include:**")
-        for i, file in enumerate(uploaded_files):
-            if st.checkbox(f"📄 Local File: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
-                selected_uploaded_files.append(file)
 
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
@@ -1039,7 +1039,7 @@ with tab1:
                         }
                         st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else: 
-                        st.error(f"Could not directly download PDF for DOI '{doi_input}'. Publishers often restrict direct binary access.")
+                        st.error(f"Could not directly download PDF for DOI '{doi_input}. Publishers often restrict direct binary access.")
                         clean_d = doi_input.replace('https://doi.org/', '').replace('doi.org/', '').strip()
                         st.markdown(f"🌐 **DOI Link:** [https://doi.org/{clean_d}](https://doi.org/{clean_d})")
                         st.info("Tip: Access the DOI link to download the PDF manually and upload it locally.")
