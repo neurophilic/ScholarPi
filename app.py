@@ -414,9 +414,6 @@ with tab2:
                                 st.error("Failed to download PDF from ArXiv.")
 
 # ==================== TAB 3: SCOPE CARTOGRAPHY ====================
-with tab2:
-    pass  # Placeholder to avoid syntax issues; actual tab3 content below
-
 with tab3:
     st.subheader("🗺️ Epistemic Bubbles (Author & Portfolio Cartography)")
     conn = get_db_connection()
