@@ -475,9 +475,9 @@ def evaluate_pdf_text_ensemble(text, model, text_limit):
 CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles, alternative structural layouts, or resource-constrained syntax. Normalize linguistic style and evaluate strictly on scientific substance and methodological merit.
 
-CRITICAL INSTRUCTION FOR AUTHORS:
-- Scan the first 2 pages carefully for human author names and extract the precise, specific scientific subfields and topics discussed in the paper. Output as a comma-separated list of topics/subfields.
-- For author names, output as a comma-separated list (no "et al."). If none, output "Unidentified".
+CRITICAL INSTRUCTION FOR AUTHORS & TOPICS:
+- Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of names (no brackets, no quotes, no "et al."). If none, output "Unidentified".
+- Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered in this paper (e.g., "Structural Integrity", "Deep Learning", "Vascular Imaging", "Oncology"). Output as a comma-separated list of strings.
 
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
 Extract Variables (0.0 to 1.0): `H_novel`, `K_epistemic`, `zeta`, `I_existing`, `Sigma_error`, `mu_signal`, `rho_k`, `p_disciplines` (Array), `bridge_capacity`, `Utility_vector`, `decay_rate`, `q_fractional`, `D_open`, `J_code`, `P_FAIR`, `d_g_distance`, `R_xi`, `PR_xi`, `I_Fisher`, `KL_divergence`, `V_baseline`, `omega_data`, `sum_lambda_kappa`, `eta_steps`, `Lambda_Lyapunov`.
@@ -485,7 +485,7 @@ Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Ju
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
 Return ONLY a valid JSON object. Text: {text}""",
         f"""Perform a deep scientometric extraction on the provided manuscript/preprint text, applying linguistic equity normalization (ignoring stylistic/non-native variations). 
-Identify ALL contributing human authors listed in the title header or affiliations (no "et al.") and parse the precise specific scientific topics and subfields of the paper.
+Identify ALL contributing human authors listed in the title header or affiliations (clean comma-separated list, no brackets/quotes) and extract specific core scientific topics/subfields.
 Output JSON containing `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix (`Evidence_Strength`, `Conclusion_Reach`...) and an `Overall_Confidence` metric. Ensure strictly constrained float values.
 Text: {text}"""
     ]
@@ -505,7 +505,7 @@ Text: {text}"""
                 return sub_parsed
     except Exception:
         pass
-    return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Extracted_Topics": "General Science", "Overall_Confidence": 0.0}
+    return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Extracted_Topics": "Core Research Domain", "Overall_Confidence": 0.0}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None"):
     if file_bytes is None or len(file_bytes) == 0:
@@ -547,7 +547,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         weight_res = cursor.fetchone()
         used_weights = weight_res if weight_res else [1.0] * 8
         
-        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
+        return title, clean_author_name(author_name), score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
     gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(full_text, FALLBACK_MODEL)
 
@@ -565,30 +565,30 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
          
     if not isinstance(raw_data, dict):
-        raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Extracted_Topics": "General Science", "Overall_Confidence": 0.0}
+        raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Extracted_Topics": "Core Research Domain", "Overall_Confidence": 0.0}
 
     confidence = raw_data.get("Overall_Confidence", 1.0)
     if confidence < 0.50:
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-         return "Indeterminate Format (Upload JSON Manifest)", raw_data.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
+         return "Indeterminate Format (Upload JSON Manifest)", clean_author_name(raw_data.get("Extracted_Author", "Unidentified")), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
 
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = clean_author_name(str(raw_data.get("Extracted_Author", "")))
-    extracted_topics = str(raw_data.get("Extracted_Topics", "General Science")).strip()
+    extracted_topics = str(raw_data.get("Extracted_Topics", "Core Research Domain")).strip()
     
     if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
         if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
-            extracted_author = pdf_meta_author.strip()
+            extracted_author = clean_author_name(pdf_meta_author.strip())
         else:
-            extracted_author = extract_unpublished_authors_fallback(full_text)
+            extracted_author = clean_author_name(extract_unpublished_authors_fallback(full_text))
 
     if isinstance(extracted_topics, str):
-        subfields = [s.strip() for s in extracted_topics.split(',') if s.strip()]
+        subfields = [s.strip().title() for s in extracted_topics.split(',') if s.strip()]
     elif isinstance(extracted_topics, list):
-        subfields = [str(s).strip() for s in extracted_topics if str(s).strip()]
+        subfields = [str(s).strip().title() for s in extracted_topics if str(s).strip()]
     else:
-        subfields = ["Core Research Topic"]
-    if not subfields: subfields = ["Core Research Topic"]
+        subfields = ["Core Research Domain"]
+    if not subfields: subfields = ["Core Research Domain"]
     fields = [subfields[0]]
 
     # Canonical Deduplication Check (by DOI or Normalized Title + Author)
@@ -676,7 +676,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
     conn.commit()
     
     return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
@@ -823,7 +823,7 @@ with tab1:
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
         st.markdown("**Tick OpenAlex papers to include:**")
         for idx, p in enumerate(st.session_state['alex_search_results']):
-            if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
+            if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
                 selected_alex_papers.append(p)
 
     st.markdown("---")
@@ -936,7 +936,7 @@ with tab1:
                             pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
                         )
                         eval_record = {
-                            'title': title, 'author_name': author_name, 'score': score, 
+                            'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
                             'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
                             'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
                             'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
@@ -960,7 +960,7 @@ with tab1:
                             pdf_bytes, fname, research_scope, current_user, current_book, current_email, doi_input.strip()
                         )
                         eval_record = {
-                            'title': title, 'author_name': author_name, 'score': score, 
+                            'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
                             'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
                             'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
                             'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
@@ -980,7 +980,7 @@ with tab1:
                         file_bytes, file.name, research_scope, current_user, current_book, current_email, "None"
                     )
                     eval_record = {
-                        'title': title, 'author_name': author_name, 'score': score, 
+                        'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
                         'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
                         'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
                         'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
@@ -1096,7 +1096,7 @@ with tab2:
             except: continue
                 
         if not topic_aggregates: 
-            topic_aggregates['Core Scientific Domain'] = {'weight_sum': 50.0, 'frequency': 1}
+            topic_aggregates['Core Research Domain'] = {'weight_sum': 50.0, 'frequency': 1}
         
         unique_topics = list(topic_aggregates.keys())
         def get_color(i, n):
@@ -1113,7 +1113,7 @@ with tab2:
             avg_weight = metrics['weight_sum'] / metrics['frequency']
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
-            # Completely remove text label under/on the bubble
+            # Completely remove text label under/on the bubble while preserving hover tooltips
             net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
@@ -1123,7 +1123,7 @@ with tab2:
         html_string = html_string.replace('mynetwork', f"pi_network_{int(time.time() * 1000)}")
 
         table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
-        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 20%; text-align: center;'>Color</th><th>Topic</th><th style='text-align: center;'>Frequency</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
+        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 20%; text-align: center;'>Color</th><th>Scientific Topic</th><th style='text-align: center;'>Frequency</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
         for topic, metrics in sorted(topic_aggregates.items(), key=lambda x: x[1]['frequency'], reverse=True):
             avg_w = metrics['weight_sum'] / metrics['frequency']
             table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[topic]};'></div></td><td><b>{topic}</b></td><td style='text-align: center;'>{metrics['frequency']}</td><td style='text-align: center;'>{avg_w:.1f}</td></tr>"
@@ -1136,7 +1136,7 @@ with tab2:
         col1, col2 = st.columns([2, 1])
         with col1: components.html(interactive_html, height=620, scrolling=True)
         with col2: 
-            st.markdown("### Legend & Frequency Metrics " + tooltip("Lists specific paper topics, assessed frequencies, and calculated score weights."), unsafe_allow_html=True)
+            st.markdown("### Legend & Frequency Metrics " + tooltip("Lists specific scientific paper topics, assessed frequencies, and calculated score weights."), unsafe_allow_html=True)
             st.markdown(table_html, unsafe_allow_html=True)
     else: st.info("Awaiting sufficient data for this selection.")
 
@@ -1171,7 +1171,7 @@ with tab2:
                 cursor.execute("SELECT author_name, title, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
                 author_papers = cursor.fetchall()
                 if author_papers:
-                    st.success(f"Found {len(author_papers)} paper records for author matching '{search_query}' పాత్ర.")
+                    st.success(f"Found {len(author_papers)} paper records for author matching '{search_query}'.")
                     formatted_auth_rows = []
                     for r in author_papers:
                         formatted_auth_rows.append((clean_author_name(r[0]), r[1], r[2], r[3], r[4], r[5], r[6]))
