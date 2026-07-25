@@ -93,7 +93,8 @@ def enforce_database_schema():
         "gaming_penalty": "REAL DEFAULT 0.0",
         "h_index": "TEXT DEFAULT 'N/A'",
         "i10_index": "TEXT DEFAULT 'N/A'",
-        "reproducibility_score": "REAL DEFAULT 0.0"
+        "reproducibility_score": "REAL DEFAULT 0.0",
+        "doi": "TEXT DEFAULT 'None'"
     }
     
     target_columns_weights = {
@@ -491,7 +492,7 @@ Text: {text}"""
         pass
     return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
 
-def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None"):
+def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None"):
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
         return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", 0.0, False
@@ -500,6 +501,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     conn = get_db_connection()
     cursor = conn.cursor()
     
+    # 1. Check exact file hash cache
     cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index, reproducibility_score FROM papers_assessment WHERE eval_hash=?", (file_hash,))
     cached_result = cursor.fetchone()
     
@@ -556,6 +558,44 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
          return "Indeterminate Format (Upload JSON Manifest)", raw_data.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
 
+    title = raw_data.get("Extracted_Title", filename)
+    extracted_author = str(raw_data.get("Extracted_Author", "")).strip()
+    
+    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
+        if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
+            extracted_author = pdf_meta_author.strip()
+        else:
+            extracted_author = extract_unpublished_authors_fallback(full_text)
+
+    # 2. Canonical Deduplication Check (by DOI or Normalized Title + Author)
+    normalized_title = re.sub(r'[^a-z0-9]', '', title.lower())
+    cursor.execute("SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index, reproducibility_score FROM papers_assessment WHERE doi=? OR author_name=?", (provided_doi, extracted_author))
+    existing_records = cursor.fetchall()
+    
+    for rec_row in existing_records:
+        ex_hash, ex_score, ex_logic, *ex_rest = rec_row
+        # Check title similarity or exact match
+        cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
+        ex_title_row = cursor.fetchone()
+        if ex_title_row:
+            ex_norm_title = re.sub(r'[^a-z0-9]', '', ex_title_row[0].lower())
+            if (provided_doi != "None" and provided_doi) or (ex_norm_title == normalized_title and normalized_title != ""):
+                # Found existing canonical paper! Return cached/existing values without duplicating.
+                fields = ["Unspecified Domain"]
+                subfields = ["Unspecified Sub-domain"]
+                c_scores = ex_rest[:8]
+                piq_minted, tx_hash, zk_proof, h_index, i10_index, repro_score = ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13]
+                drift = calculate_complex_drift(scope_alignment, c_scores) if scope.strip() else "N/A"
+                rec_spec = get_recommendation_spectrum(ex_score, drift) if scope.strip() else "N/A"
+                scores_dict = {
+                    "C1_Originality": c_scores[0], "C2_Methodological_Rigor": c_scores[1], "C3_Interdisciplinary": c_scores[2], "C4_Societal_Impact": c_scores[3],
+                    "C5_Open_Science_Potential": c_scores[4], "C6_Literature_Integration": c_scores[5], "C7_Empirical_Density": c_scores[6], "C8_Future_Actionability": c_scores[7]
+                }
+                cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights WHERE eval_hash=?", (ex_hash,))
+                weight_res = cursor.fetchone()
+                used_weights = weight_res if weight_res else [1.0] * 8
+                return title, extracted_author, ex_score, ex_logic, drift, rec_spec, fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
+
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
     conn.commit()
     cursor.execute("SELECT count FROM global_eval_counter")
@@ -571,15 +611,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     scores = [scores_dict[k] for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
     
     logic_integrity = compute_logical_integrity(raw_data.get("logic_analysis", {}), gaming_penalty)
-
-    title = raw_data.get("Extracted_Title", filename)
-    extracted_author = str(raw_data.get("Extracted_Author", "")).strip()
-    
-    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
-        if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
-            extracted_author = pdf_meta_author.strip()
-        else:
-            extracted_author = extract_unpublished_authors_fallback(full_text)
 
     fields, subfields = raw_data.get("fields", ["Unspecified Domain"]), raw_data.get("subfields", ["Unspecified Sub-domain"])
     
@@ -626,8 +657,8 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
-    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score))
+    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
     conn.commit()
     
     return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_to_mint, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
@@ -878,6 +909,7 @@ with tab1:
                     status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
                     pdf_bytes = None
                     fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                    p_doi = p.get('doi', 'None')
                     
                     if p.get('pdf_url'):
                         pdf_bytes = download_pdf_from_url(p['pdf_url'])
@@ -889,7 +921,7 @@ with tab1:
 
                     if pdf_bytes:
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, fname, research_scope, current_user, current_book, current_email
+                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
                         )
                         eval_record = {
                             'title': title, 'author_name': author_name, 'score': score, 
@@ -913,7 +945,7 @@ with tab1:
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, fname, research_scope, current_user, current_book, current_email
+                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, doi_input.strip()
                         )
                         eval_record = {
                             'title': title, 'author_name': author_name, 'score': score, 
@@ -933,7 +965,7 @@ with tab1:
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
                     file_bytes = file.read()
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                        file_bytes, file.name, research_scope, current_user, current_book, current_email
+                        file_bytes, file.name, research_scope, current_user, current_book, current_email, "None"
                     )
                     eval_record = {
                         'title': title, 'author_name': author_name, 'score': score, 
