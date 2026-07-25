@@ -740,23 +740,24 @@ with tab1:
         st.write("")
         search_alex_btn = st.button("Search OpenAlex Papers")
 
-    selected_alex_paper = None
     if search_alex_btn and alex_topic_input.strip():
         with st.spinner(f"Querying OpenAlex for papers on '{alex_topic_input}'..."):
             alex_results = search_openalex_topics(alex_topic_input.strip(), limit=5)
             if alex_results:
                 st.session_state['alex_search_results'] = alex_results
+                for idx in range(len(alex_results)):
+                    st.session_state[f"alex_chk_{idx}"] = False
                 st.success(f"Found {len(alex_results)} Open Access papers.")
             else:
                 st.warning("No Open Access papers found matching this topic.")
 
+    selected_alex_papers = []
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
-        alex_options = {"-- Select a paper to assess --": None}
-        for p in st.session_state['alex_search_results']:
-            alex_options[f"{p['title']} ({p['authors']})"] = p
-            
-        chosen_alex_label = st.selectbox("Select a paper discovered via OpenAlex to rate:", list(alex_options.keys()))
-        selected_alex_paper = alex_options[chosen_alex_label]
+        st.markdown("**Select OpenAlex papers to assess (tick checkboxes):**")
+        for idx, p in enumerate(st.session_state['alex_search_results']):
+            is_checked = st.checkbox(f"{p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}")
+            if is_checked:
+                selected_alex_papers.append(p)
 
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
 
@@ -824,34 +825,35 @@ with tab1:
     if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
         if not stake_amount:
             st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
-        elif not uploaded_files and not doi_input.strip() and not selected_alex_paper:
-            st.warning("Please upload a PDF, enter a DOI, or select a paper from the OpenAlex Topic search.")
+        elif not uploaded_files and not doi_input.strip() and not selected_alex_papers:
+            st.warning("Please upload a PDF, enter a DOI, or tick at least one paper from the OpenAlex Topic search.")
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
-            if selected_alex_paper:
-                status_text.text(f"Fetching OpenAlex paper: {selected_alex_paper['title']}...")
-                pdf_bytes = None
-                fname = f"OpenAlex_{selected_alex_paper['title'][:20]}.pdf"
-                
-                if selected_alex_paper.get('doi'):
-                    status_text.text(f"Routing OpenAlex DOI through Unpaywall for robust direct PDF extraction...")
-                    metadata = fetch_doi_metadata(selected_alex_paper['doi'])
-                    if metadata and metadata.get('pdf_url'):
-                        pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
-                
-                if not pdf_bytes and selected_alex_paper.get('pdf_url'):
-                    status_text.text(f"Falling back to OpenAlex repository link...")
-                    pdf_bytes = download_pdf_from_url(selected_alex_paper['pdf_url'])
+            # Process Ticked OpenAlex Papers
+            if selected_alex_papers:
+                for p in selected_alex_papers:
+                    status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
+                    pdf_bytes = None
+                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                    
+                    if p.get('doi'):
+                        metadata = fetch_doi_metadata(p['doi'])
+                        if metadata and metadata.get('pdf_url'):
+                            pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+                    
+                    if not pdf_bytes and p.get('pdf_url'):
+                        pdf_bytes = download_pdf_from_url(p['pdf_url'])
 
-                if pdf_bytes:
-                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                        pdf_bytes, fname, research_scope, current_user, current_book, current_email
-                    )
-                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, fname)
-                else:
-                    st.error("Failed to securely download PDF for selected OpenAlex paper.")
+                    if pdf_bytes:
+                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                            pdf_bytes, fname, research_scope, current_user, current_book, current_email
+                        )
+                        render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, fname)
+                    else:
+                        st.warning(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
 
+            # Process DOI Input
             if doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
                 metadata = fetch_doi_metadata(doi_input)
@@ -867,6 +869,7 @@ with tab1:
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
+            # Process Uploaded Local Files
             if uploaded_files:
                 for i, file in enumerate(uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(uploaded_files)}: {file.name}...")
@@ -876,6 +879,11 @@ with tab1:
                     render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, file.name)
                     progress_bar.progress((i + 1) / len(uploaded_files))
             
+            # Clear ticked OpenAlex checkboxes after assessment runs
+            if 'alex_search_results' in st.session_state:
+                for idx in range(len(st.session_state['alex_search_results'])):
+                    st.session_state[f"alex_chk_{idx}"] = False
+
             status_text.success("Pipeline processing complete.")
             
     st.markdown("---")
