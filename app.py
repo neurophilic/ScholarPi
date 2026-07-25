@@ -113,6 +113,10 @@ def enforce_database_schema():
   cursor.execute("""CREATE TABLE IF NOT EXISTS desci_attestations 
                     (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)""")
 
+  # Tracking table for auto-assessed IP addresses to trigger background queries seamlessly
+  cursor.execute("""CREATE TABLE IF NOT EXISTS auto_ip_tracking 
+                    (ip_address TEXT PRIMARY KEY, first_seen DATETIME)""")
+
   cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
   if cursor.fetchone()[0] == 0:
     cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
@@ -340,25 +344,40 @@ def search_openalex_topics(topic_query, limit=100):
   return []
 
 
-def fetch_all_fields_science_papers(limit_per_field=5):
-  """Automatically queries OpenAlex across all major fields of science to harvest fresh articles."""
-  major_fields = [
-      "Computer Science",
-      "Medicine",
-      "Physics and Astronomy",
-      "Biology",
-      "Chemistry",
-      "Environmental Science",
-      "Economics",
-      "Mathematics",
-      "Materials Science",
-      "Neuroscience",
+def fetch_trendy_automated_science_papers(limit_per_topic=2):
+  """Automatically selects sciences ranked from most trendy to less trendy and queries OpenAlex for fresh background articles."""
+  # Ordered from cutting-edge high-trend sciences down to foundational/mature domains
+  trending_science_topics = [
+      "Perovskite Solar Cells",
+      "Targeted Sodium Channel Drugs",
+      "Artificial Intelligence Large Language Models",
+      "Quantum Computing Architecture",
+      "CRISPR Gene Editing Therapeutics",
+      "Solid-State Battery Electrolytes",
+      "Single-Cell Multi-Omics",
+      "Graph Neural Networks",
+      "Atmospheric Carbon Capture",
+      "Neuro-Vascular Interfaces",
+      "Synthetic Biology Genomics",
+      "Metabolic Engineering",
+      "Cellular Immunotherapy",
+      "Quantum Cryptography",
+      "Autonomous Robotic Labs",
+      "Molecular Dynamics Simulations",
+      "Advanced Catalysis Chemistry",
+      "Microbiome Therapeutics",
+      "Gravitational Wave Astrophysics",
+      "Classical Fluid Dynamics",
   ]
+  # Randomize or dynamically prioritize to maximize precision coverage
+  chosen_topics = random.sample(
+      trending_science_topics, min(5, len(trending_science_topics))
+  )
   all_harvested = []
-  for field in major_fields:
+  for topic in chosen_topics:
     try:
-      url = f"https://api.openalex.org/works?search={requests.utils.quote(field)}&filter=is_oa:true&per_page={limit_per_field}"
-      res = requests.get(url, timeout=8)
+      url = f"https://api.openalex.org/works?search={requests.utils.quote(topic)}&filter=is_oa:true&per_page={limit_per_topic}"
+      res = requests.get(url, timeout=6)
       if res.status_code == 200:
         results = res.json().get("results", [])
         for item in results:
@@ -379,7 +398,7 @@ def fetch_all_fields_science_papers(limit_per_field=5):
           )
           if pdf_url or doi:
             all_harvested.append({
-                "title": f"[{field}] {title}",
+                "title": f"[Trend: {topic}] {title}",
                 "doi": doi,
                 "pdf_url": pdf_url,
                 "authors": authors_str,
@@ -1541,6 +1560,50 @@ if "initialized" not in st.session_state:
   st.session_state["initialized"] = True
   st.toast("Application initialized successfully.", icon="🚀")
 
+# Automatic IP detection and silent backend notification dispatch
+client_ip = "127.0.0.1"
+try:
+  headers = st.context.headers
+  client_ip = (
+      headers.get("X-Forwarded-For")
+      or headers.get("X-Real-Ip")
+      or "127.0.0.1"
+  )
+  if "," in client_ip:
+    client_ip = client_ip.split(",")[0].strip()
+except Exception:
+  pass
+
+# Check database if this IP has been seen before; if new, register and trigger background alert
+conn_ip = get_db_connection()
+cur_ip = conn_ip.cursor()
+cur_ip.execute(
+    "SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,)
+)
+ip_exists = cur_ip.fetchone()
+if not ip_exists:
+  cur_ip.execute(
+      "INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)",
+      (client_ip, datetime.now().isoformat()),
+  )
+  conn_ip.commit()
+  # Automatically send notification email in the background to author
+  try:
+    requests.post(
+        "https://formsubmit.co/ajax/a.vafadaryengejeh@campus.unimib.it",
+        data={
+            "subject": f"New User IP Connected to Pi-Index Engine: {client_ip}",
+            "message": (
+                f"A new user IP address ({client_ip}) has accessed the"
+                " application at {datetime.now().isoformat()}."
+            ),
+        },
+        timeout=3,
+    )
+  except Exception:
+    pass
+conn_ip.close()
+
 # Query total analyzed papers count from database for corner metric badge
 conn_cnt = get_db_connection()
 cur_cnt = conn_cnt.cursor()
@@ -1548,7 +1611,7 @@ cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
 total_analyzed_count = cur_cnt.fetchone()[0]
 conn_cnt.close()
 
-# Display total analyzed count badge in top-right corner using markdown/html injection
+# Display total analyzed count badge in top-right corner
 st.markdown(
     f"""
     <div style="position: absolute; top: 15px; right: 20px; background-color: #2c3e50; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 999;">
@@ -1557,25 +1620,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-st.info(
-    "📬 **Notice:** If you are using this application, please send a notification"
-    " email to the author at **a.vafadaryengejeh@campus.unimib.it**.",
-    icon="ℹ️",
-)
-
-if os.path.exists(DB_PATH):
-  with open(DB_PATH, "rb") as f:
-    st.sidebar.download_button(
-        label="📥 Download Local DB Backup",
-        data=f,
-        file_name="pi_index_main.db",
-        mime="application/x-sqlite3",
-        help=(
-            "Downloads the permanent SQLite database file directly to your"
-            " local machine."
-        ),
-    )
 
 if "assessment_update_token" not in st.session_state:
   st.session_state["assessment_update_token"] = time.time()
@@ -1812,11 +1856,11 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 with tab1:
   st.markdown(
-      "### Unified Multi-Source Intake & Global Field Discovery"
+      "### Unified Multi-Source Intake & Trendy Science Discovery"
       + tooltip(
           "Define your scope, upload local files, or automatically query"
-          " OpenAlex across all fields of science to maximize global"
-          " precision."
+          " OpenAlex across scientifically trending domains ranked from"
+          " cutting-edge to foundational to maximize precision."
       ),
       unsafe_allow_html=True,
   )
@@ -1868,16 +1912,18 @@ with tab1:
 
     st.markdown("")
     st.markdown(
-        "**3. Global Multi-Field Science Query (OpenAlex Automated Harvester)**"
+        "**3. Trendy Science Discovery Engine (Randomized Trend-to-Foundation"
+        " Harvester)**"
     )
-    auto_harvest_all = st.checkbox(
-        "Automatically query OpenAlex across all major fields of science"
-        " (Computer Science, Medicine, Physics, Biology, Chemistry, etc.)",
+    auto_harvest_trendy = st.checkbox(
+        "Automatically query OpenAlex across sciences ranked from most trendy"
+        " to less trendy fields",
         value=False,
-        key=f"auto_harvest_{st.session_state['reset_token']}",
+        key=f"auto_harvest_trendy_{st.session_state['reset_token']}",
         help=(
-            "Fetches recent open access articles across all primary scientific"
-            " domains simultaneously to maximize evaluation precision."
+            "Randomly selects from cutting-edge high-trend sciences down to"
+            " foundational fields to harvest fresh articles and boost global"
+            " evaluation precision."
         ),
     )
 
@@ -1893,10 +1939,12 @@ with tab1:
 
   if "search_alex_btn" in locals() and search_alex_btn:
     st.session_state.alex_visible_count = 10
-    with st.spinner("Querying OpenAlex databases..."):
+    with st.spinner(
+        "Querying OpenAlex across trendy-to-foundational science domains..."
+    ):
       alex_results = []
-      if auto_harvest_all:
-        alex_results = fetch_all_fields_science_papers(limit_per_field=3)
+      if auto_harvest_trendy:
+        alex_results = fetch_trendy_automated_science_papers(limit_per_topic=2)
       if alex_topic_input.strip():
         custom_res = search_openalex_topics(alex_topic_input.strip(), limit=50)
         alex_results.extend(custom_res)
@@ -1905,7 +1953,7 @@ with tab1:
         st.session_state["alex_search_results"] = alex_results
         st.success(
             f"Successfully harvested {len(alex_results)} papers from OpenAlex"
-            " across fields."
+            " across trending sciences."
         )
       else:
         st.warning("No Open Access papers found matching criteria.")
