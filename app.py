@@ -184,7 +184,7 @@ def search_openalex_topics(topic_query, limit=5):
                 
                 authorships = item.get('authorships', [])
                 authors_list = [a.get('author', {}).get('display_name', '') for a in authorships]
-                authors_str = ", ".join([a for a in authors_list if a]) if authors_list else "Unidentified"
+                authors_str = ", ".join([a.title() for a in authors_list if a]) if authors_list else "Unidentified"
                 
                 if pdf_url or doi:
                     extracted.append({
@@ -207,7 +207,7 @@ def get_author_piq_dict():
     for authors_str, piq in data:
         if not authors_str or authors_str.lower() in ["unidentified", "unknown", "research scholar"]: 
             continue
-        alist = [a.strip() for a in authors_str.split(',') if a.strip()]
+        alist = [a.strip().title() for a in authors_str.split(',') if a.strip()]
         if not alist: continue
         share = piq / len(alist)
         for a in alist:
@@ -302,10 +302,10 @@ def compute_logical_integrity(extracted_logic_vars, gaming_penalty):
 
 def compute_formulaic_criteria(vars_dict, reproducibility_score):
     scores = {}
-    c1_raw = ((vars_dict.get('H_novel', 0.5) * vars_dict.get('K_epistemic', 0.5)) / (vars_dict.get('zeta', 0.5) * vars_dict.get('I_existing', 0.5) + 0.1)) * 60
+    c1_raw = ((vars_dict.get('H_novel', 0.5) * vars_dict.get('K_epistemic', 0.5)) / (vars_dict.get('zeta', 0.5) * vars_dict.get('I_existing', 0.5) + 1e-9)) * 60
     scores["C1_Originality"] = min(100.0, max(0.0, c1_raw))
     
-    rigor_matrix = max(0.0, 1.0 - (vars_dict.get('Sigma_error', 0.2) / (vars_dict.get('mu_signal', 0.8) + 0.1)))
+    rigor_matrix = max(0.0, 1.0 - (vars_dict.get('Sigma_error', 0.2) / (vars_dict.get('mu_signal', 0.8) + 1e-9)))
     c2_raw = rigor_matrix * vars_dict.get('rho_k', 0.5) * math.gamma(1.5) * 140
     scores["C2_Methodological_Rigor"] = min(100.0, max(0.0, c2_raw))
     
@@ -325,7 +325,7 @@ def compute_formulaic_criteria(vars_dict, reproducibility_score):
     c6_raw = np.exp(-1.5 * vars_dict.get('d_g_distance', 0.5)) * vars_dict.get('R_xi', 0.5) * vars_dict.get('PR_xi', 0.5) * 180
     scores["C6_Literature_Integration"] = min(100.0, max(0.0, c6_raw))
     
-    density_inner = (vars_dict.get('I_Fisher', 0.5) * vars_dict.get('KL_divergence', 0.5) * (0.8 + 0.2 * reproducibility_score)) / (vars_dict.get('V_baseline', 0.5) * vars_dict.get('omega_data', 0.5) + 0.1)
+    density_inner = (vars_dict.get('I_Fisher', 0.5) * vars_dict.get('KL_divergence', 0.5) * (0.8 + 0.2 * reproducibility_score)) / (vars_dict.get('V_baseline', 0.5) * vars_dict.get('omega_data', 0.5) + 1e-9)
     c7_raw = np.tanh(density_inner) * vars_dict.get('sum_lambda_kappa', 1.0) * 85
     scores["C7_Empirical_Density"] = min(100.0, max(0.0, c7_raw))
     
@@ -344,7 +344,7 @@ def calculate_complex_drift(alignment, scores):
     average_score = np.mean(scores)
     standard_deviation = np.std(scores)
     alignment_gap = (100.0 - alignment) / 100.0
-    drift_metric = 100.0 * (1.0 - np.exp(-3.0 * (alignment_gap ** 1.5) * (1.0 + (standard_deviation / 100.0)) / (0.1 + (average_score / 100.0))))
+    drift_metric = 100.0 * (1.0 - np.exp(-3.0 * (alignment_gap ** 1.5) * (1.0 + (standard_deviation / 100.0)) / (1e-9 + (average_score / 100.0))))
     return float(max(0.0, min(100.0, drift_metric)))
 
 def get_recommendation_spectrum(score, drift):
@@ -369,20 +369,23 @@ def fetch_doi_metadata(doi):
             res = response.json()
             title = res.get("title", "Unknown Title")
             authors_list = res.get("z_authors", [])
-            authors = ", ".join([a.get("family", "") for a in authors_list]) if authors_list else "Unknown Author"
+            authors = ", ".join([a.get("family", "").title() for a in authors_list]) if authors_list else "Unknown Author"
             pdf_url = res.get("best_oa_location", {}).get("url_for_pdf", None) if res.get("best_oa_location") else None
             return {"title": title, "authors": authors, "pdf_url": pdf_url}
         return None
     except Exception: return None
 
 def download_pdf_from_url(pdf_url):
+    if not pdf_url: return None
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/pdf,application/xhtml+xml,text/html;q=0.9,image/webp,*/*;q=0.8"
+            "Accept": "application/pdf,application/xhtml+xml,text/html;q=0.9,image/webp,*/*;q=0.8",
+            "Referer": "https://doi.org/"
         }
-        res = requests.get(pdf_url, headers=headers, timeout=15, allow_redirects=True)
-        if res.status_code == 200 and b"%PDF" in res.content[:10]:
+        res = requests.get(pdf_url, headers=headers, timeout=20, allow_redirects=True)
+        # Verify it's actually a PDF binary by checking the magic bytes
+        if res.status_code == 200 and res.content.startswith(b"%PDF"):
             return res.content
         return None
     except Exception: return None
@@ -426,7 +429,7 @@ Output a JSON object with two keys:
 Text: {text_chunk}"""
     try:
         response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, response_format={"type": "json_object"}
+            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=42, response_format={"type": "json_object"}
         )
         res_json = json.loads(response.choices[0].message.content)
         return float(res_json.get("Gaming_Penalty", 0.0)), float(res_json.get("Reproducibility_Score", 0.5))
@@ -440,7 +443,7 @@ Return ONLY a valid JSON object with a single key "Scope_Alignment" containing a
 Text: {text}"""
     try:
         response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, response_format={"type": "json_object"}
+            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=42, response_format={"type": "json_object"}
         )
         return float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
     except Exception: return 0.0
@@ -452,46 +455,52 @@ def extract_unpublished_authors_fallback(text):
         clean_line = re.sub(r'[\d\*\†\‡\§\¶\(\)]', '', line).strip()
         if re.match(r'^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+(\s*,\s*[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*$', clean_line):
             if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal']):
-                return clean_line
+                return clean_line.title()
     return "Unidentified"
 
 def evaluate_pdf_text_ensemble(text, model, text_limit):
     text = adaptive_chunking(text, text_limit)
-    prompts = [
-        f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and variables.
+    prompt = f"""You are the theoretical parser for the Pi-Index. Read the academic paper and extract structured metadata.
 CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles, alternative structural layouts, or resource-constrained syntax. Normalize linguistic style and evaluate strictly on scientific substance and methodological merit.
 
 CRITICAL INSTRUCTION FOR AUTHORS:
-- Scan the first 2 pages carefully for human author names. Output as a comma-separated list (no "et al."). If none, output "Unidentified".
+- Scan the first 2 pages carefully for human author names. Output as a comma-separated list of Title Cased names (no "et al."). If none, output "Unidentified".
 
-Extract Metadata: `Extracted_Title`, `Extracted_Author`.
-Extract Variables (0.0 to 1.0): `H_novel`, `K_epistemic`, `zeta`, `I_existing`, `Sigma_error`, `mu_signal`, `rho_k`, `p_disciplines` (Array), `bridge_capacity`, `Utility_vector`, `decay_rate`, `q_fractional`, `D_open`, `J_code`, `P_FAIR`, `d_g_distance`, `R_xi`, `PR_xi`, `I_Fisher`, `KL_divergence`, `V_baseline`, `omega_data`, `sum_lambda_kappa`, `eta_steps`, `Lambda_Lyapunov`.
-Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Jumps`, `Premise_Validity`.
-REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
-Return ONLY a valid JSON object. Text: {text}""",
-        f"""Perform a deep scientometric extraction on the provided manuscript/preprint text, applying linguistic equity normalization (ignoring stylistic/non-native variations). 
-Identify ALL contributing human authors listed in the title header or affiliations (no "et al.").
-Output JSON containing `Extracted_Title`, `Extracted_Author`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix (`Evidence_Strength`, `Conclusion_Reach`...) and an `Overall_Confidence` metric. Ensure strictly constrained float values.
+CRITICAL INSTRUCTION: Return ONLY a valid JSON object matching this exact structure:
+{{
+    "metadata": {{
+        "Extracted_Title": "String",
+        "Extracted_Author": "String"
+    }},
+    "fields": ["Primary Domain", "Secondary Domain"],
+    "subfields": ["Specific Sub-topic 1", "Specific Sub-topic 2"],
+    "variables": {{
+        "H_novel": 0.5, "K_epistemic": 0.5, "zeta": 0.5, "I_existing": 0.5, "Sigma_error": 0.5, 
+        "mu_signal": 0.5, "rho_k": 0.5, "p_disciplines": [0.5, 0.5], "bridge_capacity": 0.5, 
+        "Utility_vector": 0.5, "decay_rate": 0.5, "q_fractional": 0.5, "D_open": 0.5, "J_code": 0.5, 
+        "P_FAIR": 0.5, "d_g_distance": 0.5, "R_xi": 0.5, "PR_xi": 0.5, "I_Fisher": 0.5, 
+        "KL_divergence": 0.5, "V_baseline": 0.5, "omega_data": 0.5, "sum_lambda_kappa": 0.5, 
+        "eta_steps": 0.5, "Lambda_Lyapunov": 0.5
+    }},
+    "logic_analysis": {{
+        "Evidence_Strength": 0.5, "Conclusion_Reach": 0.5, "Logical_Jumps": 0.5, "Premise_Validity": 0.5
+    }},
+    "Overall_Confidence": 0.95
+}}
 Text: {text}"""
-    ]
     
-    prompt = random.choice(prompts)
-    response = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=random.randint(1, 1000), response_format={"type": "json_object"}
-    )
-    result_content = response.choices[0].message.content
     try:
+        response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=42, response_format={"type": "json_object"}
+        )
+        result_content = response.choices[0].message.content
         parsed = json.loads(result_content)
         if isinstance(parsed, dict):
             return parsed
-        elif isinstance(parsed, str):
-            sub_parsed = json.loads(parsed)
-            if isinstance(sub_parsed, dict):
-                return sub_parsed
     except Exception:
         pass
-    return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
+    return {"metadata": {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified"}, "Overall_Confidence": 0.0}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None"):
     if file_bytes is None or len(file_bytes) == 0:
@@ -507,7 +516,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     
     try:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
-        pdf_meta_author = doc.metadata.get("author", "").strip()
+        pdf_meta_author = doc.metadata.get("author", "").strip().title()
         full_text = " ".join([page.get_text() for page in doc])
     except Exception:
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
@@ -551,19 +560,21 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
          
     if not isinstance(raw_data, dict):
-        raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
+        raw_data = {"metadata": {"Extracted_Title": filename, "Extracted_Author": "Unidentified"}, "Overall_Confidence": 0.0}
 
     confidence = raw_data.get("Overall_Confidence", 1.0)
+    metadata = raw_data.get("metadata", {})
+    
     if confidence < 0.50:
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-         return "Indeterminate Format (Upload JSON Manifest)", raw_data.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
+         return "Indeterminate Format (Upload JSON Manifest)", metadata.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
 
-    title = raw_data.get("Extracted_Title", filename)
-    extracted_author = str(raw_data.get("Extracted_Author", "")).strip()
+    title = metadata.get("Extracted_Title", filename)
+    extracted_author = str(metadata.get("Extracted_Author", "")).strip().title()
     
-    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
-        if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
-            extracted_author = pdf_meta_author.strip()
+    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0].title():
+        if pdf_meta_author and pdf_meta_author.lower() not in ["unknown", "none"]:
+            extracted_author = pdf_meta_author
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
 
@@ -598,7 +609,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     conn.commit()
     cursor.execute("SELECT count FROM global_eval_counter")
     total_evals = cursor.fetchone()[0]
-         
+          
     cursor.execute("SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
     epoch_data = cursor.fetchone()
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
@@ -660,6 +671,20 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     conn.commit()
     
     return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_to_mint, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
+
+def run_paper_evaluation(pdf_bytes, fname, scope, current_user, current_book, current_email, p_doi="None"):
+    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+        pdf_bytes, fname, scope, current_user, current_book, current_email, p_doi
+    )
+    eval_record = {
+        'title': title, 'author_name': author_name, 'score': score, 
+        'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+        'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+        'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+        'zk_proof': zk_proof, 'used_weights': used_weights, 
+        'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+    }
+    st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -828,18 +853,7 @@ with tab1:
                                 pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
 
                         if pdf_bytes:
-                            title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                                pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
-                            )
-                            eval_record = {
-                                'title': title, 'author_name': author_name, 'score': score, 
-                                'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-                                'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-                                'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-                                'zk_proof': zk_proof, 'used_weights': used_weights, 
-                                'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
-                            }
-                            st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                            run_paper_evaluation(pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi)
                             st.success("Evaluation complete!")
                             st.rerun()
                         else:
@@ -942,18 +956,7 @@ with tab1:
                     pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
-                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, doi_input.strip()
-                        )
-                        eval_record = {
-                            'title': title, 'author_name': author_name, 'score': score, 
-                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-                            'zk_proof': zk_proof, 'used_weights': used_weights, 
-                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
-                        }
-                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                        run_paper_evaluation(pdf_bytes, fname, research_scope, current_user, current_book, current_email, doi_input.strip())
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
@@ -961,18 +964,7 @@ with tab1:
                 for i, file in enumerate(selected_uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
                     file_bytes = file.read()
-                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                        file_bytes, file.name, research_scope, current_user, current_book, current_email, "None"
-                    )
-                    eval_record = {
-                        'title': title, 'author_name': author_name, 'score': score, 
-                        'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-                        'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-                        'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-                        'zk_proof': zk_proof, 'used_weights': used_weights, 
-                        'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': file.name
-                    }
-                    st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                    run_paper_evaluation(file_bytes, file.name, research_scope, current_user, current_book, current_email, "None")
                     progress_bar.progress((i + 1) / len(selected_uploaded_files))
             
             st.session_state['reset_token'] += 1
@@ -1033,7 +1025,7 @@ with tab2:
     all_global_authors = []
     for row in cursor.fetchall():
         if row[0]:
-            all_global_authors.extend([a.strip() for a in row[0].split(',') if a.strip()])
+            all_global_authors.extend([a.strip().title() for a in row[0].split(',') if a.strip()])
     all_global_authors = sorted(list(set(all_global_authors)))
     
     selected_author = None
@@ -1273,7 +1265,11 @@ with tab4:
             dataset = PiBlockchainDataset(weight_data, lookback_window)
             dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
             
-            model, loss_function, optimizer = PiBrainLSTM(), nn.MSELoss(), optim.Adam(PiBrainLSTM().parameters(), lr=0.001)
+            # Neural network instantiation bug fix
+            model = PiBrainLSTM()
+            loss_function = nn.MSELoss()
+            optimizer = optim.Adam(model.parameters(), lr=0.001)
+            
             progress_bar, status_text = st.progress(0), st.empty()
             epochs = 200
             
@@ -1306,46 +1302,50 @@ with tab5:
     st.markdown("### Pi-Index Program Architecture & End-to-End Pipeline")
     st.write("The end-to-end flowchart of the decentralized assessment engine, detailing multi-source intake, AI extraction, adversarial discrimination, cryptographic zero-knowledge proofs, and Web3 smart contract minting.")
     
-    arch_graph = graphviz.Digraph(node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': '#E8F4F8', 'fontname': 'Helvetica', 'color': '#2c3e50'})
-    arch_graph.attr(rankdir='TB', size='12,12')
+    arch_graph = graphviz.Digraph(node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': '#f8f9fa', 'fontname': 'Helvetica', 'color': '#2c3e50', 'penwidth': '2'})
+    arch_graph.attr(rankdir='TB', size='12,12', splines='ortho')
 
     with arch_graph.subgraph(name='cluster_intake') as c:
-        c.attr(label='1. Multi-Source Intake & Identity Layer', color='#3498db')
-        c.node('ORCID', 'ORCID / DID Vault Authentication')
-        c.node('Intake', 'Multi-Source Intake (Local PDFs, DOI, OpenAlex)')
-        c.edge('ORCID', 'Intake')
+        c.attr(label='1. Multi-Source Intake & Identity Vault', color='#3498db', bgcolor='#e8f4f8')
+        c.node('DID', 'W3C DID / ORCID Auth', fillcolor='#d6eaf8')
+        c.node('Intake', 'PDF Intake Engine\n(Local, Unpaywall DOI, OpenAlex)', fillcolor='#d6eaf8')
+        c.edge('DID', 'Intake')
 
     with arch_graph.subgraph(name='cluster_ai') as c:
-        c.attr(label='2. AI Extraction & Adversarial Discriminator', color='#e67e22')
-        c.node('Chunking', 'Adaptive Chunking (Max 12k Tokens)')
-        c.node('GroqAI', 'Groq AI Engine (Llama 3.3 70B & Fallback 8B)')
-        c.node('Discriminator', 'Synthetic Hallucination & Divergence Discriminator')
+        c.attr(label='2. Dual-Model AI Extraction (Groq)', color='#e67e22', bgcolor='#fcf3cf')
+        c.node('Chunking', 'Adaptive Token Chunking', fillcolor='#fdebd0')
+        c.node('Extraction', 'Llama 3.3 70B (Primary)\nLlama 3.1 8B (Fallback)\n25-Variable Extraction', fillcolor='#fdebd0')
+        c.node('Discriminator', 'Adversarial Discriminator\n(Hallucination & Semantic Drift Penalty)', fillcolor='#fdebd0')
         c.edge('Intake', 'Chunking')
-        c.edge('Chunking', 'GroqAI')
-        c.edge('GroqAI', 'Discriminator')
+        c.edge('Chunking', 'Extraction')
+        c.edge('Extraction', 'Discriminator')
 
     with arch_graph.subgraph(name='cluster_scoring') as c:
-        c.attr(label='3. Formulaic & Logic Scoring Engine', color='#2ecc71')
-        c.node('Criteria', '8-Criteria Formulaic Evaluation (C1 - C8)')
-        c.node('Logic', 'Adversarial Logic & Premise Integrity Matrix')
+        c.attr(label='3. Mathematical Consensus (Formulas Hash)', color='#2ecc71', bgcolor='#e8f8f5')
+        c.node('Criteria', 'C1-C8 Formulaic Engine\n(Originality, Rigor, Impact...)', fillcolor='#d1f2eb')
+        c.node('Logic', 'Logic Integrity Matrix\n(Premise vs. Conclusion Delta)', fillcolor='#d1f2eb')
+        c.node('LSTM', 'Pi-Brain LSTM\n(Epoch Weight Prediction)', fillcolor='#d1f2eb')
         c.edge('Discriminator', 'Criteria')
         c.edge('Criteria', 'Logic')
+        c.edge('LSTM', 'Criteria', style='dashed', label=' Active Weights')
 
     with arch_graph.subgraph(name='cluster_crypto') as c:
-        c.attr(label='4. Cryptographic Proof & Blockchain Ledger', color='#9b59b6')
-        c.node('ZKProof', 'ZK-SNARK Proof & ZK-Email Generation')
-        c.node('PoR', 'Proof-of-Research (PoR) Blockchain Consensus')
-        c.node('Mint', 'Web3 Smart Contract piQ Minting (Soulbound Tokens)')
+        c.attr(label='4. Ledger Consensus & ZK Proofs', color='#9b59b6', bgcolor='#f4ecf7')
+        c.node('ZKProof', 'zk-SNARK Circuit\n(Score Validity & Institutional Alignment)', fillcolor='#e8daef')
+        c.node('PoR', 'Proof-of-Research (PoR)\nValidator Node Hashing', fillcolor='#e8daef')
+        c.node('SmartContract', 'Web3 Smart Contract\nMint piQ (Soulbound Token)', fillcolor='#e8daef')
         c.edge('Logic', 'ZKProof')
         c.edge('ZKProof', 'PoR')
-        c.edge('PoR', 'Mint')
+        c.edge('PoR', 'SmartContract')
 
     with arch_graph.subgraph(name='cluster_output') as c:
-        c.attr(label='5. DORA Dossier & Science Cartography', color='#e74c3c')
-        c.node('Dossier', 'DORA-Aligned Research Integrity Dossier')
-        c.node('SciMap', 'Global Science Cartography (PyVis Topic Clustering)')
-        c.edge('Mint', 'Dossier')
-        c.edge('Mint', 'SciMap')
+        c.attr(label='5. Cartography & DeSci Governance', color='#e74c3c', bgcolor='#fdedec')
+        c.node('SciMap', 'PyVis Global Science Cartography\n(Topic Separation)', fillcolor='#fadbd8')
+        c.node('Dossier', 'DORA-Aligned Cryptographic Dossier', fillcolor='#fadbd8')
+        c.node('DeSci', 'DeSci Staking & Peer Attestation', fillcolor='#fadbd8')
+        c.edge('SmartContract', 'SciMap')
+        c.edge('SmartContract', 'Dossier')
+        c.edge('SciMap', 'DeSci', style='dashed')
 
     st.graphviz_chart(arch_graph, use_container_width=True)
 
