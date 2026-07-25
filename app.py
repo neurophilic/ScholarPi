@@ -911,6 +911,15 @@ with tab1:
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
         st.markdown("---")
         
+        # OpenAlex Results Header with Close Button
+        col_res_header, col_close_btn = st.columns([5, 1])
+        with col_res_header:
+            st.markdown("#### OpenAlex Search Results")
+        with col_close_btn:
+            if st.button("❌ Close", key=f"close_alex_{st.session_state['reset_token']}"):
+                del st.session_state['alex_search_results']
+                st.rerun()
+
         def toggle_all_alex():
             is_all = st.session_state.get(f"select_all_alex_{st.session_state['reset_token']}", False)
             for i in range(st.session_state.alex_visible_count):
