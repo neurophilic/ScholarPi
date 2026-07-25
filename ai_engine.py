@@ -183,7 +183,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
 
     fields, subfields = raw_data.get("fields", ["General Science"]), raw_data.get("subfields", ["General"])
     
-    # Mathematical score calculation must happen before blockchain validation to act as the PoR proof
+    # Mathematical score calculation happens before blockchain validation to act as the PoR proof
     raw_final_score = float(np.dot(scores, old_weights)) / 8.0
     final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
 
