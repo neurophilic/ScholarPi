@@ -1,6 +1,7 @@
 import sqlite3
 import hashlib
 import json
+from datetime import datetime
 
 def init_system():
     """Initializes the database connection and required tables for the Pi-Index system."""
@@ -86,3 +87,30 @@ def verify_chain_integrity(conn):
             return False, curr_block[0]
             
     return True, None
+
+def validate_block_por(conn, weights, model_used, validator_node, eval_hash):
+    """
+    Validates and appends a new Proof-of-Research (PoR) block to the ledger.
+    Generates a cryptographic hash linking it to the previous block.
+    """
+    cursor = conn.cursor()
+    
+    # Fetch the previous block's hash to maintain the chain
+    cursor.execute("SELECT block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
+    last_block = cursor.fetchone()
+    previous_hash = last_block[0] if last_block else "0"
+    
+    # Generate current timestamp and calculate the new block hash
+    timestamp = datetime.now().isoformat()
+    block_data = f"{previous_hash}{timestamp}{eval_hash}{model_used}{weights}"
+    block_hash = hashlib.sha256(block_data.encode('utf-8')).hexdigest()
+    
+    # Insert the new block into the ledger
+    cursor.execute("""
+        INSERT INTO blockchain_por_weights 
+        (timestamp, w1, w2, w3, w4, w5, w6, w7, w8, model_used, validator_node, eval_hash, block_hash, previous_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (timestamp, *weights, model_used, validator_node, eval_hash, block_hash, previous_hash))
+    
+    conn.commit()
+    return block_hash
