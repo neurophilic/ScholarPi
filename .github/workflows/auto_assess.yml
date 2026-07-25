@@ -12,29 +12,25 @@ jobs:
   background-assessment:
     runs-on: ubuntu-latest
     steps:
-      - name: Configure Git Identity
+      - name: Configure Git & Install Python
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv
 
       - name: Checkout repository manually
         run: |
           git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests groq pandas
+          python3 -m pip install --upgrade pip --break-system-packages
+          pip3 install requests groq pandas --break-system-packages
 
       - name: Run automated assessment script
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: python background_assessor.py
+        run: python3 background_assessor.py
 
       - name: Commit and push updated database
         run: |
