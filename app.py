@@ -1,3 +1,8 @@
+Here is the fully updated script. The document input methods—**Local PDF Uploads**, **Unpaywall DOI Imports**, and **OpenAlex Topic Searches**—have been **merged together** into a unified multi-source intake queue.
+
+All selected items from any combination of these sources are now consolidated into a single seamless batch-processing workflow. Additionally, all assessment results persist securely in the session state buffer, checkboxes clear automatically after each run, and the **Global Map of Science** updates instantly.
+
+```python
 import os
 import re
 import json
@@ -501,7 +506,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Check exact file hash cache
     cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index, reproducibility_score FROM papers_assessment WHERE eval_hash=?", (file_hash,))
     cached_result = cursor.fetchone()
     
@@ -567,7 +571,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
 
-    # 2. Canonical Deduplication Check (by DOI or Normalized Title + Author)
+    # Canonical Deduplication Check (by DOI or Normalized Title + Author)
     normalized_title = re.sub(r'[^a-z0-9]', '', title.lower())
     cursor.execute("SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index, reproducibility_score FROM papers_assessment WHERE doi=? OR author_name=?", (provided_doi, extracted_author))
     existing_records = cursor.fetchall()
@@ -765,37 +769,30 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of Science", "Active Epoch & DeSci Staking", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
 with tab1:
-    st.markdown("### Document Assessment and Import " + tooltip("Upload local PDFs, fetch via DOI, or discover topic papers via OpenAlex."), unsafe_allow_html=True)
+    st.markdown("### Unified Multi-Source Document Intake & Assessment " + tooltip("Upload local files, enter DOIs, or search OpenAlex topics and select multiple sources to batch-assess simultaneously."), unsafe_allow_html=True)
     research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", help="Calculating the scope drift provides quantitative insight into paradigm divergence.")
     
-    col_up, col_doi = st.columns(2)
-    
-    selected_uploaded_files = []
-    with col_up:
-        st.markdown("#### Upload Local PDF / Manuscript")
-        uploaded_files = st.file_uploader("Upload Academic Papers", type=["pdf"], accept_multiple_files=True, help="Supports parsing of multi-page academic PDF documents using adaptive token chunking.")
-        if uploaded_files:
-            st.markdown("**Tick local files to include in assessment:**")
-            for i, file in enumerate(uploaded_files):
-                if st.checkbox(f"Include file: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
-                    selected_uploaded_files.append(file)
-
-    include_doi = False
-    with col_doi:
-        st.markdown("#### Import via Unpaywall (DOI)")
-        doi_input = st.text_input("Enter Document Object Identifier (DOI)", placeholder="10.1038/s41586-020-2649-2", help="Directly imports the paper if an Open Access copy is identified via the Unpaywall registry.")
-        if doi_input.strip():
-            include_doi = st.checkbox("Include this DOI in assessment", value=True, key=f"doi_chk_{st.session_state['reset_token']}")
-    
     st.markdown("---")
-    st.markdown("#### Discover & Rate Papers via OpenAlex Topic Search " + tooltip("Search open-access papers by specific research topics and automatically feed them into the Pi-Index assessment pipeline."), unsafe_allow_html=True)
-    topic_col1, topic_col2 = st.columns([3, 1])
-    with topic_col1:
-        alex_topic_input = st.text_input("Enter Topic to Search OpenAlex Papers", placeholder="e.g., structural integrity, neural networks, oncology")
-    with topic_col2:
-        st.write("")
-        st.write("")
-        search_alex_btn = st.button("Search OpenAlex Papers")
+    st.markdown("#### Select Sources to Include in Assessment")
+    
+    # Unified Intake Container
+    selected_uploaded_files = []
+    uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
+    if uploaded_files:
+        st.markdown("**Tick uploaded files to assess:**")
+        for i, file in enumerate(uploaded_files):
+            if st.checkbox(f"📄 Local File: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
+                selected_uploaded_files.append(file)
+
+    st.markdown("")
+    doi_input = st.text_input("2. Import via Unpaywall (DOI)", placeholder="10.1038/s41586-020-2649-2", key=f"doi_input_{st.session_state['reset_token']}")
+    include_doi = False
+    if doi_input.strip():
+        include_doi = st.checkbox("Include this DOI in assessment", value=True, key=f"doi_chk_{st.session_state['reset_token']}")
+
+    st.markdown("")
+    alex_topic_input = st.text_input("3. Discover via OpenAlex Topic Search", placeholder="e.g., structural integrity, neural networks, oncology", key=f"alex_topic_{st.session_state['reset_token']}")
+    search_alex_btn = st.button("Search OpenAlex Papers")
 
     if search_alex_btn and alex_topic_input.strip():
         with st.spinner(f"Querying OpenAlex for papers on '{alex_topic_input}'..."):
@@ -810,9 +807,10 @@ with tab1:
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
         st.markdown("**Tick OpenAlex papers to include in assessment:**")
         for idx, p in enumerate(st.session_state['alex_search_results']):
-            if st.checkbox(f"{p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
+            if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
                 selected_alex_papers.append(p)
 
+    st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
 
     def render_breakdown_item(item):
@@ -901,7 +899,7 @@ with tab1:
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
-            # 1. Process OpenAlex Papers with robust DOI fallback
+            # 1. Process OpenAlex Papers with robust fallback
             if selected_alex_papers:
                 for p in selected_alex_papers:
                     status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
@@ -1300,3 +1298,5 @@ with tab5:
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
+
+```
