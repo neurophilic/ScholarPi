@@ -122,13 +122,27 @@ def init_system():
                        did TEXT, zk_email_proof TEXT, gaming_penalty REAL,
                        h_index TEXT, i10_index TEXT)''')
                        
-    for col, dtype, default in [("logic_score", "REAL", "0.0"), ("author_name", "TEXT", "'Unknown Author'"), 
-                                ("eth_book", "TEXT", "'None'"), ("epc_minted", "REAL", "0.0"), 
-                                ("tx_hash", "TEXT", "'Pending'"), ("zk_proof", "TEXT", "'None'"),
-                                ("did", "TEXT", "'None'"), ("zk_email_proof", "TEXT", "'None'"), 
-                                ("gaming_penalty", "REAL", "0.0"), ("h_index", "TEXT", "'N/A'"), ("i10_index", "TEXT", "'N/A'")]:
-        try: cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype} DEFAULT {default}")
-        except: pass 
+    # Robust schema migration check to prevent OperationalError on existing databases
+    cursor.execute("PRAGMA table_info(papers_assessment);")
+    existing_cols = [row[1] for row in cursor.fetchall()]
+    
+    required_cols = {
+        "logic_score": "REAL DEFAULT 0.0",
+        "author_name": "TEXT DEFAULT 'Unknown Author'",
+        "eth_book": "TEXT DEFAULT 'None'",
+        "epc_minted": "REAL DEFAULT 0.0",
+        "tx_hash": "TEXT DEFAULT 'Pending'",
+        "zk_proof": "TEXT DEFAULT 'None'",
+        "did": "TEXT DEFAULT 'None'",
+        "zk_email_proof": "TEXT DEFAULT 'None'",
+        "gaming_penalty": "REAL DEFAULT 0.0",
+        "h_index": "TEXT DEFAULT 'N/A'",
+        "i10_index": "TEXT DEFAULT 'N/A'"
+    }
+    
+    for col, definition in required_cols.items():
+        if col not in existing_cols:
+            cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {definition};")
         
     cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -475,7 +489,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_book, did="None
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = raw_data.get("Extracted_Author", "").strip()
     
-    # Eradicate "Research Scholar" fallback; default to Unidentified to skip Epistemic Minting mapping
     if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar"] or extracted_author == os.path.splitext(filename)[0]:
         extracted_author = pdf_meta_author.strip() if pdf_meta_author.strip() else "Unidentified"
 
@@ -494,7 +507,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_book, did="None
     else:
         active_weights = old_weights
 
-    # Dynamic fetching of open bibliometrics for the extracted author
     h_idx, i10_idx = fetch_author_metrics(extracted_author)
 
     cursor.execute("SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE author_name=?", (extracted_author,))
@@ -513,7 +525,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_book, did="None
         cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
         improvement_multiplier = min(raw_multiplier, cap)
         
-    # Prevent EPC Minting for Unidentified Authors
     epc_to_mint = 0.0 if extracted_author == "Unidentified" else round((final_score / 10.0) * improvement_multiplier, 2)
     
     zk_email_hash = "None"
@@ -565,7 +576,7 @@ if 'orcid_id' not in st.session_state:
     st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown(f"### Authenticate " + tooltip("Connect to your ORCID or DID to securely isolate your assessment history."), unsafe_allow_html=True)
+    st.sidebar.subheader("Authenticate", help="Connect to your ORCID or DID to securely isolate your assessment history.")
     manual_orcid = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX")
     notebook_input = st.sidebar.text_input("Digital Book Address (πEPC Rewards)", placeholder="0x...", help="Used to mint Epistemic Capital tokens based on your research improvement.")
     email_input = st.sidebar.text_input("Institutional Email", placeholder="author@university.edu", help="Generates a Zero-Knowledge Proof (ZK-Email) verifying institutional alignment without exposing data to the ledger.")
@@ -579,7 +590,6 @@ if not st.session_state.is_authenticated:
                 if "did:" in clean_orcid:
                     is_valid, user_name = True, "Verified Decentralized Identity"
                 else:
-                    # Simulated ORCID fetch logic
                     is_valid, user_name = True, "Verified Researcher (Name Private)" 
             if is_valid:
                 st.session_state.orcid_id, st.session_state.orcid_name, st.session_state.is_authenticated = clean_orcid, user_name, True
@@ -610,37 +620,37 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown(r"**Adversarial Logic Gap ($\Delta_{Logic}$)** " + tooltip("We map the paper's reasoning structure before giving a final score. If the authors make claims that aren't supported by their own evidence, the system exponentially penalizes the paper."), unsafe_allow_html=True)
+        st.markdown(r"**Adversarial Logic Gap ($\Delta_{Logic}$)**", help="We map the paper's reasoning structure before giving a final score. If the authors make claims that aren't supported by their own evidence, the system exponentially penalizes the paper.")
         st.markdown(r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \times \frac{1}{1 + e^{-\Delta Premise}} $$")
         
-        st.markdown("**C1: Originality** " + tooltip("Does this paper disrupt existing knowledge (high score), or is it mostly derivative of older work (low score)?"), unsafe_allow_html=True)
+        st.markdown("**C1: Originality**", help="Does this paper disrupt existing knowledge (high score), or is it mostly derivative of older work (low score)?")
         st.markdown(r"$$O = \varpi_1 \cdot \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^{N} |Z_i| \, dV} \cdot e^{-0.1 \zeta} $$")
         
-        st.markdown("**C2: Methodological Rigor** " + tooltip("Are the methods statistically sound, and is the risk of a fundamental flaw minimized?"), unsafe_allow_html=True)
+        st.markdown("**C2: Methodological Rigor**", help="Are the methods statistically sound, and is the risk of a fundamental flaw minimized?")
         st.markdown(r"$$R = \varpi_2 \cdot \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \mathbb{E}[\rho_k] $$")
         
-        st.markdown("**C3: Interdisciplinary** " + tooltip("How well does the research bridge multiple disciplines together rather than staying in an isolated silo?"), unsafe_allow_html=True)
+        st.markdown("**C3: Interdisciplinary**", help="How well does the research bridge multiple disciplines together rather than staying in an isolated silo?")
         st.markdown(r"$$I = \varpi_3 \cdot \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot bridge\_capacity $$")
         
-        st.markdown("**C4: Societal Impact** " + tooltip("What is the predicted long-term, real-world utility of the research findings?"), unsafe_allow_html=True)
+        st.markdown("**C4: Societal Impact**", help="What is the predicted long-term, real-world utility of the research findings?")
         st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
     with col2:
-        st.markdown("**C5: Open Science Potential** " + tooltip("Rewards transparency, specifically the sharing of open-source datasets and verifiable code."), unsafe_allow_html=True)
+        st.markdown("**C5: Open Science Potential**", help="Rewards transparency, specifically the sharing of open-source datasets and verifiable code.")
         st.markdown(r"$$O_s = \varpi_5 \cdot \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} $$")
         
-        st.markdown("**C6: Literature Integration** " + tooltip("Assesses how firmly grounded the paper is in foundational literature without being completely reliant on it."), unsafe_allow_html=True)
+        st.markdown("**C6: Literature Integration**", help="Assesses how firmly grounded the paper is in foundational literature without being completely reliant on it.")
         st.markdown(r"$$L = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum PR} $$")
         
-        st.markdown("**C7: Empirical Density** " + tooltip("Measures the sheer depth and volume of the underlying data analyzed."), unsafe_allow_html=True)
+        st.markdown("**C7: Empirical Density**", help="Measures the sheer depth and volume of the underlying data analyzed.")
         st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right) $$")
         
-        st.markdown("**C8: Future Actionability** " + tooltip("Predicts whether the paper will trigger a cascade of actionable future research."), unsafe_allow_html=True)
+        st.markdown("**C8: Future Actionability**", help="Predicts whether the paper will trigger a cascade of actionable future research.")
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Rebuttals", "Global Map of Science", "Active Epoch and Ledger", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
 with tab1:
-    st.markdown("### Document Assessment and Import " + tooltip("Upload local PDFs or fetch via DOI to assess papers. Requires a micro-stake to prevent spam and Sybil attacks. Results are logged to the Proof-of-Research blockchain."), unsafe_allow_html=True)
+    st.subheader("Document Assessment and Import", help="Upload local PDFs or fetch via DOI to assess papers. Requires a micro-stake to prevent spam and Sybil attacks. Results are logged to the Proof-of-Research blockchain.")
     research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", help="Calculating the scope drift provides quantitative insight into paradigm divergence.")
     
     col_up, col_doi = st.columns(2)
@@ -728,7 +738,7 @@ with tab1:
             status_text.success("Pipeline processing complete.")
             
     st.markdown("---")
-    st.markdown("### AI Peer Review Defense Strategy " + tooltip("Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy."), unsafe_allow_html=True)
+    st.subheader("AI Peer Review Defense Strategy", help="Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy.")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50", (current_user,))
@@ -753,7 +763,7 @@ with tab1:
             st.markdown(rebuttal)
 
     st.markdown("---")
-    st.markdown("### Your Assessment and Reward History " + tooltip("Your permanently recorded academic evaluations mapped to your ORCID iD/DID."), unsafe_allow_html=True)
+    st.subheader("Your Assessment and Reward History", help="Your permanently recorded academic evaluations mapped to your ORCID iD/DID.")
     if st.session_state.is_authenticated:
         cursor.execute("SELECT title, author_name, scope, final_score, epc_minted, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
         history_data = cursor.fetchall()
@@ -763,7 +773,7 @@ with tab1:
 
 
 with tab2:
-    st.markdown("### Global Map of Science (Ledger-Driven Cartography) " + tooltip("Generates dynamic network topologies based on the aggregate metadata of all ledger-evaluated papers."), unsafe_allow_html=True)
+    st.subheader("Global Map of Science (Ledger-Driven Cartography)", help="Generates dynamic network topologies based on the aggregate metadata of all ledger-evaluated papers.")
     st.markdown("This map is permanently updated by every user assessing documents on the blockchain ledger, forming an unalterable topological view of current scientific trends.")
     
     conn = get_db_connection()
@@ -849,12 +859,12 @@ with tab2:
         col1, col2 = st.columns([3, 1])
         with col1: components.html(interactive_html, height=620, scrolling=True)
         with col2: 
-            st.markdown("### Legend " + tooltip("Color density maps proportionally to Pi-Index scores achieved in the domain."), unsafe_allow_html=True)
+            st.subheader("Legend", help="Color density maps proportionally to Pi-Index scores achieved in the domain.")
             st.markdown(table_html, unsafe_allow_html=True)
     else: st.info("Awaiting sufficient data for this selection.")
 
     st.markdown("---")
-    st.markdown("### Epistemic Capital (πEPC) by Author Leaderboard " + tooltip("Fractionally distributed ledger tokens generated through objective research improvement."), unsafe_allow_html=True)
+    st.subheader("Epistemic Capital (πEPC) by Author Leaderboard", help="Fractionally distributed ledger tokens generated through objective research improvement.")
     if epc_dict:
         epc_df = pd.DataFrame(list(epc_dict.items()), columns=["Contributing Author", "Total πEPC Earned"])
         epc_df = epc_df.sort_values(by="Total πEPC Earned", ascending=False).reset_index(drop=True)
@@ -887,7 +897,7 @@ with tab3:
                 col.markdown(f"**{labels[i][0]} ({labels[i][1]})**")
                 col.markdown(f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>", unsafe_allow_html=True)
                 
-        st.markdown("### Proof-of-Research Blockchain Explorer " + tooltip("Search the ledger to mathematically verify if a specific research document has been authentically graded and permanently sealed."), unsafe_allow_html=True)
+        st.subheader("Proof-of-Research Blockchain Explorer", help="Search the ledger to mathematically verify if a specific research document has been authentically graded and permanently sealed.")
         st.info(f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and sealed to block `{block_hash}`.")
         st.caption(f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees grading mathematical constants cannot be tampered with).")
         
@@ -907,7 +917,7 @@ with tab3:
                 st.error("Error reading database schema. Try refreshing the app.")
 
         st.markdown("---")
-        st.markdown("### Latest Blockchain Ledger Hashes, zk-SNARK Proofs, and πEPC Minted " + tooltip("Chronological view of the most recent smart contract executions, demonstrating mathematical proofs of computation and token allocations."), unsafe_allow_html=True)
+        st.subheader("Latest Blockchain Ledger Hashes, zk-SNARK Proofs, and πEPC Minted", help="Chronological view of the most recent smart contract executions, demonstrating mathematical proofs of computation and token allocations.")
         cursor.execute("""
             SELECT b.block_height, b.eval_hash, b.block_hash, p.zk_proof, p.epc_minted, b.timestamp 
             FROM blockchain_por_weights b 
@@ -922,7 +932,7 @@ with tab3:
             st.info("No hashes to display yet.")
 
 with tab4:
-    st.markdown("### Pi-Brain: Meta-Learning on the PoR Blockchain " + tooltip("An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards."), unsafe_allow_html=True)
+    st.subheader("Pi-Brain: Meta-Learning on the PoR Blockchain", help="An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.")
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height ASC")
@@ -968,7 +978,7 @@ with tab4:
         st.markdown(f"**Mathematical Constraint Check:** Predicted Sum = `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`")
 
 with tab5:
-    st.markdown("### The Pi-Index Framework: System Overview and Theoretical Limitations")
+    st.subheader("The Pi-Index Framework: System Overview and Theoretical Limitations")
     st.markdown("""
     #### 1. System Overview
     The Pi-Index Assessment Engine represents a paradigm shift in scientometrics, moving away from legacy bibliometrics (e.g., citation counts, h-index) toward a deterministic, multidimensional mathematical framework. 
