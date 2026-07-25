@@ -37,7 +37,7 @@ st.set_page_config(page_title="Pi-Index Assessment Engine", layout="wide")
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
 MAX_TEXT_TOKENS = 12000
-EPOCH_BLOCK_SIZE = 1  # Every evaluation triggers an epoch update
+EPOCH_BLOCK_SIZE = 1  
 
 WEB3_PROVIDER_URI = os.getenv("WEB3_PROVIDER_URI", "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID")
 ETH_ADMIN_PRIVATE_KEY = os.getenv("ETH_ADMIN_PRIVATE_KEY", "0x0000000000000000000000000000000000000000000000000000000000000000")
@@ -57,15 +57,102 @@ w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 # ==========================================
-# 2. UI UTILITIES & METRICS
+# 2. ROOT LEVEL DATABASE SCHEMA ENFORCEMENT
+# ==========================================
+# This runs unconditionally on app load, preventing Streamlit cache desyncs.
+def enforce_database_schema():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
+    cursor = conn.cursor()
+    
+    # Ensure Base Table Exists
+    cursor.execute('''CREATE TABLE IF NOT EXISTS papers_assessment 
+                      (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
+                       c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
+                       c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
+                       scope_alignment REAL, logic_score REAL,
+                       subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)''')
+
+    # Ensure Blockchain Weights Table Exists
+    cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
+                      (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
+                       w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
+                       timestamp DATETIME, previous_hash TEXT, 
+                       validator_node TEXT, block_hash TEXT, eval_hash TEXT, model_used TEXT)''')
+                       
+    cursor.execute('''CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)''')
+    
+    # Aggressive Column Injection
+    target_columns_assessment = {
+        "eth_book": "TEXT DEFAULT 'None'",
+        "eth_wallet": "TEXT DEFAULT 'None'",  # Preserved to avoid breaking old inserts
+        "epc_minted": "REAL DEFAULT 0.0",
+        "tx_hash": "TEXT DEFAULT 'Pending'",
+        "zk_proof": "TEXT DEFAULT 'None'",
+        "did": "TEXT DEFAULT 'None'",
+        "zk_email_proof": "TEXT DEFAULT 'None'",
+        "gaming_penalty": "REAL DEFAULT 0.0",
+        "h_index": "TEXT DEFAULT 'N/A'",
+        "i10_index": "TEXT DEFAULT 'N/A'"
+    }
+    
+    target_columns_weights = {
+        "por_proof": "TEXT DEFAULT 'Genesis_Proof'",
+        "formulas_hash": "TEXT DEFAULT 'Locked_State'"
+    }
+
+    cursor.execute("PRAGMA table_info(papers_assessment)")
+    existing_assessment_cols = [row[1] for row in cursor.fetchall()]
+    for col, dtype in target_columns_assessment.items():
+        if col not in existing_assessment_cols:
+            try: cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
+            except Exception: pass
+
+    cursor.execute("PRAGMA table_info(blockchain_por_weights)")
+    existing_weights_cols = [row[1] for row in cursor.fetchall()]
+    for col, dtype in target_columns_weights.items():
+        if col not in existing_weights_cols:
+            try: cursor.execute(f"ALTER TABLE blockchain_por_weights ADD COLUMN {col} {dtype}")
+            except Exception: pass
+
+    conn.commit()
+    conn.close()
+
+# Enforce Schema immediately before any other execution
+enforce_database_schema()
+
+@st.cache_resource
+def get_db_connection():
+    # Because schema is enforced above, we can safely cache the connection object.
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
+    if cursor.fetchone()[0] == 0:
+        genesis_weights = [1.0] * 8
+        prev_hash = "0" * 64
+        timestamp = datetime.now().isoformat()
+        val_node, block_hash, por_proof = validate_block_por(1, genesis_weights, timestamp, prev_hash, "genesis", "none", 100.0, "Genesis_Hash")
+        cursor.execute('''INSERT INTO blockchain_por_weights 
+                          (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) 
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                       (*genesis_weights, timestamp, prev_hash, val_node, block_hash, "genesis", "none", por_proof, "Genesis_Hash"))
+        conn.commit()
+        
+    cursor.execute("SELECT count FROM global_eval_counter")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
+        conn.commit()
+        
+    return conn
+
+# ==========================================
+# 3. UI UTILITIES & METRICS
 # ==========================================
 def tooltip(text):
-    """Generates an SVG hover tooltip."""
     svg_icon = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-left: 6px; cursor: help;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'''
     return f"<span title=\"{text}\">{svg_icon}</span>"
 
 def fetch_author_metrics(author_name):
-    """Fetches real-world h-index and i10-index via OpenAlex API where possible."""
     try:
         if not author_name or author_name.lower() in ["unidentified", "unknown"]:
             return "N/A", "N/A"
@@ -82,7 +169,6 @@ def fetch_author_metrics(author_name):
     return "N/A", "N/A"
 
 def search_openalex_topics(topic_query, limit=5):
-    """Queries OpenAlex API to discover Open Access papers based on topics/keywords."""
     try:
         url = f"https://api.openalex.org/works?search={requests.utils.quote(topic_query)}&filter=is_oa:true&per_page={limit}"
         res = requests.get(url, timeout=8)
@@ -113,7 +199,6 @@ def search_openalex_topics(topic_query, limit=5):
     return []
 
 def get_author_epc_dict():
-    """Aggregates all minted πEPC across legitimate extracted authors."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT author_name, epc_minted FROM papers_assessment")
@@ -130,7 +215,7 @@ def get_author_epc_dict():
     return author_epc
 
 # ==========================================
-# 3. BLOCKCHAIN & DATABASE ENGINE
+# 4. BLOCKCHAIN & MATHEMATICAL ENGINE
 # ==========================================
 def validate_block_por(block_index, weights, timestamp, previous_hash, eval_hash, model_used, final_score, formulas_hash):
     validator_node = "Validator_Pi_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
@@ -139,81 +224,11 @@ def validate_block_por(block_index, weights, timestamp, previous_hash, eval_hash
     block_hash = hashlib.sha256(data_string.encode('utf-8')).hexdigest()
     return validator_node, block_hash, por_proof
 
-def init_system():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=20.0)
-    cursor = conn.cursor()
-    
-    cursor.execute('''CREATE TABLE IF NOT EXISTS papers_assessment 
-                      (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
-                       c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
-                       c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
-                       scope_alignment REAL, logic_score REAL,
-                       subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)''')
-                       
-    # Robust PRAGMA table check to prevent schema desync OperationalError
-    cursor.execute("PRAGMA table_info(papers_assessment);")
-    existing_cols = [row[1] for row in cursor.fetchall()]
-    
-    required_cols = {
-        "eth_book": "TEXT DEFAULT 'None'",
-        "epc_minted": "REAL DEFAULT 0.0",
-        "tx_hash": "TEXT DEFAULT 'Pending'",
-        "zk_proof": "TEXT DEFAULT 'None'",
-        "did": "TEXT DEFAULT 'None'",
-        "zk_email_proof": "TEXT DEFAULT 'None'",
-        "gaming_penalty": "REAL DEFAULT 0.0",
-        "h_index": "TEXT DEFAULT 'N/A'",
-        "i10_index": "TEXT DEFAULT 'N/A'"
-    }
-    
-    for col, definition in required_cols.items():
-        if col not in existing_cols:
-            cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {definition}")
-            
-    cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
-                      (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
-                       w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
-                       timestamp DATETIME, previous_hash TEXT, 
-                       validator_node TEXT, block_hash TEXT, eval_hash TEXT, model_used TEXT, 
-                       por_proof TEXT, formulas_hash TEXT)''')
-                       
-    try: cursor.execute("ALTER TABLE blockchain_por_weights ADD COLUMN por_proof TEXT DEFAULT 'Genesis_Proof'")
-    except sqlite3.OperationalError: pass
-    try: cursor.execute("ALTER TABLE blockchain_por_weights ADD COLUMN formulas_hash TEXT DEFAULT 'Locked_State'")
-    except sqlite3.OperationalError: pass
-
-    cursor.execute('''CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)''')
-    
-    cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
-    if cursor.fetchone()[0] == 0:
-        genesis_weights = [1.0] * 8
-        prev_hash = "0" * 64
-        timestamp = datetime.now().isoformat()
-        val_node, block_hash, por_proof = validate_block_por(1, genesis_weights, timestamp, prev_hash, "genesis", "none", 100.0, "Genesis_Hash")
-        
-        cursor.execute('''INSERT INTO blockchain_por_weights 
-                          (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) 
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                       (*genesis_weights, timestamp, prev_hash, val_node, block_hash, "genesis", "none", por_proof, "Genesis_Hash"))
-                       
-    cursor.execute("SELECT count FROM global_eval_counter")
-    if not cursor.fetchone():
-        cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
-        
-    conn.commit()
-    return conn
-
-@st.cache_resource
-def get_db_connection():
-    return init_system()
-
 def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str=""):
     circuit_input = f"{eval_hash}:{final_score}:{logic_score}:{email_str}:{time.time()}"
     return "0x0" + hashlib.sha3_256(circuit_input.encode('utf-8')).hexdigest()
 
 def mint_epistemic_capital(book_address, amount, eval_hash, zk_proof):
-    """Mints Soulbound Pi-EPC tied directly to the Digital Book address."""
     if not w3.is_connected() or book_address == "None" or not book_address:
         return "Not Connected / No Book"
         
@@ -242,9 +257,6 @@ def mint_epistemic_capital(book_address, amount, eval_hash, zk_proof):
     except Exception as e:
         return f"Eth Tx Failed: {str(e)}"
 
-# ==========================================
-# 4. MATHEMATICAL & SCORING ENGINE
-# ==========================================
 def generate_blockchain_pi(block_height):
     iterations = max(1, block_height * 50)
     pi_approx = 3.0
@@ -366,9 +378,12 @@ def fetch_doi_metadata(doi):
 def download_pdf_from_url(pdf_url):
     """Securely fetches PDF bytes with browser masquerading and sanity checks."""
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept": "application/pdf,application/xhtml+xml,text/html;q=0.9,image/webp,*/*;q=0.8"
+        }
         res = requests.get(pdf_url, headers=headers, timeout=15, allow_redirects=True)
-        # Ensure we actually downloaded a PDF (magic number check) and not a publisher login HTML page
+        # Verify magic number for PDF
         if res.status_code == 200 and b"%PDF" in res.content[:10]:
             return res.content
         return None
@@ -427,7 +442,6 @@ Text: {text}"""
     except Exception: return 0.0
 
 def extract_unpublished_authors_fallback(text):
-    """Heuristic fallback to extract authors from preprints/unpublished drafts where metadata is stripped."""
     first_2k = text[:2500]
     lines = [line.strip() for line in first_2k.split('\n') if line.strip()]
     for line in lines[1:12]:
@@ -778,13 +792,19 @@ with tab1:
             # Process OpenAlex Topic Selected Paper
             if selected_alex_paper:
                 status_text.text(f"Fetching OpenAlex paper: {selected_alex_paper['title']}...")
-                pdf_bytes = download_pdf_from_url(selected_alex_paper['pdf_url']) if selected_alex_paper.get('pdf_url') else None
+                pdf_bytes = None
                 
-                if not pdf_bytes and selected_alex_paper.get('doi'):
-                    status_text.text(f"Direct download failed. Routing OpenAlex DOI through Unpaywall...")
+                # Try Unpaywall direct proxy first if DOI exists (Bypasses many OpenAlex HTML redirect issues)
+                if selected_alex_paper.get('doi'):
+                    status_text.text(f"Routing OpenAlex DOI through Unpaywall for robust direct PDF extraction...")
                     metadata = fetch_doi_metadata(selected_alex_paper['doi'])
                     if metadata and metadata.get('pdf_url'):
                         pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+                
+                # Fallback to OpenAlex URL if Unpaywall failed or DOI was absent
+                if not pdf_bytes and selected_alex_paper.get('pdf_url'):
+                    status_text.text(f"Falling back to OpenAlex repository link...")
+                    pdf_bytes = download_pdf_from_url(selected_alex_paper['pdf_url'])
 
                 if pdf_bytes:
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, epc, tx_hash, zk_proof, used_weights, h_idx, i10_idx, is_cached = process_single_pdf(
