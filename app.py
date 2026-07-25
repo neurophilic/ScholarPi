@@ -120,7 +120,6 @@ def restore_state_from_web3():
         cid = contract.functions.getCID().call()
         
         if cid:
-            # Multi-gateway fallback routing without the /files/ path component
             gateways = [
                 f"https://ivory-worrying-boa-917.mypinata.cloud/ipfs/{cid}",
                 f"https://gateway.pinata.cloud/ipfs/{cid}",
@@ -142,7 +141,6 @@ def restore_state_from_web3():
                 with open(zip_path, 'wb') as fp:
                     fp.write(res.content)
                 
-                # Unpack and cleanup
                 shutil.unpack_archive(zip_path, BASE_DIR)
                 if os.path.exists(zip_path):
                     os.remove(zip_path)
@@ -526,7 +524,7 @@ def validate_block_por(
   block_hash = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
   return validator_node, block_hash, por_proof
 
-def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str=""):
+def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str="None"):
   circuit_input = (
       f"{eval_hash}:{final_score}:{logic_score}:{email_str}:{time.time()}"
   )
@@ -1477,12 +1475,8 @@ def process_single_pdf(
       else round((final_score / 10.0) * improvement_multiplier, 2)
   )
 
-  zk_email_hash = "None"
-  if email and email.endswith((".edu", ".org")):
-    zk_email_hash = "zkEM_" + hashlib.sha256(email.encode()).hexdigest()[:12]
-
   zk_proof = generate_zk_snark_proof(
-      file_hash, final_score, logic_integrity, zk_email_hash
+      file_hash, final_score, logic_integrity, "None"
   )
   unique_author_book = (
       "0x" + hashlib.sha256(extracted_author.encode()).hexdigest()[:40]
@@ -1529,7 +1523,7 @@ def process_single_pdf(
           tx_hash,
           zk_proof,
           user_id,
-          zk_email_hash,
+          "None",
           gaming_penalty,
           mdar_score,
           rrid_count,
@@ -1695,19 +1689,6 @@ if not st.session_state.is_authenticated:
   manual_orcid = st.sidebar.text_input(
       "Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX"
   )
-  email_input = st.sidebar.text_input(
-      "Institutional Email",
-      placeholder="author@university.edu",
-      help=(
-          "Generates a Zero-Knowledge Proof (ZK-Email) verifying institutional"
-          " alignment without exposing data to the ledger."
-      ),
-  )
-
-  sign_manuscript = st.sidebar.checkbox(
-      "Cryptographically Sign Manuscript Hash with Private Key",
-      help="Prevents Oracle manipulation by proving possession of the document.",
-  )
 
   if st.sidebar.button("Validate and Connect"):
     clean_orcid = manual_orcid.strip()
@@ -1726,9 +1707,7 @@ if not st.session_state.is_authenticated:
             st.session_state.orcid_name,
             st.session_state.is_authenticated,
         ) = (clean_orcid, user_name, True)
-        st.session_state.inst_email = (
-            email_input.strip() if email_input.strip() else "None"
-        )
+        st.session_state.inst_email = "None"
         st.rerun()
       else:
         st.sidebar.error(user_name)
@@ -1745,7 +1724,7 @@ else:
     st.rerun()
 
 current_user = st.session_state.orcid_id
-current_email = st.session_state.get("inst_email", "None")
+current_email = "None"
 
 st.title(
     "Pi-Index Assessment Engine (CoARA-Compliant)",
