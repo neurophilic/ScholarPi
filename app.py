@@ -409,11 +409,7 @@ def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
         else "0x" + hashlib.sha256(book_address.encode()).hexdigest()[:40]
     )
 
-    abi = (
-        'لل[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
-        if False
-        else '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
-    )
+    abi = '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
     contract = w3.eth.contract(
         address=w3.to_checksum_address(PIQ_CONTRACT_ADDRESS), abi=json.loads(abi)
     )
@@ -2267,7 +2263,6 @@ with tab1:
       st.session_state["cancel_requested"] = False
       st.session_state["reset_token"] += 1
       st.session_state["assessment_update_token"] = time.time()
-      st.rerun()
 
   else:
     if st.button(
