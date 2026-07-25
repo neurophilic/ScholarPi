@@ -658,7 +658,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
                    (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
     conn.commit()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_to_mint, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -764,17 +764,17 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of Science", "Active Epoch & DeSci Staking", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
 with tab1:
-    st.markdown("### Unified Multi-Source Document Intake & Assessment " + tooltip("Upload local files, enter DOIs, or search OpenAlex topics and select multiple sources to batch-assess simultaneously."), unsafe_allow_html=True)
-    research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", help="Calculating the scope drift provides quantitative insight into paradigm divergence.")
+    st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and tick OpenAlex papers all in one place."), unsafe_allow_html=True)
+    
+    research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", key=f"research_scope_input_{st.session_state['reset_token']}")
     
     st.markdown("---")
     st.markdown("#### Select Sources to Include in Assessment")
     
-    # Unified Intake Container
     selected_uploaded_files = []
     uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
     if uploaded_files:
-        st.markdown("**Tick uploaded files to assess:**")
+        st.markdown("**Tick local files to include:**")
         for i, file in enumerate(uploaded_files):
             if st.checkbox(f"📄 Local File: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
                 selected_uploaded_files.append(file)
@@ -800,7 +800,7 @@ with tab1:
 
     selected_alex_papers = []
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
-        st.markdown("**Tick OpenAlex papers to include in assessment:**")
+        st.markdown("**Tick OpenAlex papers to include:**")
         for idx, p in enumerate(st.session_state['alex_search_results']):
             if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
                 selected_alex_papers.append(p)
@@ -894,7 +894,7 @@ with tab1:
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
-            # 1. Process OpenAlex Papers with robust fallback
+            # 1. Process OpenAlex Papers
             if selected_alex_papers:
                 for p in selected_alex_papers:
                     status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
@@ -969,7 +969,7 @@ with tab1:
                     st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     progress_bar.progress((i + 1) / len(selected_uploaded_files))
             
-            # Clear all ticked checkboxes across all input methods by bumping reset_token
+            # Clear checkboxes and bump reset token
             st.session_state['reset_token'] += 1
             st.session_state['assessment_update_token'] = time.time()
             
@@ -977,7 +977,7 @@ with tab1:
             time.sleep(1)
             st.rerun()
 
-    # Render persistent evaluated papers buffer so results never disappear
+    # Render persistent evaluated papers buffer
     if st.session_state['evaluated_papers_buffer']:
         st.markdown("---")
         st.markdown("### Active Session Assessment Results")
