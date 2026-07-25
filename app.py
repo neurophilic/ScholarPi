@@ -121,7 +121,7 @@ def restore_state_from_web3():
         
         if cid:
             # FIXED: Added https:// prefix for valid request routing
-            res = requests.get(f"https://ivory-worrying-boa-917.mypinata.cloud/ipfs/{cid}", timeout=30)
+            res = requests.get(f"https://ivory-worrying-boa-917.mypinata.cloud/ipfs/files/{cid}", timeout=30)
             if res.status_code == 200:
                 zip_path = BASE_DIR + ".zip"
                 with open(zip_path, 'wb') as fp:
