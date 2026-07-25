@@ -1,6 +1,7 @@
 import json
 import hashlib
 import os
+import time
 from datetime import datetime
 import fitz
 import numpy as np
@@ -22,10 +23,19 @@ if not GROQ_API_KEY:
 client = Groq(api_key=GROQ_API_KEY)
 conn = init_system()
 
-# --- AI API Calls ---
+# --- Intelligent Caching ---
+_assessment_cache = {}
+
 def evaluate_scope_alignment(text, scope, model, text_limit):
-    if not scope.strip(): return 0.0
-    if len(text) > text_limit: text = text[:text_limit]
+    """Evaluate how well the paper text aligns with a given research scope."""
+    if not scope.strip(): 
+        return 0.0
+    if len(text) > text_limit: 
+        text = text[:text_limit]
+        
+    cache_key = hashlib.md5(f"scope:{scope}:{text[:500]}:{model}".encode()).hexdigest()
+    if cache_key in _assessment_cache:
+        return _assessment_cache[cache_key]
         
     prompt = f"""You are a research alignment tool.
 Read the following paper text and evaluate how well it aligns with this specific research scope/keyword: "{scope}"
@@ -40,16 +50,31 @@ Text: {text}
             messages=[{"role": "user", "content": prompt}],
             model=model, temperature=0.0, response_format={"type": "json_object"}
         )
-        return float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
-    except Exception: return 0.0
+        result = float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
+        _assessment_cache[cache_key] = result
+        return result
+    except Exception: 
+        return 0.0
 
 def evaluate_pdf_text(text, model, text_limit):
-    if len(text) > text_limit: text = text[:text_limit]
-    prompt = f"""You are the theoretical parser for the π-Index Assessment Engine.
+    """
+    Extract proxy variables from paper text using LLM.
+    Uses retry logic with exponential backoff for resilience.
+    """
+    if len(text) > text_limit: 
+        text = text[:text_limit]
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            prompt = f"""You are the theoretical parser for the π-Index Assessment Engine.
 Instead of assigning arbitrary scores, you must read the academic paper and extract the underlying mathematical proxy variables based purely on the document's objective scientific merit.
 
 CRITICAL INSTRUCTION - AUTHOR EXTRACTION:
 Carefully look at the first page of the text to find the actual names of the human authors written below the title. Look for names formatted like "Firstname Lastname" or "Author Name". Do NOT use the file name, do NOT use university names, do NOT use journal names, and do NOT write "Unknown Author". If multiple authors exist, provide the primary/first author name followed by "et al." (e.g. "Jane Doe et al.").
+
+CRITICAL INSTRUCTION - FORCE EXTREME VARIANCE:
+Do NOT cluster your variables around 0.5. If a paper is weak or standard, use values between 0.0 and 0.3. If exceptional, use 0.8 to 1.0. Failure to create extreme contrast will break the mathematical formulas.
 
 1. Extracted Metadata:
 - `Extracted_Title`: The full title of the paper.
@@ -108,22 +133,32 @@ Return ONLY a valid JSON object matching exactly this structure:
 }}
 Text: {text}
 """
-    response = client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model=model, temperature=0.0, seed=SEED_NUMBER, response_format={"type": "json_object"}
-    )
-    return json.loads(response.choices[0].message.content)
+            response = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model, temperature=0.0, seed=SEED_NUMBER, response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            raise e
 
 def process_single_pdf(file_bytes, filename, scope, user_id):
     """Main workflow to process a single PDF file and grade it."""
-    # Guard clause: Validate file_bytes is not None or empty
     if file_bytes is None or len(file_bytes) == 0:
         return None
     
     file_hash = hashlib.sha256(file_bytes).hexdigest() 
     cursor = conn.cursor()
     
-    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
+    # Check cache first
+    cursor.execute("""
+        SELECT final_score, logic_score, title, fields, subfields, author_name, 
+               c1, c2, c3, c4, c5, c6, c7, c8 
+        FROM papers_assessment 
+        WHERE eval_hash=? AND user_id=?
+    """, (file_hash, user_id))
     cached_result = cursor.fetchone()
     
     doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -141,20 +176,30 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
 
         drift = calculate_complex_drift(scope_alignment, c_scores) if scope.strip() else "N/A"
         rec = get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
-        scores_dict = {f"C{i+1}_Metric": c_scores[i] for i in range(8)} # Simplified dict building for cache
+        scores_dict = {
+            "C1_Originality": c_scores[0], "C2_Methodological_Rigor": c_scores[1],
+            "C3_Interdisciplinary": c_scores[2], "C4_Societal_Impact": c_scores[3],
+            "C5_Open_Science_Potential": c_scores[4], "C6_Literature_Integration": c_scores[5],
+            "C7_Empirical_Density": c_scores[6], "C8_Future_Actionability": c_scores[7]
+        }
         return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash
 
     try:
         raw_data = evaluate_pdf_text(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS)
         model_used = PRIMARY_MODEL
     except Exception as e:
-        st.warning(f"Primary model hit a limit. Trying fallback model...")
+        st.warning(f"Primary model ({PRIMARY_MODEL}) encountered an issue: {str(e)[:100]}. Trying fallback...")
         try:
             reduced_limit = MAX_TEXT_TOKENS // 2 if 'limit' in str(e).lower() or '413' in str(e) else MAX_TEXT_TOKENS
             raw_data = evaluate_pdf_text(full_text, FALLBACK_MODEL, reduced_limit)
             model_used = FALLBACK_MODEL
         except Exception as e2:
-            empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
+            st.error(f"Fallback model also failed: {str(e2)[:100]}")
+            empty_scores = {k: 0.0 for k in [
+                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", 
+                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", 
+                "C7_Empirical_Density", "C8_Future_Actionability"
+            ]}
             return "Extraction Failed", pdf_meta_author or "Research Scholar", 0.0, 0.0, "N/A", "N/A", ["Unknown"], ["Unknown"], empty_scores, "Failed"
          
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
@@ -162,67 +207,26 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     cursor.execute("SELECT count FROM global_eval_counter")
     total_evals = cursor.fetchone()[0]
          
-    cursor.execute("SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
+    cursor.execute("""
+        SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 
+        FROM blockchain_por_weights 
+        ORDER BY block_height DESC 
+        LIMIT 1
+    """)
     epoch_data = cursor.fetchone()
     
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
     
     variables = raw_data.get("variables", {})
     scores_dict = compute_formulaic_criteria(variables)
-    scores = [scores_dict[k] for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
+    scores = [scores_dict[k] for k in [
+        "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", 
+        "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", 
+        "C7_Empirical_Density", "C8_Future_Actionability"
+    ]]
     
     logic_integrity = compute_logical_integrity(raw_data.get("logic_analysis", {}))
 
+    # Epoch transition: every EPOCH_BLOCK_SIZE evaluations
     if total_evals % EPOCH_BLOCK_SIZE == 0:
         active_weights = calculate_model_driven_weights(old_weights, scores, model_used, block_height)
-        timestamp = datetime.now().isoformat()
-        val_node, block_hash = validate_block_por(block_height + 1, active_weights, timestamp, previous_hash, file_hash, model_used)
-        cursor.execute('''INSERT INTO blockchain_por_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                       (*active_weights, timestamp, previous_hash, val_node, block_hash, file_hash, model_used))
-    else:
-        active_weights = old_weights
-
-    title = raw_data.get("Extracted_Title", filename)
-    extracted_author = raw_data.get("Extracted_Author", "").strip()
-    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a"] or extracted_author == os.path.splitext(filename)[0]:
-        extracted_author = pdf_meta_author or "Research Scholar"
-
-    fields, subfields = raw_data.get("fields", ["General Science"]), raw_data.get("subfields", ["General"])
-    
-    raw_final_score = float(np.dot(scores, active_weights)) / 8.0
-    final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
-    drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
-    rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
-    
-    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat()))
-    conn.commit()
-    
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash
-
-# --- PyTorch Models ---
-class PiBlockchainDataset(Dataset):
-    def __init__(self, data_matrix, lookback):
-        self.data = data_matrix
-        self.lookback = lookback
-
-    def __len__(self):
-        return len(self.data) - self.lookback
-
-    def __getitem__(self, idx):
-        x = self.data[idx : idx + self.lookback]
-        y = self.data[idx + self.lookback]
-        return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
-
-class PiBrainLSTM(nn.Module):
-    def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
-        super(PiBrainLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
-        self.linear = nn.Sequential(
-            nn.Linear(hidden_layer_size, 16), nn.ReLU(), nn.Linear(16, output_size)
-        )
-
-    def forward(self, x):
-        lstm_out, _ = self.lstm(x)
-        predictions = self.linear(lstm_out[:, -1, :])
-        return torch.softmax(predictions, dim=-1) * 8.0
