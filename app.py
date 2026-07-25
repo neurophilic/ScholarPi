@@ -632,7 +632,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     conn.commit()
     cursor.execute("SELECT count FROM global_eval_counter")
     total_evals = cursor.fetchone()[0]
-         
+          
     cursor.execute("SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
     epoch_data = cursor.fetchone()
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
@@ -675,20 +675,21 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
         improvement_multiplier = min(raw_multiplier, cap)
         
-    piq_to_mint = 0.0 if extracted_author == "Unidentified" else round((final_score / 10.0) * improvement_multiplier, 2)
+    # --- FIX 1: Aligned variable name to `piq_minted` which prevents the UnboundLocalError
+    piq_minted = 0.0 if extracted_author == "Unidentified" else round((final_score / 10.0) * improvement_multiplier, 2)
     
     zk_email_hash = "None"
     if email and email.endswith(('.edu', '.org')):
         zk_email_hash = "zkEM_" + hashlib.sha256(email.encode()).hexdigest()[:12]
 
     zk_proof = generate_zk_snark_proof(file_hash, final_score, logic_integrity, zk_email_hash)
-    tx_hash = mint_pi_quotient_token(book_address, piq_to_mint, file_hash, zk_proof)
+    tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
 
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_minted, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
     conn.commit()
     conn.close()
     
@@ -841,13 +842,21 @@ with tab1:
     selected_alex_papers = []
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
         st.markdown("---")
-        select_all_alex = st.checkbox("Select All OpenAlex Results", key=f"select_all_alex_{st.session_state['reset_token']}")
+        
+        # --- FIX 3: Added callback to handle modifying OpenAlex "Select All" dynamically
+        def toggle_all_alex():
+            is_all = st.session_state.get(f"select_all_alex_{st.session_state['reset_token']}", False)
+            for i in range(st.session_state.alex_visible_count):
+                st.session_state[f"alex_chk_{i}_{st.session_state['reset_token']}"] = is_all
+
+        select_all_alex = st.checkbox("Select All Visible OpenAlex Results", 
+                                      key=f"select_all_alex_{st.session_state['reset_token']}",
+                                      on_change=toggle_all_alex)
         
         visible_results = st.session_state['alex_search_results'][:st.session_state.alex_visible_count]
         for idx, p in enumerate(visible_results):
             is_selected = st.checkbox(
                 f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", 
-                value=select_all_alex, 
                 key=f"alex_chk_{idx}_{st.session_state['reset_token']}"
             )
             if is_selected:
@@ -1171,12 +1180,16 @@ with tab2:
             node_size = max(30, 20 + (avg_weight * 2.5))
             
             base_col = color_map[topic]
+            
+            # --- FIX 2: Pyvis bubbles are properly shaped + labels suppressed with transparent text and 'dot' shape
             net.add_node(
                 n_id=topic, 
-                label="", 
+                label=" ", 
                 title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", 
                 size=node_size, 
+                shape="dot",
                 physics=True, 
+                font={"color": "rgba(0,0,0,0)", "size": 0},
                 color={
                     "background": base_col,
                     "border": "#1a1a1a",
