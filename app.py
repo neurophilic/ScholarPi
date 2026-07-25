@@ -37,7 +37,7 @@ st.set_page_config(page_title="Pi-Index Assessment Engine", layout="wide")
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
 MAX_TEXT_TOKENS = 12000
-EPOCH_BLOCK_SIZE = 5
+EPOCH_BLOCK_SIZE = 1  # Updated: Every evaluation triggers an epoch update
 
 WEB3_PROVIDER_URI = os.getenv("WEB3_PROVIDER_URI", "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID")
 ETH_ADMIN_PRIVATE_KEY = os.getenv("ETH_ADMIN_PRIVATE_KEY", "0x0000000000000000000000000000000000000000000000000000000000000000")
@@ -81,6 +81,34 @@ def fetch_author_metrics(author_name):
         pass
     return "N/A", "N/A"
 
+def search_openalex_topics(topic_query, limit=5):
+    """Queries OpenAlex API to discover Open Access papers based on topics/keywords."""
+    try:
+        url = f"https://api.openalex.org/works?search={requests.utils.quote(topic_query)}&filter=is_oa:true&per_page={limit}"
+        res = requests.get(url, timeout=8)
+        if res.status_code == 200:
+            results = res.json().get('results', [])
+            extracted = []
+            for item in results:
+                title = item.get('title', 'Untitled Paper')
+                doi = item.get('doi', '')
+                oa_info = item.get('open_access', {})
+                pdf_url = oa_info.get('oa_url', '')
+                authorships = item.get('authorships', [])
+                authors_list = [a.get('author', {}).get('display_name', '') for a in authorships]
+                authors_str = ", ".join([a for a in authors_list if a]) if authors_list else "Unidentified"
+                if pdf_url or doi:
+                    extracted.append({
+                        'title': title,
+                        'doi': doi,
+                        'pdf_url': pdf_url,
+                        'authors': authors_str
+                    })
+            return extracted
+    except Exception as e:
+        st.error(f"OpenAlex Topic Fetch Error: {str(e)}")
+    return []
+
 def get_author_epc_dict():
     """Aggregates all minted πEPC across legitimate extracted authors."""
     conn = get_db_connection()
@@ -112,7 +140,6 @@ def init_system():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=20.0)
     cursor = conn.cursor()
     
-    # Base table creation
     cursor.execute('''CREATE TABLE IF NOT EXISTS papers_assessment 
                       (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
                        c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
@@ -120,8 +147,8 @@ def init_system():
                        scope_alignment REAL, logic_score REAL,
                        subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)''')
                        
-    # Robust fail-safe schema migration for new columns
     new_columns = [
+        ("eth_book", "TEXT DEFAULT 'None'"),
         ("epc_minted", "REAL DEFAULT 0.0"),
         ("tx_hash", "TEXT DEFAULT 'Pending'"),
         ("zk_proof", "TEXT DEFAULT 'None'"),
@@ -136,7 +163,7 @@ def init_system():
         try:
             cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col_name} {col_type}")
         except sqlite3.OperationalError:
-            pass # Column already exists
+            pass
             
     cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -180,22 +207,20 @@ def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str=""):
     circuit_input = f"{eval_hash}:{final_score}:{logic_score}:{email_str}:{time.time()}"
     return "0x0" + hashlib.sha3_256(circuit_input.encode('utf-8')).hexdigest()
 
-def mint_epistemic_capital(author_did, amount, eval_hash, zk_proof):
-    """Mints Soulbound Pi-EPC tied directly to the identity vault, not a transferable wallet."""
-    if not w3.is_connected() or author_did == "None" or not author_did:
-        return "Not Connected / No Identity Vault"
+def mint_epistemic_capital(book_address, amount, eval_hash, zk_proof):
+    """Mints Soulbound Pi-EPC tied directly to the Digital Book address."""
+    if not w3.is_connected() or book_address == "None" or not book_address:
+        return "Not Connected / No Book"
         
     try:
-        # Simulate mapping the DID to a deterministic vault address
-        identity_hash = hashlib.sha256(author_did.encode('utf-8')).hexdigest()
-        vault_address = w3.to_checksum_address("0x" + identity_hash[:40])
+        target_addr = book_address if w3.is_address(book_address) else "0x" + hashlib.sha256(book_address.encode()).hexdigest()[:40]
         
         abi = '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
         contract = w3.eth.contract(address=w3.to_checksum_address(EPC_CONTRACT_ADDRESS), abi=abi)
         account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
         
         tx = contract.functions.verifyProofAndMint(
-            vault_address,
+            w3.to_checksum_address(target_addr),
             int(amount),
             eval_hash,
             bytes.fromhex(zk_proof[2:])
@@ -392,17 +417,35 @@ Text: {text}"""
         return float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
     except Exception: return 0.0
 
+def extract_unpublished_authors_fallback(text):
+    """Heuristic fallback to extract authors from preprints/unpublished drafts."""
+    first_2k = text[:2500]
+    lines = [line.strip() for line in first_2k.split('\n') if line.strip()]
+    for line in lines[1:12]:
+        clean_line = re.sub(r'[\d\*\†\‡\§\¶\(\)]', '', line).strip()
+        # Look for typical name formatting (e.g., "John Doe, Jane Smith" or "A. Vafadar")
+        if re.match(r'^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+(\s*,\s*[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*$', clean_line):
+            if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal']):
+                return clean_line
+    return "Unidentified"
+
 def evaluate_pdf_text_ensemble(text, model, text_limit):
     text = adaptive_chunking(text, text_limit)
     prompts = [
-        f"""You are the theoretical parser for the Pi-Index. Read the academic paper and extract mathematical proxy variables.
-CRITICAL INSTRUCTION - AUTHOR EXTRACTION: Extract a comma-separated list of ALL human authors. Do NOT use "et al.".
+        f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and variables.
+CRITICAL INSTRUCTION FOR UNPUBLISHED PAPERS/PREPRINTS:
+- Scan the first 2 pages carefully (title block, correspondence, headers) for human author names.
+- Manuscripts usually place authors directly below the main title, above affiliations, or near institutional emails.
+- Output all identified authors as a comma-separated list. Do NOT use "et al.", "Author", "Researcher", or file names.
+- If no human author is explicitly named, output "Unidentified".
+
 Extract Metadata: `Extracted_Title`, `Extracted_Author`.
 Extract Variables (0.0 to 1.0): `H_novel`, `K_epistemic`, `zeta`, `I_existing`, `Sigma_error`, `mu_signal`, `rho_k`, `p_disciplines` (Array), `bridge_capacity`, `Utility_vector`, `decay_rate`, `q_fractional`, `D_open`, `J_code`, `P_FAIR`, `d_g_distance`, `R_xi`, `PR_xi`, `I_Fisher`, `KL_divergence`, `V_baseline`, `omega_data`, `sum_lambda_kappa`, `eta_steps`, `Lambda_Lyapunov`.
 Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Jumps`, `Premise_Validity`.
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
 Return ONLY a valid JSON object. Text: {text}""",
-        f"""Perform a deep scientometric extraction on the provided text. Identify ALL contributing human authors (no "et al.").
+        f"""Perform a deep scientometric extraction on the provided manuscript/preprint text. 
+Identify ALL contributing human authors listed in the title header or affiliations (no "et al.").
 Output JSON containing `Extracted_Title`, `Extracted_Author`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix (`Evidence_Strength`, `Conclusion_Reach`...) and an `Overall_Confidence` metric. Ensure strictly constrained float values.
 Text: {text}"""
     ]
@@ -413,7 +456,7 @@ Text: {text}"""
     )
     return json.loads(response.choices[0].message.content)
 
-def process_single_pdf(file_bytes, filename, scope, user_id, did="None", email="None"):
+def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None"):
     if file_bytes is None or len(file_bytes) == 0:
         return None
     
@@ -488,8 +531,12 @@ def process_single_pdf(file_bytes, filename, scope, user_id, did="None", email="
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = raw_data.get("Extracted_Author", "").strip()
     
-    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar"] or extracted_author == os.path.splitext(filename)[0]:
-        extracted_author = pdf_meta_author.strip() if pdf_meta_author.strip() else "Unidentified"
+    # Enhanced extraction for preprints and unpublished manuscripts
+    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
+        if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
+            extracted_author = pdf_meta_author.strip()
+        else:
+            extracted_author = extract_unpublished_authors_fallback(full_text)
 
     fields, subfields = raw_data.get("fields", ["Unspecified Domain"]), raw_data.get("subfields", ["Unspecified Sub-domain"])
     
@@ -531,13 +578,13 @@ def process_single_pdf(file_bytes, filename, scope, user_id, did="None", email="
         zk_email_hash = "zkEM_" + hashlib.sha256(email.encode()).hexdigest()[:12]
 
     zk_proof = generate_zk_snark_proof(file_hash, final_score, logic_integrity, zk_email_hash)
-    tx_hash = mint_epistemic_capital(did, epc_to_mint, file_hash, zk_proof)
+    tx_hash = mint_epistemic_capital(book_address, epc_to_mint, file_hash, zk_proof)
 
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
-    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, epc_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), epc_to_mint, tx_hash, zk_proof, did, zk_email_hash, gaming_penalty, h_idx, i10_idx))
+    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, epc_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, epc_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx))
     conn.commit()
     
     return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, epc_to_mint, tx_hash, zk_proof, active_weights, h_idx, i10_idx, False
@@ -571,10 +618,17 @@ if 'assessment_update_token' not in st.session_state: st.session_state['assessme
 if 'orcid_id' not in st.session_state:
     st.session_state.orcid_id = "0000-0000-0000-0000"
     st.session_state.orcid_name = ""
+    st.session_state.eth_book = ""
     st.session_state.is_authenticated = False
 
+st.sidebar.markdown("### Digital Book Address " + tooltip("Enter your Digital Book address to link and explore all your assessed manuscripts."), unsafe_allow_html=True)
+book_address_input = st.sidebar.text_input("Digital Book Address", value=st.session_state.get('eth_book', ''), placeholder="0x... or Book ID", help="Tracks and links all manuscripts submitted to this specific Digital Book.")
+
+if book_address_input.strip():
+    st.session_state.eth_book = book_address_input.strip()
+
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown(f"### Authenticate " + tooltip("Connect to your ORCID or DID to securely isolate your assessment history. Epistemic Capital (πEPC) is a Soulbound Token assigned strictly to this identity."), unsafe_allow_html=True)
+    st.sidebar.markdown(f"### Authenticate " + tooltip("Connect to your ORCID or DID to securely isolate your assessment history."), unsafe_allow_html=True)
     manual_orcid = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX")
     email_input = st.sidebar.text_input("Institutional Email", placeholder="author@university.edu", help="Generates a Zero-Knowledge Proof (ZK-Email) verifying institutional alignment without exposing data to the ledger.")
     
@@ -601,7 +655,22 @@ else:
         st.session_state.is_authenticated, st.session_state.orcid_name = False, ""
         st.rerun()
 
+# Dynamic Sidebar Section: View Papers Linked to Digital Book
+if st.session_state.get('eth_book', '').strip():
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"### 📚 Your Book Manuscripts " + tooltip("Manuscripts registered under this Digital Book address."), unsafe_allow_html=True)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT title, final_score, epc_minted, author_name FROM papers_assessment WHERE eth_book=? ORDER BY timestamp DESC", (st.session_state.eth_book,))
+    book_papers = cursor.fetchall()
+    if book_papers:
+        for p_title, p_score, p_epc, p_author in book_papers[:10]:
+            st.sidebar.markdown(f"• **{p_title[:28]}...**\n  *Author:* `{p_author}` | *Score:* `{p_score:.1f}` | *πEPC:* `{p_epc:.2f}`")
+    else:
+        st.sidebar.caption("No manuscripts currently recorded under this Book address.")
+
 current_user = st.session_state.orcid_id
+current_book = st.session_state.eth_book if st.session_state.eth_book else "None"
 current_email = st.session_state.get('inst_email', "None")
 
 st.title("Pi-Index Assessment Engine", help="Automated peer-review framework powered by neural networks and multidimensional blockchain consensus.")
@@ -643,17 +712,42 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Rebuttals", "Global Map of Science", "Active Epoch and Ledger", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
 with tab1:
-    st.markdown("### Document Assessment and Import " + tooltip("Upload local PDFs or fetch via DOI to assess papers. Requires a micro-stake to prevent spam and Sybil attacks. Results are logged to the Proof-of-Research blockchain."), unsafe_allow_html=True)
+    st.markdown("### Document Assessment and Import " + tooltip("Upload local PDFs, fetch via DOI, or discover topic papers via OpenAlex."), unsafe_allow_html=True)
     research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", help="Calculating the scope drift provides quantitative insight into paradigm divergence.")
     
     col_up, col_doi = st.columns(2)
     with col_up:
-        st.markdown("#### Upload Local PDF")
+        st.markdown("#### Upload Local PDF / Manuscript")
         uploaded_files = st.file_uploader("Upload Academic Papers", type=["pdf"], accept_multiple_files=True, help="Supports parsing of multi-page academic PDF documents using adaptive token chunking.")
     with col_doi:
         st.markdown("#### Import via Unpaywall (DOI)")
         doi_input = st.text_input("Enter Document Object Identifier (DOI)", placeholder="10.1038/s41586-020-2649-2", help="Directly imports the paper if an Open Access copy is identified via the Unpaywall registry.")
     
+    st.markdown("---")
+    st.markdown("#### Discover & Rate Papers via OpenAlex Topic Search " + tooltip("Search open-access papers by specific research topics and automatically feed them into the Pi-Index assessment pipeline."), unsafe_allow_html=True)
+    topic_col1, topic_col2 = st.columns([3, 1])
+    with topic_col1:
+        alex_topic_input = st.text_input("Enter Topic to Search OpenAlex Papers", placeholder="e.g., structural integrity, neural networks, oncology")
+    with topic_col2:
+        st.write("")
+        st.write("")
+        search_alex_btn = st.button("Search OpenAlex Papers")
+
+    selected_alex_paper = None
+    if search_alex_btn and alex_topic_input.strip():
+        with st.spinner(f"Querying OpenAlex for papers on '{alex_topic_input}'..."):
+            alex_results = search_openalex_topics(alex_topic_input.strip(), limit=5)
+            if alex_results:
+                st.session_state['alex_search_results'] = alex_results
+                st.success(f"Found {len(alex_results)} Open Access papers.")
+            else:
+                st.warning("No Open Access papers found matching this topic.")
+
+    if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
+        alex_options = {f"{p['title']} ({p['authors']})": p for p in st.session_state['alex_search_results']}
+        chosen_alex_label = st.selectbox("Select a paper discovered via OpenAlex to rate:", list(alex_options.keys()))
+        selected_alex_paper = alex_options[chosen_alex_label]
+
     stake_amount = st.checkbox("Stake 0.01 πEPC to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
 
     def render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, epc, tx_hash, zk_proof, drift, rec, scope, h_index, i10_index):
@@ -686,12 +780,25 @@ with tab1:
     if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
         if not stake_amount:
             st.error("You must agree to the πEPC micro-stake to execute the assessment pipeline.")
-        elif not uploaded_files and not doi_input.strip():
-            st.warning("Please upload a PDF or provide a valid DOI to proceed.")
+        elif not uploaded_files and not doi_input.strip() and not selected_alex_paper:
+            st.warning("Please upload a PDF, enter a DOI, or select a paper from the OpenAlex Topic search.")
         else:
             results_list = []
             progress_bar, status_text = st.progress(0), st.empty()
             
+            # Process OpenAlex Topic Selected Paper
+            if selected_alex_paper:
+                status_text.text(f"Fetching OpenAlex paper: {selected_alex_paper['title']}...")
+                pdf_bytes = download_pdf_from_url(selected_alex_paper['pdf_url']) if selected_alex_paper['pdf_url'] else None
+                if pdf_bytes:
+                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, epc, tx_hash, zk_proof, used_weights, h_idx, i10_idx, is_cached = process_single_pdf(
+                        pdf_bytes, f"OpenAlex_{selected_alex_paper['title'][:20]}.pdf", research_scope, current_user, current_book, current_email
+                    )
+                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, epc, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx)
+                else:
+                    st.error("Failed to download PDF for selected OpenAlex paper.")
+
+            # Process DOI Input
             if doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
                 metadata = fetch_doi_metadata(doi_input)
@@ -700,31 +807,19 @@ with tab1:
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, epc, tx_hash, zk_proof, used_weights, h_idx, i10_idx, is_cached = process_single_pdf(
-                            pdf_bytes, f"DOI_{doi_input.replace('/', '_')}.pdf", research_scope, current_user, current_user, current_email
+                            pdf_bytes, f"DOI_{doi_input.replace('/', '_')}.pdf", research_scope, current_user, current_book, current_email
                         )
-                        record = {
-                            "Source": "DOI", "Title": title, "Contributing Authors": author_name, "Pi-Index": round(score, 1), "h-index": h_idx, "i10-index": i10_idx
-                        }
-                        results_list.append(record)
-                        if is_cached:
-                            st.info("Paper previously evaluated. Loaded historical data and details.")
                         render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, epc, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx)
-                    else: st.error("Failed to securely download PDF from the Open Access source.")
+                    else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
+            # Process Uploaded Local Files
             if uploaded_files:
                 for i, file in enumerate(uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(uploaded_files)}: {file.name}...")
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, epc, tx_hash, zk_proof, used_weights, h_idx, i10_idx, is_cached = process_single_pdf(
-                        file.read(), file.name, research_scope, current_user, current_user, current_email
+                        file.read(), file.name, research_scope, current_user, current_book, current_email
                     )
-                    
-                    record = {
-                        "Source": "File", "Title": title, "Contributing Authors": author_name, "Pi-Index": round(score, 1), "h-index": h_idx, "i10-index": i10_idx
-                    }
-                    results_list.append(record)
-                    if is_cached:
-                        st.info("Paper previously evaluated. Loaded historical data and details.")
                     render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, epc, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx)
                     progress_bar.progress((i + 1) / len(uploaded_files))
             
