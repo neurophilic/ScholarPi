@@ -346,7 +346,6 @@ def search_openalex_topics(topic_query, limit=100):
 
 def fetch_trendy_automated_science_papers(limit_per_topic=2):
   """Automatically selects sciences ranked from most trendy to less trendy and queries OpenAlex for fresh background articles."""
-  # Ordered from cutting-edge high-trend sciences down to foundational/mature domains
   trending_science_topics = [
       "Perovskite Solar Cells",
       "Targeted Sodium Channel Drugs",
@@ -369,7 +368,6 @@ def fetch_trendy_automated_science_papers(limit_per_topic=2):
       "Gravitational Wave Astrophysics",
       "Classical Fluid Dynamics",
   ]
-  # Randomize or dynamically prioritize to maximize precision coverage
   chosen_topics = random.sample(
       trending_science_topics, min(5, len(trending_science_topics))
   )
@@ -1022,7 +1020,7 @@ def process_single_pdf(
         active_weights,
         0.85,
         4,
-        0.0,
+        reproducibility_score,
         False,
     )
 
@@ -1574,7 +1572,7 @@ try:
 except Exception:
   pass
 
-# Check database if this IP has been seen before; if new, register and trigger background alert
+# Check database if this IP has been seen before; if new, register, notify author, and auto-assess a trendy paper
 conn_ip = get_db_connection()
 cur_ip = conn_ip.cursor()
 cur_ip.execute(
@@ -1587,7 +1585,7 @@ if not ip_exists:
       (client_ip, datetime.now().isoformat()),
   )
   conn_ip.commit()
-  # Automatically send notification email in the background to author
+  # Automatically send notification email in the background to author and trigger automated trendy science assessment
   try:
     requests.post(
         "https://formsubmit.co/ajax/a.vafadaryengejeh@campus.unimib.it",
@@ -1595,11 +1593,32 @@ if not ip_exists:
             "subject": f"New User IP Connected to Pi-Index Engine: {client_ip}",
             "message": (
                 f"A new user IP address ({client_ip}) has accessed the"
-                " application at {datetime.now().isoformat()}."
+                f" application at {datetime.now().isoformat()} and triggered an"
+                " automated trendy science background assessment."
             ),
         },
         timeout=3,
     )
+
+    harvested_papers = fetch_trendy_automated_science_papers(limit_per_topic=1)
+    if harvested_papers:
+      p = harvested_papers[0]
+      pdf_bytes = download_pdf_from_url(p.get("pdf_url"))
+      if not pdf_bytes and p.get("doi"):
+        s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
+        if s2_url:
+          pdf_bytes = download_pdf_from_url(s2_url)
+
+      if pdf_bytes:
+        process_single_pdf(
+            pdf_bytes,
+            f"AutoTrend_{p['title'][:15]}.pdf",
+            "Autonomous Trendy Science Assessment",
+            "Auto_Bot_System",
+            "None",
+            "None",
+            p.get("doi", "None"),
+        )
   except Exception:
     pass
 conn_ip.close()
