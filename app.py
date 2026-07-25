@@ -1,6 +1,4 @@
-Here is the fully updated application code with all four critical fixes applied. I have ensured that absolutely no features or original logic were lost.
 
-```python
 import os
 import re
 import json
@@ -3507,4 +3505,3 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-```
