@@ -107,7 +107,6 @@ def restore_state_from_web3():
     try:
         abi = '[{"inputs":[],"name":"getCID","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
         
-        # Web3 checksum validation safety
         if len(REGISTRY_CONTRACT_ADDRESS) != 42 or not REGISTRY_CONTRACT_ADDRESS.startswith("0x"):
             return
             
@@ -173,7 +172,6 @@ def backup_state_to_web3():
     except Exception as e:
         print(f"Failed to backup state to Web3: {e}")
 
-# Run the restore function exactly once upon server startup
 if "state_restored" not in st.session_state:
     restore_state_from_web3()
     st.session_state["state_restored"] = True
@@ -428,66 +426,6 @@ def search_openalex_topics(topic_query, limit=100):
   except Exception as e:
     st.error(f"OpenAlex Topic Fetch Error: {str(e)}")
   return []
-
-def fetch_trendy_automated_science_papers(limit_per_topic=2):
-  trending_science_topics = [
-      "Perovskite Solar Cells",
-      "Targeted Sodium Channel Drugs",
-      "Artificial Intelligence Large Language Models",
-      "Quantum Computing Architecture",
-      "CRISPR Gene Editing Therapeutics",
-      "Solid-State Battery Electrolytes",
-      "Single-Cell Multi-Omics",
-      "Graph Neural Networks",
-      "Atmospheric Carbon Capture",
-      "Neuro-Vascular Interfaces",
-      "Synthetic Biology Genomics",
-      "Metabolic Engineering",
-      "Cellular Immunotherapy",
-      "Quantum Cryptography",
-      "Autonomous Robotic Labs",
-      "Molecular Dynamics Simulations",
-      "Advanced Catalysis Chemistry",
-      "Microbiome Therapeutics",
-      "Gravitational Wave Astrophysics",
-      "Classical Fluid Dynamics",
-  ]
-  chosen_topics = random.sample(
-      trending_science_topics, min(5, len(trending_science_topics))
-  )
-  all_harvested = []
-  for topic in chosen_topics:
-    try:
-      url = f"https://api.openalex.org/works?search={requests.utils.quote(topic)}&filter=is_oa:true&per_page={limit_per_topic}"
-      res = requests.get(url, timeout=6)
-      if res.status_code == 200:
-        results = res.json().get("results", [])
-        for item in results:
-          title = item.get("title", "Untitled Paper")
-          doi = item.get("doi", "")
-          best_oa = item.get("best_oa_location") or {}
-          pdf_url = best_oa.get("pdf_url") or item.get("open_access", {}).get(
-              "oa_url", ""
-          )
-          authorships = item.get("authorships", [])
-          authors_list = [
-              a.get("author", {}).get("display_name", "") for a in authorships
-          ]
-          authors_str = (
-              ", ".join([a for a in authors_list if a])
-              if authors_list
-              else "Unidentified"
-          )
-          if pdf_url or doi:
-            all_harvested.append({
-                "title": f"[Trend: {topic}] {title}",
-                "doi": doi,
-                "pdf_url": pdf_url,
-                "authors": authors_str,
-            })
-    except Exception:
-      continue
-  return all_harvested
 
 def get_author_piq_dict():
   conn = get_db_connection()
@@ -1554,7 +1492,6 @@ def process_single_pdf(
   conn.commit()
   conn.close()
 
-  # Trigger the backup automatically in the background
   backup_state_to_web3()
 
   return (
@@ -1622,7 +1559,6 @@ if "initialized" not in st.session_state:
   st.session_state["initialized"] = True
   st.toast("Application initialized successfully.", icon="🚀")
 
-# Automatic IP detection and silent backend notification dispatch
 client_ip = "127.0.0.1"
 try:
   headers = st.context.headers
@@ -1636,7 +1572,6 @@ try:
 except Exception:
   pass
 
-# Check database if this IP has been seen before; if new, register, notify author, and auto-assess a trendy paper
 conn_ip = get_db_connection()
 cur_ip = conn_ip.cursor()
 cur_ip.execute(
@@ -1649,7 +1584,6 @@ if not ip_exists:
       (client_ip, datetime.now().isoformat()),
   )
   conn_ip.commit()
-  # Automatically send notification email in the background to author and trigger automated trendy science assessment
   try:
     requests.post(
         "https://formsubmit.co/ajax/a.vafadaryengejeh@campus.unimib.it",
@@ -1657,44 +1591,21 @@ if not ip_exists:
             "subject": f"New User IP Connected to Pi-Index Engine: {client_ip}",
             "message": (
                 f"A new user IP address ({client_ip}) has accessed the"
-                f" application at {datetime.now().isoformat()} and triggered an"
-                " automated trendy science background assessment."
+                f" application at {datetime.now().isoformat()}."
             ),
         },
         timeout=3,
     )
-
-    harvested_papers = fetch_trendy_automated_science_papers(limit_per_topic=1)
-    if harvested_papers:
-      p = harvested_papers[0]
-      pdf_bytes = download_pdf_from_url(p.get("pdf_url"))
-      if not pdf_bytes and p.get("doi"):
-        s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
-        if s2_url:
-          pdf_bytes = download_pdf_from_url(s2_url)
-
-      if pdf_bytes:
-        process_single_pdf(
-            pdf_bytes,
-            f"AutoTrend_{p['title'][:15]}.pdf",
-            "Autonomous Trendy Science Assessment",
-            "Auto_Bot_System",
-            "None",
-            "None",
-            p.get("doi", "None"),
-        )
   except Exception:
     pass
 conn_ip.close()
 
-# Query total analyzed papers count from database for corner metric badge
 conn_cnt = get_db_connection()
 cur_cnt = conn_cnt.cursor()
 cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
 total_analyzed_count = cur_cnt.fetchone()[0]
 conn_cnt.close()
 
-# Display total analyzed count badge in top-right corner
 st.markdown(
     f"""
     <div style="position: absolute; top: 15px; right: 20px; background-color: #2c3e50; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 999;">
@@ -1939,11 +1850,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 with tab1:
   st.markdown(
-      "### Unified Multi-Source Intake & Trendy Science Discovery"
+      "### Unified Multi-Source Intake & Custom Topic Search"
       + tooltip(
-          "Define your scope, upload local files, or automatically query"
-          " OpenAlex across scientifically trending domains ranked from"
-          " cutting-edge to foundational to maximize precision."
+          "Define your scope, upload local files, or query OpenAlex"
+          " to maximize evaluation precision."
       ),
       unsafe_allow_html=True,
   )
@@ -1995,23 +1905,10 @@ with tab1:
 
     st.markdown("")
     st.markdown(
-        "**3. Trendy Science Discovery Engine (Randomized Trend-to-Foundation"
-        " Harvester)**"
+        "**3. OpenAlex Topic Search**"
     )
-    auto_harvest_trendy = st.checkbox(
-        "Automatically query OpenAlex across sciences ranked from most trendy"
-        " to less trendy fields",
-        value=False,
-        key=f"auto_harvest_trendy_{st.session_state['reset_token']}",
-        help=(
-            "Randomly selects from cutting-edge high-trend sciences down to"
-            " foundational fields to harvest fresh articles and boost global"
-            " evaluation precision."
-        ),
-    )
-
     alex_topic_input = st.text_input(
-        "Or Custom OpenAlex Topic Search",
+        "Custom OpenAlex Topic Search",
         placeholder="e.g., structural integrity, neural networks, oncology",
         key=f"alex_topic_{st.session_state['reset_token']}",
     )
@@ -2023,11 +1920,9 @@ with tab1:
   if "search_alex_btn" in locals() and search_alex_btn:
     st.session_state.alex_visible_count = 10
     with st.spinner(
-        "Querying OpenAlex across trendy-to-foundational science domains..."
+        "Querying OpenAlex..."
     ):
       alex_results = []
-      if auto_harvest_trendy:
-        alex_results = fetch_trendy_automated_science_papers(limit_per_topic=2)
       if alex_topic_input.strip():
         custom_res = search_openalex_topics(alex_topic_input.strip(), limit=50)
         alex_results.extend(custom_res)
@@ -2035,8 +1930,7 @@ with tab1:
       if alex_results:
         st.session_state["alex_search_results"] = alex_results
         st.success(
-            f"Successfully harvested {len(alex_results)} papers from OpenAlex"
-            " across trending sciences."
+            f"Successfully harvested {len(alex_results)} papers from OpenAlex."
         )
       else:
         st.warning("No Open Access papers found matching criteria.")
@@ -3403,7 +3297,6 @@ with tab4:
           dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
       )
 
-      # Attempt to load any locally saved PyTorch weights before initializing the optimizer
       model = PiBrainLSTM()
       weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
       if os.path.exists(weights_path):
@@ -3448,7 +3341,6 @@ with tab4:
         st.session_state.current_weights = weight_data[-1]
         st.session_state.last_trained_blocks = current_block_count
         
-        # Save PyTorch neural network progress locally and trigger IPFS Push
         torch.save(model.state_dict(), weights_path)
         backup_state_to_web3()
 
