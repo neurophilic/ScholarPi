@@ -1285,11 +1285,78 @@ with tab4:
         st.markdown(f"**Mathematical Constraint Check:** Predicted Sum = `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`")
 
 with tab5:
-    st.markdown("### The Pi-Index Framework: System Overview and Scientific Modernization")
-    st.markdown("""
-    #### 1. System Overview
-    The Pi-Index Assessment Engine represents a paradigm shift in scientometrics, moving away from legacy bibliometrics (e.g., citation counts, Journal Impact Factors) toward a deterministic, multidimensional mathematical framework aligned with **DORA principles**.
-    """)
+    st.markdown("### The Pi-Index Framework: System Architecture & Workflow Diagram")
+    st.markdown("The interactive system architecture flow below outlines the lifecycle of manuscript ingestion, ensemble evaluation, cryptographic verification, and decentralized research assessment.")
+    
+    # Render the detailed Graphviz diagram directly inside Tab 5 of the app
+    st.graphviz_chart('''
+    digraph PiIndexSystemOverview {
+        rankdir=TB;
+        compound=true;
+        fontname="Helvetica,Arial,sans-serif";
+        node [fontname="Helvetica,Arial,sans-serif", style=filled, margin=0.2];
+        edge [fontname="Helvetica,Arial,sans-serif", fontsize=10];
+
+        node [shape=box, fillcolor="#f8f9fa", color="#2c3e50", penwidth=1.5];
+
+        subgraph cluster_intake {
+            label = "1. Unified Multi-Source Intake & Identity Registry";
+            style = rounded;
+            color = "#34495e";
+            fillcolor = "#ecf0f1";
+
+            Auth [label="Researcher Authentication\n(ORCID iD / W3C DID & ZK-Email)", fillcolor="#aed6f1"];
+            Intake [label="Multi-Source Ingestion Engine\n• Local PDF Uploads\n• Unpaywall DOI Resolver\n• OpenAlex Topic Discovery", fillcolor="#aed6f1"];
+            Auth -> Intake [style=invis];
+        }
+
+        subgraph cluster_eval {
+            label = "2. Core Evaluation & Adversarial Analysis Pipeline";
+            style = rounded;
+            color = "#27ae60";
+            fillcolor = "#e8f8f5";
+
+            Parser [label="Ensemble LLM Text Parser\n(Primary: Llama-3.3-70b / Fallback: Llama-3.1-8b)", fillcolor="#a3e4d7"];
+            Discriminator [label="Discriminator & Divergence Filter\n• Gaming Penalty Evaluation\n• Executable Reproducibility Score (C5/C7)\n• Scope Alignment & Drift Metrics", fillcolor="#a3e4d7"];
+            Criteria [label="8-Criteria Formulaic Calculations\n(C1 Originality to C8 Future Actionability)", fillcolor="#a3e4d7"];
+            Logic [label="Adversarial Logic Integrity Matrix\n(Premise Validity & Logical Jumps Penalty)", fillcolor="#a3e4d7"];
+            
+            Parser -> Discriminator;
+            Discriminator -> Criteria;
+            Criteria -> Logic;
+        }
+
+        subgraph cluster_blockchain {
+            label = "3. Blockchain Consensus, Cryptographic Proofs & Tokenomics";
+            style = rounded;
+            color = "#8e44ad";
+            fillcolor = "#f4ecf7";
+
+            PoR [label="Proof-of-Research (PoR) Validation\n• Dynamic Weight Shifting\n• Cryptographic Formulas Hash Stamping", fillcolor="#d7bde2"];
+            ZK [label="zk-SNARK & ZK-Email Circuit Proofs\n(Privacy-Preserving Verification)", fillcolor="#d7bde2"];
+            Mint [label="Soulbound Token Minting\n(piQ Credit & Smart Contract Tx Hash)", fillcolor="#d7bde2"];
+            
+            PoR -> ZK -> Mint;
+        }
+
+        subgraph cluster_outputs {
+            label = "4. User Interface, Cartography & Decision Support";
+            style = rounded;
+            color = "#d35400";
+            fillcolor = "#fef5e7";
+
+            Dossier [label="DORA-Aligned Research Dossier\n& AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
+            Cartography [label="Global Map of Science\n(Ledger-Driven PyVis Network Cartography)", fillcolor="#f8c471"];
+            PiBrain [label="Pi-Brain LSTM Meta-Learning\n(Predictive Epoch Weight Shift Modeling)", fillcolor="#f8c471"];
+        }
+
+        Intake -> Parser [lhead=cluster_eval, label="Raw Manuscript Text"];
+        Logic -> PoR [lhead=cluster_blockchain, label="Evaluated Score & Hashes"];
+        Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
+        Mint -> Cartography;
+        Mint -> PiBrain;
+    }
+    ''')
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
