@@ -11,7 +11,7 @@ EPOCH_BLOCK_SIZE = 5
 # --- ETHEREUM & WEB3 SETTINGS ---
 WEB3_PROVIDER_URI = os.getenv("WEB3_PROVIDER_URI", "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID")
 ETH_ADMIN_PRIVATE_KEY = os.getenv("ETH_ADMIN_PRIVATE_KEY", "0x0000000000000000000000000000000000000000000000000000000000000000")
-PICOIN_CONTRACT_ADDRESS = os.getenv("PICOIN_CONTRACT_ADDRESS", "0xYourDeployedContractAddressHere")
+EPC_CONTRACT_ADDRESS = os.getenv("EPC_CONTRACT_ADDRESS", "0xYourDeployedContractAddressHere")
 
 BASE_DIR = os.path.abspath('./Scientometric_Pi_Index')
 os.makedirs(BASE_DIR, exist_ok=True)
