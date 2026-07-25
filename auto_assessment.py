@@ -143,6 +143,8 @@ def backup_state_to_web3():
 def enforce_database_schema():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
     cursor = conn.cursor()
+    
+    # Base Table Creation
     cursor.execute("""CREATE TABLE IF NOT EXISTS papers_assessment 
                       (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
                        c1 REAL, c2 REAL, c3 REAL, c4 REAL, c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
@@ -178,7 +180,7 @@ def enforce_database_schema():
             try: cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
             except: pass
 
-    # Auto-migration for missing columns in blockchain_por_weights
+    # Auto-migration for missing columns in blockchain_por_weights (Ensures table updates if loaded from older IPFS backup)
     target_columns_weights = {
         "por_proof": "TEXT DEFAULT 'Genesis_Proof'",
         "formulas_hash": "TEXT DEFAULT 'Locked_State'"
