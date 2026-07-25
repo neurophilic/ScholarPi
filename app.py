@@ -1,4 +1,3 @@
-
 import os
 import re
 import json
@@ -8,6 +7,7 @@ import random
 import sqlite3
 import hashlib
 import tempfile
+import shutil
 from datetime import datetime
 from io import BytesIO
 
@@ -59,16 +59,21 @@ BASE_DIR = os.path.expanduser("~/Scientometric_Pi_Index")
 os.makedirs(BASE_DIR, exist_ok=True)
 DB_PATH = os.path.join(BASE_DIR, "pi_index_main.db")
 
-# FIX 4: Handle FileNotFoundError if Streamlit secrets file doesn't exist locally
+# Fallback safely handles Streamlit local secrets vs Server Environment Variables
 try:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
+    PINATA_API_KEY = os.getenv("PINATA_API_KEY") or st.secrets.get("PINATA_API_KEY", "")
+    PINATA_SECRET_API_KEY = os.getenv("PINATA_SECRET_API_KEY") or st.secrets.get("PINATA_SECRET_API_KEY", "")
+    REGISTRY_CONTRACT_ADDRESS = os.getenv("REGISTRY_CONTRACT_ADDRESS") or st.secrets.get("REGISTRY_CONTRACT_ADDRESS", "")
 except FileNotFoundError:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+    PINATA_API_KEY = os.getenv("PINATA_API_KEY", "")
+    PINATA_SECRET_API_KEY = os.getenv("PINATA_SECRET_API_KEY", "")
+    REGISTRY_CONTRACT_ADDRESS = os.getenv("REGISTRY_CONTRACT_ADDRESS", "")
 
 if not GROQ_API_KEY:
   st.error(
-      "API Key not found! Please configure your environment variables or"
-      " Streamlit Secrets."
+      "API Key not found! Please configure your environment variables or Streamlit Secrets."
   )
   st.stop()
 
@@ -89,6 +94,89 @@ GENESIS_BLOCK_CONFIG = {
         b"C1:Semantic_Originality|C2:MDAR_Rigor|C3:Citation_Entropy|C4:Open_Infrastructure|C5:Containerized_Execution|C6:Citation_Polarity|C7:Empirical_Density|C8:FAIR_Actionability|CoARA_Dossier_v2.0"
     ).hexdigest(),
 }
+
+
+# ==========================================
+# 1.5 DECENTRALIZED STATE MANAGEMENT
+# ==========================================
+def restore_state_from_web3():
+    """Fetches the latest IPFS CID from Sepolia Ethereum and restores the DB and Neural Net."""
+    if not REGISTRY_CONTRACT_ADDRESS or not w3.is_connected():
+        return
+    
+    try:
+        abi = '[{"inputs":[],"name":"getCID","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
+        
+        # Web3 checksum validation safety
+        if len(REGISTRY_CONTRACT_ADDRESS) != 42 or not REGISTRY_CONTRACT_ADDRESS.startswith("0x"):
+            return
+            
+        contract = w3.eth.contract(address=w3.to_checksum_address(REGISTRY_CONTRACT_ADDRESS), abi=json.loads(abi))
+        cid = contract.functions.getCID().call()
+        
+        if cid:
+            res = requests.get(f"https://gateway.pinata.cloud/ipfs/{cid}", timeout=30)
+            if res.status_code == 200:
+                zip_path = BASE_DIR + ".zip"
+                with open(zip_path, 'wb') as fp:
+                    fp.write(res.content)
+                shutil.unpack_archive(zip_path, BASE_DIR)
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
+    except Exception as e:
+        print(f"Failed to restore state from Web3: {e}")
+
+def backup_state_to_web3():
+    """Zips the local state, pins to IPFS via Pinata, and updates the Sepolia Ethereum registry."""
+    if not PINATA_API_KEY or not REGISTRY_CONTRACT_ADDRESS or not w3.is_connected():
+        return
+        
+    try:
+        shutil.make_archive(BASE_DIR, 'zip', BASE_DIR)
+        zip_path = BASE_DIR + ".zip"
+        
+        headers = {
+            "pinata_api_key": PINATA_API_KEY, 
+            "pinata_secret_api_key": PINATA_SECRET_API_KEY
+        }
+        with open(zip_path, 'rb') as fp:
+            res = requests.post(
+                "https://api.pinata.cloud/pinning/pinFileToIPFS", 
+                files={"file": fp}, 
+                headers=headers
+            )
+        
+        cid = res.json().get("IpfsHash")
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        
+        if not cid:
+            return
+
+        abi = '[{"inputs":[{"internalType":"string","name":"_cid","type":"string"}],"name":"updateCID","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
+        
+        if len(REGISTRY_CONTRACT_ADDRESS) != 42 or not REGISTRY_CONTRACT_ADDRESS.startswith("0x"):
+            return
+            
+        contract = w3.eth.contract(address=w3.to_checksum_address(REGISTRY_CONTRACT_ADDRESS), abi=json.loads(abi))
+        account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
+        
+        tx = contract.functions.updateCID(cid).build_transaction({
+            "from": account.address,
+            "nonce": w3.eth.get_transaction_count(account.address),
+            "gas": 150000,
+            "gasPrice": w3.to_wei("10", "gwei"),
+        })
+        
+        signed_tx = w3.eth.account.sign_transaction(tx, private_key=ETH_ADMIN_PRIVATE_KEY)
+        w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    except Exception as e:
+        print(f"Failed to backup state to Web3: {e}")
+
+# Run the restore function exactly once upon server startup
+if "state_restored" not in st.session_state:
+    restore_state_from_web3()
+    st.session_state["state_restored"] = True
 
 
 # ==========================================
@@ -118,7 +206,6 @@ def enforce_database_schema():
   cursor.execute("""CREATE TABLE IF NOT EXISTS desci_attestations 
                     (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)""")
 
-  # Tracking table for auto-assessed IP addresses to trigger background queries seamlessly
   cursor.execute("""CREATE TABLE IF NOT EXISTS auto_ip_tracking 
                     (ip_address TEXT PRIMARY KEY, first_seen DATETIME)""")
 
@@ -171,9 +258,7 @@ def enforce_database_schema():
   conn.commit()
   conn.close()
 
-
 enforce_database_schema()
-
 
 def get_db_connection():
   enforce_database_schema()
@@ -225,7 +310,6 @@ def tooltip(text):
   )
   return f'<span title="{text}">{svg_icon}</span>'
 
-
 def clean_author_name(author_str):
   if not author_str:
     return "Unidentified"
@@ -243,7 +327,6 @@ def clean_author_name(author_str):
       .replace('"', "")
   )
   return cleaned.strip()
-
 
 def is_likely_institution(name):
   if not name:
@@ -282,7 +365,6 @@ def is_likely_institution(name):
   ]
   return any(kw in lower_name for kw in inst_keywords)
 
-
 def fetch_author_coara_metrics(author_name):
   try:
     clean_name = clean_author_name(author_name)
@@ -308,7 +390,6 @@ def fetch_author_coara_metrics(author_name):
   except Exception:
     pass
   return 0.0, 0, "Methodology & Validation"
-
 
 def search_openalex_topics(topic_query, limit=100):
   try:
@@ -348,9 +429,7 @@ def search_openalex_topics(topic_query, limit=100):
     st.error(f"OpenAlex Topic Fetch Error: {str(e)}")
   return []
 
-
 def fetch_trendy_automated_science_papers(limit_per_topic=2):
-  """Automatically selects sciences ranked from most trendy to less trendy and queries OpenAlex for fresh background articles."""
   trending_science_topics = [
       "Perovskite Solar Cells",
       "Targeted Sodium Channel Drugs",
@@ -410,7 +489,6 @@ def fetch_trendy_automated_science_papers(limit_per_topic=2):
       continue
   return all_harvested
 
-
 def get_author_piq_dict():
   conn = get_db_connection()
   cursor = conn.cursor()
@@ -461,19 +539,16 @@ def validate_block_por(
   block_hash = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
   return validator_node, block_hash, por_proof
 
-
 def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str=""):
   circuit_input = (
       f"{eval_hash}:{final_score}:{logic_score}:{email_str}:{time.time()}"
   )
   return "0x0" + hashlib.sha3_256(circuit_input.encode("utf-8")).hexdigest()
 
-
 def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
   if not w3.is_connected() or book_address == "None" or not book_address:
     return "Not Connected / No Book"
 
-  # FIX 3: Add length/format validation for smart contract address
   if len(PIQ_CONTRACT_ADDRESS) != 42 or not PIQ_CONTRACT_ADDRESS.startswith("0x"):
     return "Eth Tx Failed: Invalid Contract Address Configuration"
 
@@ -510,7 +585,6 @@ def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
   except Exception as e:
     return f"Eth Tx Failed: {str(e)}"
 
-
 def generate_blockchain_pi(block_height):
   iterations = max(1, block_height * 50)
   pi_approx = 3.0
@@ -521,13 +595,11 @@ def generate_blockchain_pi(block_height):
     sign *= -1.0
   return pi_approx
 
-
 def get_formulas_hash():
   criteria_state = (
       "C1:Semantic_Originality|C2:MDAR_Rigor|C3:Citation_Entropy|C4:Open_Infrastructure|C5:Containerized_Execution|C6:Citation_Polarity|C7:Empirical_Density|C8:FAIR_Actionability|CoARA_Dossier_v2.0"
   )
   return hashlib.sha256(criteria_state.encode("utf-8")).hexdigest()
-
 
 def calculate_model_driven_weights(old_weights, scores, model_name, block_height):
   if "70b" in model_name:
@@ -553,7 +625,6 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
   sum_of_weights = sum(new_weights)
   return [round((w / sum_of_weights) * 8.0, 6) for w in new_weights]
 
-
 def compute_logical_integrity(extracted_logic_vars, gaming_penalty):
   evidence = extracted_logic_vars.get("Evidence_Strength", 0.5)
   conclusion_reach = extracted_logic_vars.get("Conclusion_Reach", 0.5)
@@ -569,48 +640,38 @@ def compute_logical_integrity(extracted_logic_vars, gaming_penalty):
   logic_score = base_logic * (1.0 - (gaming_penalty * 0.9))
   return max(0.0, min(100.0, logic_score))
 
-
 def compute_formulaic_criteria(
     vars_dict, reproducibility_score, sciscore_adherence=0.8
 ):
   scores = {}
-
   c1_raw = (
       vars_dict.get("semantic_novelty", 0.7)
       * 100
       * (1.0 - vars_dict.get("laundering_penalty", 0.1))
   )
   scores["C1_Originality"] = min(100.0, max(0.0, c1_raw))
-
   c2_raw = sciscore_adherence * vars_dict.get("rigor_index", 0.75) * 100
   scores["C2_Methodological_Rigor"] = min(100.0, max(0.0, c2_raw))
-
   c3_raw = vars_dict.get("citation_entropy", 0.6) * 100
   scores["C3_Interdisciplinary"] = min(100.0, max(0.0, c3_raw))
-
   c4_raw = vars_dict.get("societal_linkage", 0.65) * 100
   scores["C4_Societal_Impact"] = min(100.0, max(0.0, c4_raw))
-
   c5_raw = (
       (0.5 * vars_dict.get("D_open", 0.7))
       + (0.2 * vars_dict.get("J_code", 0.6))
       + (0.3 * reproducibility_score)
   ) * 100
   scores["C5_Open_Science_Potential"] = min(100.0, max(0.0, c5_raw))
-
   c6_raw = vars_dict.get("citation_polarity_score", 0.7) * 100
   scores["C6_Literature_Integration"] = min(100.0, max(0.0, c6_raw))
-
   c7_raw = vars_dict.get("empirical_density", 0.75) * 100
   scores["C7_Empirical_Density"] = min(100.0, max(0.0, c7_raw))
-
   c8_raw = vars_dict.get("fair_compliance", 0.8) * 100
   scores["C8_Future_Actionability"] = min(100.0, max(0.0, c8_raw))
 
   for key in scores:
     scores[key] = round(scores[key], 2)
   return scores
-
 
 def calculate_complex_drift(alignment, scores):
   if not scores or alignment is None:
@@ -631,7 +692,6 @@ def calculate_complex_drift(alignment, scores):
       )
   )
   return float(max(0.0, min(100.0, drift_metric)))
-
 
 def get_recommendation_spectrum(score, drift):
   if drift == "N/A":
@@ -682,7 +742,6 @@ def fetch_doi_metadata(doi):
   except Exception:
     return None
 
-
 def fetch_semantic_scholar_pdf(title_or_doi):
   if not title_or_doi:
     return None
@@ -699,7 +758,6 @@ def fetch_semantic_scholar_pdf(title_or_doi):
   except Exception:
     pass
   return None
-
 
 def download_pdf_from_url(pdf_url):
   if not pdf_url:
@@ -755,7 +813,6 @@ def download_pdf_from_url(pdf_url):
 
   return None
 
-
 def generate_rebuttal_strategy(scores_dict):
   if not scores_dict:
     return "No scores available to generate a rebuttal strategy."
@@ -810,7 +867,6 @@ def adaptive_chunking(text, max_tokens):
   back_matter = text[-int(max_tokens * 0.6) :]
   return front_matter + "\n...[TRUNCATED FOR TOKEN LIMITS]...\n" + back_matter
 
-
 def evaluate_discriminator_and_divergence(text, model):
   text_chunk = text[:5000]
   prompt = f"""Analyze this academic text for two adversarial threats:
@@ -836,7 +892,6 @@ Text: {text_chunk}"""
   except Exception:
     return 0.0, 0.5
 
-
 def evaluate_scope_alignment(text, scope, model, text_limit):
   if not scope.strip():
     return 0.0
@@ -858,7 +913,6 @@ Text: {text}"""
     )
   except Exception:
     return 0.0
-
 
 def extract_unpublished_authors_fallback(text):
   first_2k = text[:2500]
@@ -885,7 +939,6 @@ def extract_unpublished_authors_fallback(text):
       ):
         return clean_line
   return "Unidentified"
-
 
 def evaluate_pdf_text_ensemble(text, model, text_limit):
   text = adaptive_chunking(text, text_limit)
@@ -931,7 +984,6 @@ Return ONLY a valid JSON object. Text: {text}"""
       "Extracted_Topics": "Core Research Domain",
       "Overall_Confidence": 0.0,
   }
-
 
 def process_single_pdf(
     file_bytes,
@@ -1029,7 +1081,7 @@ def process_single_pdf(
         active_weights,
         0.85,
         4,
-        0.0, # FIX 2: Replaced uninitialized reproducibility_score with a safe default of 0.0 float
+        0.0,
         False,
     )
 
@@ -1502,7 +1554,9 @@ def process_single_pdf(
   conn.commit()
   conn.close()
 
-  # FIX 1: Returned `reproducibility_score` rather than the out-of-scope `repro_score`
+  # Trigger the backup automatically in the background
+  backup_state_to_web3()
+
   return (
       title,
       extracted_author,
@@ -2604,9 +2658,6 @@ with tab1:
   else:
     st.warning("Please connect your ORCID iD or DID in the sidebar.")
 
-  # ==========================================
-  # NEW ADDITION: LAST 5 ASSESSED PAPERS SECTION
-  # ==========================================
   st.markdown("---")
   st.markdown(
       "### 📋 Last 5 Assessed Papers across the Ledger"
@@ -3352,11 +3403,18 @@ with tab4:
           dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
       )
 
-      model, loss_function, optimizer = (
-          PiBrainLSTM(),
-          nn.MSELoss(),
-          optim.Adam(PiBrainLSTM().parameters(), lr=0.001),
-      )
+      # Attempt to load any locally saved PyTorch weights before initializing the optimizer
+      model = PiBrainLSTM()
+      weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+      if os.path.exists(weights_path):
+          try:
+              model.load_state_dict(torch.load(weights_path, weights_only=True))
+          except Exception:
+              pass
+              
+      loss_function = nn.MSELoss()
+      optimizer = optim.Adam(model.parameters(), lr=0.001)
+
       progress_bar, status_text = st.progress(0), st.empty()
       epochs = 200
 
@@ -3389,6 +3447,11 @@ with tab4:
         )
         st.session_state.current_weights = weight_data[-1]
         st.session_state.last_trained_blocks = current_block_count
+        
+        # Save PyTorch neural network progress locally and trigger IPFS Push
+        torch.save(model.state_dict(), weights_path)
+        backup_state_to_web3()
+
     else:
       st.info(
           "Meta-model is cached and up-to-date with the latest blockchain"
@@ -3504,4 +3567,3 @@ st.markdown(
     " Milano-Bicocca</div>",
     unsafe_allow_html=True,
 )
-
