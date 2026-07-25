@@ -51,7 +51,7 @@ ETH_ADMIN_PRIVATE_KEY = os.getenv(
     "d46861bea5442cd4577ed22167bcb6ef1d331a171bbf7a5f1fd5f14428e344ef",
 )
 PIQ_CONTRACT_ADDRESS = os.getenv(
-    "PIQ_CONTRACT_ADDRESS", "0xYourDeployedContractAddressHere"
+    "PIQ_CONTRACT_ADDRESS", "0xaE7a504aCF32ABf0E891B74bF39E4527999A6256"
 )
 
 # Persistent local machine storage directory (User Home Directory)
