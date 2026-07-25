@@ -471,17 +471,17 @@ Text: {text}"""
     ]
     
     prompt = random.choice(prompts)
-    response = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=random.randint(1, 1000), response_format={"type": "json_object"}
-    )
-    res_content = response.choices[0].message.content
     try:
+        response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=random.randint(1, 1000), response_format={"type": "json_object"}
+        )
+        res_content = response.choices[0].message.content
         parsed = json.loads(res_content)
-        if not isinstance(parsed, dict):
-            return {}
-        return parsed
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
-        return {}
+        pass
+    return {}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None"):
     if file_bytes is None or len(file_bytes) == 0:
@@ -535,6 +535,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", False
          
+    # Strict normalization safeguard to ensure raw_data is always a dict
     if isinstance(raw_data, str):
         try:
             raw_data = json.loads(raw_data)
@@ -630,7 +631,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
                    (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, epc_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx))
     conn.commit()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, epc_to_mint, tx_hash, zk_proof, active_weights, h_idx, i10_idx, False
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, epc_to_mint, tx_hash, zk_proof, active_weights, h_idx, i10_index, False
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -1216,7 +1217,8 @@ with tab5:
     │ [ Ledger ] Proof-of-Research (PoR) Blockchain          │
     │  - Generates simulated zk-SNARK proof                  │
     │  - Seals Eval Hash, Score, and zk-proof to Ledger      │
-    └────────────────────────────────────────────────        ```
+    └────────────────────────────────────────────────────────┘
+    ```
     """)
 
     st.markdown("""
