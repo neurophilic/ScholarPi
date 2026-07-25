@@ -1,11 +1,15 @@
 import math
 import numpy as np
+import hashlib
+from blockchain import generate_blockchain_pi
 
-def get_pi_float(block_height):
-    """Gradually reveals more digits of Pi from a fixed string for speed and stability."""
-    pi_str = "3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679"
-    length = min(block_height + 3, len(pi_str))
-    return float(pi_str[:length])
+def get_formulas_hash():
+    """
+    Creates a cryptographic lock of the 8 criteria equations to ensure they are never altered on the ledger.
+    This represents the fixed algorithmic state of the C1-C8 multidimensional functions.
+    """
+    criteria_state = "C1:Originality|C2:Rigor|C3:Interdisciplinary|C4:Impact|C5:OpenScience|C6:Integration|C7:Density|C8:Actionability_v2.0"
+    return hashlib.sha256(criteria_state.encode('utf-8')).hexdigest()
 
 def calculate_model_driven_weights(old_weights, scores, model_name, block_height):
     if "70b" in model_name:
@@ -13,7 +17,8 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
     else:
         model_version, model_size = 3.1, 8.0
         
-    pi_accuracy = get_pi_float(block_height)
+    # Grab the dynamic algorithmically generated Pi from the blockchain
+    pi_accuracy = generate_blockchain_pi(block_height)
     delta_models = abs((3.3 * 70.0) - (3.1 * 8.0)) 
     
     mean_score = np.mean(scores)
