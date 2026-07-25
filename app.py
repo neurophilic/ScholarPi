@@ -809,12 +809,15 @@ with tab1:
                 selected_uploaded_files.append(file)
 
     st.markdown("")
+    research_scope = ""
+    doi_input = ""
+    include_doi = False
+    
     with st.expander("More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)"):
         research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", key=f"research_scope_input_{st.session_state['reset_token']}")
         
         st.markdown("---")
         doi_input = st.text_input("2. Import via Unpaywall (DOI)", placeholder="10.1038/s41586-020-2649-2", key=f"doi_input_{st.session_state['reset_token']}")
-        include_doi = False
         if doi_input.strip():
             include_doi = st.checkbox("Include this DOI in assessment", value=True, key=f"doi_chk_{st.session_state['reset_token']}")
 
@@ -825,7 +828,7 @@ with tab1:
     if 'alex_visible_count' not in st.session_state:
         st.session_state.alex_visible_count = 10
 
-    if search_alex_btn and alex_topic_input.strip():
+    if 'search_alex_btn' in locals() and search_alex_btn and alex_topic_input.strip():
         st.session_state.alex_visible_count = 10
         with st.spinner(f"Querying OpenAlex for papers on '{alex_topic_input}'..."):
             alex_results = search_openalex_topics(alex_topic_input.strip(), limit=100)
@@ -842,52 +845,13 @@ with tab1:
         
         visible_results = st.session_state['alex_search_results'][:st.session_state.alex_visible_count]
         for idx, p in enumerate(visible_results):
-            col_chk, col_btn = st.columns([4, 1])
-            with col_chk:
-                is_selected = st.checkbox(
-                    f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", 
-                    value=select_all_alex, 
-                    key=f"alex_chk_{idx}_{st.session_state['reset_token']}"
-                )
-                if is_selected:
-                    selected_alex_papers.append(p)
-            with col_btn:
-                st.write("") # alignment spacer
-                if st.button("Auto-Assess", key=f"auto_assess_btn_{idx}_{st.session_state['reset_token']}"):
-                    with st.spinner(f"Automatically fetching and assessing: {p['title'][:30]}..."):
-                        pdf_bytes = None
-                        p_doi = p.get('doi', 'None')
-                        fname = f"OpenAlex_{p['title'][:20]}.pdf"
-                        if p.get('pdf_url'):
-                            pdf_bytes = download_pdf_from_url(p['pdf_url'])
-                        if not pdf_bytes and p.get('doi'):
-                            metadata = fetch_doi_metadata(p['doi'])
-                            if metadata and metadata.get('pdf_url'):
-                                pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
-                        
-                        if pdf_bytes:
-                            scope_val = research_scope if 'research_scope' in locals() and research_scope else ""
-                            title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                                pdf_bytes, fname, scope_val, current_user, current_book, current_email, p_doi
-                            )
-                            eval_record = {
-                                'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
-                                'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-                                'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-                                'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-                                'zk_proof': zk_proof, 'used_weights': used_weights, 
-                                'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
-                            }
-                            st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
-                            st.success(f"Successfully assessed and added '{title}'!")
-                            time.sleep(0.5)
-                            st.rerun()
-                        else:
-                            st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access.")
-                            if p.get('pdf_url'):
-                                st.markdown(f"🔗 **Direct PDF Link:** [{p['pdf_url']}]({p['pdf_url']})")
-                            if p.get('doi'):
-                                st.markdown(f"🌐 **DOI Link:** [https://doi.org/{p['doi'].replace('https://doi.org/', '')}](https://doi.org/{p['doi'].replace('https://doi.org/', '')})")
+            is_selected = st.checkbox(
+                f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", 
+                value=select_all_alex, 
+                key=f"alex_chk_{idx}_{st.session_state['reset_token']}"
+            )
+            if is_selected:
+                selected_alex_papers.append(p)
                 
         if st.session_state.alex_visible_count < len(st.session_state['alex_search_results']):
             if st.button("Show More OpenAlex Results"):
