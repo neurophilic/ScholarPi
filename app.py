@@ -837,13 +837,18 @@ with tab1:
 
     selected_alex_papers = []
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
-        st.markdown("**Tick OpenAlex papers to include:**")
+        st.markdown("---")
+        select_all_alex = st.checkbox("Select All OpenAlex Results", key=f"select_all_alex_{st.session_state['reset_token']}")
         
         visible_results = st.session_state['alex_search_results'][:st.session_state.alex_visible_count]
         for idx, p in enumerate(visible_results):
             col_chk, col_btn = st.columns([4, 1])
             with col_chk:
-                is_selected = st.checkbox(f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}")
+                is_selected = st.checkbox(
+                    f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", 
+                    value=select_all_alex, 
+                    key=f"alex_chk_{idx}_{st.session_state['reset_token']}"
+                )
                 if is_selected:
                     selected_alex_papers.append(p)
             with col_btn:
@@ -1039,7 +1044,7 @@ with tab1:
                         }
                         st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else: 
-                        st.error(f"Could not directly download PDF for DOI '{doi_input}. Publishers often restrict direct binary access.")
+                        st.error(f"Could not directly download PDF for DOI '{doi_input}'. Publishers often restrict direct binary access.")
                         clean_d = doi_input.replace('https://doi.org/', '').replace('doi.org/', '').strip()
                         st.markdown(f"🌐 **DOI Link:** [https://doi.org/{clean_d}](https://doi.org/{clean_d})")
                         st.info("Tip: Access the DOI link to download the PDF manually and upload it locally.")
