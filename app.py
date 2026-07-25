@@ -53,7 +53,7 @@ PIQ_CONTRACT_ADDRESS = os.getenv(
     "PIQ_CONTRACT_ADDRESS", "0xYourDeployedContractAddressHere"
 )
 
-# Persistent local machine storage directory (User Home Directory)
+# Persistent local machine storage directory (User Home Directory) ensuring data is saved automatically
 BASE_DIR = os.path.expanduser("~/Scientometric_Pi_Index")
 os.makedirs(BASE_DIR, exist_ok=True)
 DB_PATH = os.path.join(BASE_DIR, "pi_index_main.db")
@@ -269,7 +269,6 @@ def is_likely_institution(name):
 
 
 def fetch_author_coara_metrics(author_name):
-  """Replaces legacy h-index tracking with CoARA-compliant open science and contribution metrics."""
   try:
     clean_name = clean_author_name(author_name)
     if (
@@ -286,7 +285,6 @@ def fetch_author_coara_metrics(author_name):
       if data.get("results") and len(data["results"]) > 0:
         author_obj = data["results"][0]
         works_count = author_obj.get("works_count", 0)
-        oa_percent = (author_obj.get("summary_stats", {}), 0.5)
         return (
             float(works_count),
             int(author_obj.get("cited_by_count", 0)),
@@ -340,13 +338,13 @@ def get_author_piq_dict():
   conn = get_db_connection()
   cursor = conn.cursor()
   cursor.execute(
-      "SELECT author_name, piq_minted, eth_book FROM papers_assessment"
+      "SELECT author_name, piq_minted FROM papers_assessment"
   )
   data = cursor.fetchall()
   conn.close()
   author_piq = {}
   author_book = {}
-  for authors_str, piq, book in data:
+  for authors_str, piq in data:
     clean_authors = clean_author_name(authors_str)
     if (
         not clean_authors
@@ -361,8 +359,8 @@ def get_author_piq_dict():
     share = piq / len(alist)
     for a in alist:
       author_piq[a] = author_piq.get(a, 0.0) + share
-      if book and book != "None":
-        author_book[a] = book
+      # Uniquely and deterministically bind eth_book to each author's name
+      author_book[a] = "0x" + hashlib.sha256(a.encode()).hexdigest()[:40]
   return author_piq, author_book
 
 
@@ -1370,7 +1368,13 @@ def process_single_pdf(
   zk_proof = generate_zk_snark_proof(
       file_hash, final_score, logic_integrity, zk_email_hash
   )
-  tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
+  # Deterministically derive the unique author book address
+  unique_author_book = (
+      "0x" + hashlib.sha256(extracted_author.encode()).hexdigest()[:40]
+      if extracted_author != "Unidentified"
+      else book_address
+  )
+  tx_hash = mint_pi_quotient_token(unique_author_book, piq_minted, file_hash, zk_proof)
 
   drift = (
       calculate_complex_drift(scope_alignment, scores)
@@ -1403,7 +1407,7 @@ def process_single_pdf(
           extracted_author,
           final_score,
           datetime.now().isoformat(),
-          book_address,
+          unique_author_book,
           piq_minted,
           tx_hash,
           zk_proof,
@@ -1481,7 +1485,6 @@ class PiBrainLSTM(nn.Module):
 # ==========================================
 st.sidebar.title("System Access")
 
-# Add Backup Database button to sidebar for permanent local machine saving
 if os.path.exists(DB_PATH):
   with open(DB_PATH, "rb") as f:
     st.sidebar.download_button(
@@ -1576,11 +1579,6 @@ else:
     st.rerun()
 
 current_user = st.session_state.orcid_id
-current_book = (
-    "0x" + hashlib.sha256(current_user.encode()).hexdigest()[:40]
-    if current_user
-    else "None"
-)
 current_email = st.session_state.get("inst_email", "None")
 
 st.title(
@@ -1668,7 +1666,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+        r"$$ C_4 = \text{vapri}_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
         r" U_v(\tau, \mathbf{x}) \right] $$"
     )
   with col2:
@@ -1676,7 +1674,7 @@ with st.expander(
         "**C5: Open Science & Executable Reproducibility** "
         + tooltip(
             "Cryptographic verification of open data/code repositories and"
-            " sandboxed container execution[cite: 1]."
+            " sandboxed container execution."
         ),
         unsafe_allow_html=True,
     )
@@ -1694,7 +1692,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+        r"$$ C_6 = \text{vapri}_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
         r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
     )
 
@@ -1707,7 +1705,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+        r"$$ C_7 = \text{vapri}_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
         r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
     )
 
@@ -1720,7 +1718,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+        r"$$ C_8 = \text{vapri}_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
         r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
     )
 
@@ -1911,6 +1909,7 @@ with tab1:
     rrid_count = item["i10_idx"]
     repro_score = item["repro_score"]
     filename = item["filename"]
+    author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
     st.markdown("---")
     st.subheader(f"{title} by {author_name}")
@@ -1918,10 +1917,10 @@ with tab1:
     with st.expander(f"Ledger Data & Dossier Details ({filename})"):
       st.write(f"**File Name:** `{filename}`")
       st.write(
-          f"**Evaluation Hash (Paper Address - Shared by all co-authors):**"
+          f"**Evaluation Hash (Paper Address):**"
           f" `{eval_hash}`"
       )
-      st.write(f"**Author-Specific Book Address (eth_book):** `{current_book}`")
+      st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
       st.write(f"**piQ Minted:** `{piq}`")
       st.write(f"**zk-SNARK:** `{zk_proof}`")
       st.write(f"**Tx Hash:** `{tx_hash}`")
@@ -1998,8 +1997,8 @@ with tab1:
 **Title:** {title}
 **Author:** {author_name}
 **File Name:** {filename}
-**Evaluation Hash (Paper Address - Shared by co-authors):** {eval_hash}
-**Author Book Address:** {current_book}
+**Evaluation Hash (Paper Address):** {eval_hash}
+**Unique Author Book Address:** {author_book}
 **Final Pi-Index Score:** {score:.2f} / 100
 **Logic Integrity Score:** {logic_integrity:.1f}%
 **Executable Reproducibility Score:** {repro_score * 100:.1f}%
@@ -2099,7 +2098,7 @@ with tab1:
                   fname,
                   scope_val,
                   current_user,
-                  current_book,
+                  "None",
                   current_email,
                   p_doi,
               )
@@ -2181,7 +2180,7 @@ with tab1:
                 fname,
                 scope_val,
                 current_user,
-                current_book,
+                "None",
                 current_email,
                 doi_input.strip(),
             )
@@ -2250,7 +2249,7 @@ with tab1:
                 file.name,
                 scope_val,
                 current_user,
-                current_book,
+                "None",
                 current_email,
                 "None",
             )
@@ -2643,7 +2642,7 @@ with tab2:
   )
 
   search_query = st.text_input(
-      "Search Explorer by Author Name or Digital Book Address:",
+      "Search Explorer by Author Name or Unique Book Address:",
       placeholder="Enter author name or 0x...",
   )
 
@@ -2652,7 +2651,7 @@ with tab2:
     for author, piq in piq_dict.items():
       leaderboard_data.append({
           "Contributing Author": author,
-          "Digital Book Address": book_dict.get(author, "None"),
+          "Unique Author Book Address": book_dict.get(author, "None"),
           "Total piQ Earned": round(piq, 2),
       })
     piq_df = pd.DataFrame(leaderboard_data)
@@ -2676,7 +2675,7 @@ with tab2:
         conn.close()
         if book_papers:
           st.success(
-              f"Found {len(book_papers)} papers linked to Digital Book:"
+              f"Found {len(book_papers)} papers linked to Unique Book Address:"
               f" `{search_query}`"
           )
           formatted_book_rows = []
@@ -2696,7 +2695,7 @@ with tab2:
               columns=[
                   "Paper Title",
                   "Author",
-                  "Digital Book Address",
+                  "Unique Book Address",
                   "File Name",
                   "Paper Address (Eval Hash)",
                   "Pi-Index",
@@ -2706,7 +2705,7 @@ with tab2:
           )
           st.dataframe(df_book, use_container_width=True, hide_index=True)
         else:
-          st.warning(f"No records found for Digital Book '{search_query}'.")
+          st.warning(f"No records found for Unique Book Address '{search_query}'.")
       else:
         cursor.execute(
             "SELECT author_name, title, eth_book, filename, eval_hash, final_score,"
@@ -2738,7 +2737,7 @@ with tab2:
               columns=[
                   "Author",
                   "Paper Title",
-                  "Digital Book Address",
+                  "Unique Book Address",
                   "File Name",
                   "Paper Address (Eval Hash)",
                   "Pi-Index",
@@ -2774,7 +2773,7 @@ with tab3:
     Tab 3 manages the immutable decentralization layer of the Pi-Index Assessment Engine. Here is how each component operates:
     1. **Active Epoch & Block Height**: The system tracks an incremental block counter (`block_height`). Every evaluation increments the global evaluation counter. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
     2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: 
-       - Combines the block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+       - Combines the block index, criteria weights ($\text{vapri}_1$ to $\text{vapri}_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
        - Guarantees complete auditability and cryptographic non-repudiation of every assessment round.
     3. **Dynamic Weight Adjustment**: Weights shift dynamically across epochs driven by model evaluation statistics and algorithmic pi ($\pi$) convergence precision.
     4. **DeSci Peer Attestation & Staking**: 
@@ -2830,14 +2829,14 @@ with tab3:
 
     cols = st.columns(4)
     labels = [
-        ("C1", r"$\varpi_1$"),
-        ("C2", r"$\varpi_2$"),
-        ("C3", r"$\varpi_3$"),
-        ("C4", r"$\varpi_4$"),
-        ("C5", r"$\varpi_5$"),
-        ("C6", r"$\varpi_6$"),
-        ("C7", r"$\varpi_7$"),
-        ("C8", r"$\varpi_8$"),
+        ("C1", r"$\text{vapri}_1$"),
+        ("C2", r"$\text{vapri}_2$"),
+        ("C3", r"$\text{vapri}_3$"),
+        ("C4", r"$\text{vapri}_4$"),
+        ("C5", r"$\text{vapri}_5$"),
+        ("C6", r"$\text{vapri}_6$"),
+        ("C7", r"$\text{vapri}_7$"),
+        ("C8", r"$\text{vapri}_8$"),
     ]
     for i, col in enumerate(cols * 2):
       if i < 8:
@@ -3218,7 +3217,7 @@ with tab5:
             fillcolor = "#fef5e7";
 
             Dossier [label="CoARA & DORA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
-            Cartography [label="Global Map of Science\\n• Ledger PyVis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
+            Cartography [label="Global Map of Science\\n• Ledger PyPy Vis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
             PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
 
