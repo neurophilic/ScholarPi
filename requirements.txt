@@ -10,3 +10,4 @@ groq
 torch
 scipy
 graphviz
+openai
