@@ -580,31 +580,31 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown(f"**Adversarial Logic Gap ($\Delta_{Logic}$)** {tooltip('We map the papers reasoning structure before giving a final score. If the authors make claims that aren\'t supported by their own evidence, the system exponentially penalizes the paper.')}")
+        st.markdown(f"**Adversarial Logic Gap ($\Delta_{Logic}$)** " + tooltip('We map the paper\'s reasoning structure before giving a final score. If the authors make claims that aren\'t supported by their own evidence, the system exponentially penalizes the paper.'))
         st.markdown(r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \times \frac{1}{1 + e^{-\Delta Premise}} $$")
         
-        st.markdown(f"**C1: Originality** {tooltip('Does this paper disrupt existing knowledge (high score), or is it mostly derivative of older work (low score)?')}")
+        st.markdown(f"**C1: Originality** " + tooltip('Does this paper disrupt existing knowledge (high score), or is it mostly derivative of older work (low score)?'))
         st.markdown(r"$$O = \varpi_1 \cdot \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^{N} |Z_i| \, dV} \cdot e^{-0.1 \zeta} $$")
         
-        st.markdown(f"**C2: Methodological Rigor** {tooltip('Are the methods statistically sound, and is the risk of a fundamental flaw minimized?')}")
+        st.markdown(f"**C2: Methodological Rigor** " + tooltip('Are the methods statistically sound, and is the risk of a fundamental flaw minimized?'))
         st.markdown(r"$$R = \varpi_2 \cdot \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \mathbb{E}[\rho_k] $$")
         
-        st.markdown(f"**C3: Interdisciplinary** {tooltip('How well does the research bridge multiple disciplines together rather than staying in an isolated silo?')}")
+        st.markdown(f"**C3: Interdisciplinary** " + tooltip('How well does the research bridge multiple disciplines together rather than staying in an isolated silo?'))
         st.markdown(r"$$I = \varpi_3 \cdot \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot bridge\_capacity $$")
         
-        st.markdown(f"**C4: Societal Impact** {tooltip('What is the predicted long-term, real-world utility of the research findings?')}")
+        st.markdown(f"**C4: Societal Impact** " + tooltip('What is the predicted long-term, real-world utility of the research findings?'))
         st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
     with col2:
-        st.markdown(f"**C5: Open Science Potential** {tooltip('Rewards transparency, specifically the sharing of open-source datasets and verifiable code.')}")
+        st.markdown(f"**C5: Open Science Potential** " + tooltip('Rewards transparency, specifically the sharing of open-source datasets and verifiable code.'))
         st.markdown(r"$$O_s = \varpi_5 \cdot \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} $$")
         
-        st.markdown(f"**C6: Literature Integration** {tooltip('Assesses how firmly grounded the paper is in foundational literature without being completely reliant on it.')}")
+        st.markdown(f"**C6: Literature Integration** " + tooltip('Assesses how firmly grounded the paper is in foundational literature without being completely reliant on it.'))
         st.markdown(r"$$L = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum PR} $$")
         
-        st.markdown(f"**C7: Empirical Density** {tooltip('Measures the sheer depth and volume of the underlying data analyzed.')}")
+        st.markdown(f"**C7: Empirical Density** " + tooltip('Measures the sheer depth and volume of the underlying data analyzed.'))
         st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right) $$")
         
-        st.markdown(f"**C8: Future Actionability** {tooltip('Predicts whether the paper will trigger a cascade of actionable future research.')}")
+        st.markdown(f"**C8: Future Actionability** " + tooltip('Predicts whether the paper will trigger a cascade of actionable future research.'))
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Rebuttals", "Global Map of Science", "Active Epoch and Ledger", "Pi-Brain Neural Network", "System Overview and Limitations"])
@@ -872,7 +872,7 @@ with tab3:
                 st.error("Error reading database schema. Try refreshing the app.")
 
         st.markdown("---")
-        st.markdown(f"### Latest Blockchain Ledger Hashes and zk-SNARK Proofs {tooltip('Chronological view of the most recent smart contract executions, demonstrating mathematical proofs of computation without revealing full manuscript inputs.')}", unsafe_allow_html=True)
+        st.markdown(f"### Latest Blockchain Ledger Hashes, zk-SNARK Proofs, and EPC Minted {tooltip('Chronological view of the most recent smart contract executions, demonstrating mathematical proofs of computation and token allocations.')}", unsafe_allow_html=True)
         cursor.execute("""
             SELECT b.block_height, b.eval_hash, b.block_hash, p.zk_proof, p.epc_minted, b.timestamp 
             FROM blockchain_por_weights b 
@@ -952,7 +952,7 @@ with tab5:
 
     *   **The Parsability Gap (LLM Extraction Bias):** The entire framework hinges on the LLM's capacity to accurately parse the initial 25 variables. Highly mathematical, niche, or non-traditional paper formats may confuse the LLM, leading to inaccurate proxy extraction, which cascades through the deterministic equations.
     *   **The Oracle Problem:** The system pulls Open Access PDFs via DOI or user uploads. The blockchain can verify that a *PDF* was graded accurately, but it cannot intrinsically verify that the user uploading the PDF is the true author of that document outside of third-party ORCID API reliance.
-    *   **The Cold Start Problem for Tokenomics:** The Epistemic Capital ($EPC) reward system requires a historical baseline to calculate the improvement multiplier. First-time authors have no baseline, leading to highly variable initial reward outcomes until a critical mass of their portfolio is evaluated.
+    *   **The Cold Start Problem for Tokenomics:** The Epistemic Capital ($EPC$) reward system requires a historical baseline to calculate the improvement multiplier. First-time authors have no baseline, leading to highly variable initial reward outcomes until a critical mass of their portfolio is evaluated.
     *   **Adversarial Formatting and "Prompt Engineering":** Because the rules of extraction are algorithmic, savvy researchers may eventually learn to format their papers (e.g., over-indexing specific keywords or artificially structuring empirical data sections) specifically to trigger high values in the LLM's extraction prompt, effectively "gaming" the parser despite the logic gap penalties.
     """)
 
