@@ -17,6 +17,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from pyvis.network import Network
+import graphviz
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -747,7 +748,7 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
         st.markdown(r"$$I = \varpi_3 \cdot \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot bridge\_capacity $$")
         
         st.markdown("**C4: Societal Impact** " + tooltip("What is the predicted long-term, real-world utility of the research findings?"), unsafe_allow_html=True)
-        st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
+        st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \ int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
     with col2:
         st.markdown("**C5: Open Science & Executable Reproducibility** " + tooltip("Rewards transparency and containerized/functional code execution verification."), unsafe_allow_html=True)
         st.markdown(r"$$O_s = \varpi_5 \cdot \frac{0.5 \mathcal{D}_{open} + 0.2 \mathbf{J}_{code} + 0.3 \mathcal{R}_{exec}}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} \cdot \mathcal{P}_{FAIR} $$")
@@ -759,12 +760,12 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
         st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right] \cdot (0.8 + 0.2 \mathcal{R}_{exec})}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right) $$")
         
         st.markdown("**C8: Future Actionability** " + tooltip("Predicts whether the paper will trigger a cascade of actionable future research."), unsafe_allow_html=True)
-        st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
+        st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \ int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of Science", "Active Epoch & DeSci Staking", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
 with tab1:
-    st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and tick OpenAlex papers all in one place."), unsafe_allow_html=True)
+    st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and evaluate OpenAlex papers all in one place."), unsafe_allow_html=True)
     
     research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", key=f"research_scope_input_{st.session_state['reset_token']}")
     
@@ -798,12 +799,26 @@ with tab1:
             else:
                 st.warning("No Open Access papers found matching this topic.")
 
-    selected_alex_papers = []
+    # Replicated OpenAlex Card/Expander Section matching user image layout
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
-        st.markdown("**Tick OpenAlex papers to include:**")
+        st.markdown("#### Discovered OpenAlex Papers")
+        selected_alex_papers = []
         for idx, p in enumerate(st.session_state['alex_search_results']):
-            if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
-                selected_alex_papers.append(p)
+            expander_title = f"{p['title']} (Authors: {p['authors']})"
+            with st.expander(expander_title):
+                if p.get('doi'):
+                    st.markdown(f"**DOI:** [{p['doi']}](https://doi.org/{p['doi']})")
+                else:
+                    st.markdown("**DOI:** Not Available")
+                    
+                if p.get('pdf_url'):
+                    st.markdown(f"**PDF URL:** [{p['pdf_url']}]({p['pdf_url']})")
+                else:
+                    st.markdown("**PDF URL:** Direct binary link restricted by publisher")
+                
+                # Selection checkbox matching user card requirements
+                if st.checkbox(f"Include OpenAlex Paper {idx+1} in batch execution", value=True, key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
+                    selected_alex_papers.append(p)
 
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
@@ -889,13 +904,13 @@ with tab1:
     if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
         if not stake_amount:
             st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
-        elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not selected_alex_papers:
-            st.warning("Please tick at least one paper or input source to assess.")
+        elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not ('selected_alex_papers' in locals() and selected_alex_papers):
+            st.warning("Please select or tick at least one paper or input source to assess.")
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
             # 1. Process OpenAlex Papers
-            if selected_alex_papers:
+            if 'selected_alex_papers' in locals() and selected_alex_papers:
                 for p in selected_alex_papers:
                     status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
                     pdf_bytes = None
@@ -969,7 +984,6 @@ with tab1:
                     st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     progress_bar.progress((i + 1) / len(selected_uploaded_files))
             
-            # Clear checkboxes and bump reset token
             st.session_state['reset_token'] += 1
             st.session_state['assessment_update_token'] = time.time()
             
@@ -977,7 +991,6 @@ with tab1:
             time.sleep(1)
             st.rerun()
 
-    # Render persistent evaluated papers buffer
     if st.session_state['evaluated_papers_buffer']:
         st.markdown("---")
         st.markdown("### Active Session Assessment Results")
@@ -1020,8 +1033,8 @@ with tab1:
 
 
 with tab2:
-    st.markdown("### Global Map of Science (Ledger-Driven Cartography) " + tooltip("Generates dynamic network topologies based on the aggregate metadata of all ledger-evaluated papers."), unsafe_allow_html=True)
-    st.markdown("This map is permanently updated by every user assessing documents on the blockchain ledger, forming an unalterable topological view of current scientific trends.")
+    st.markdown("### Global Map of Science (Ledger-Driven Cartography & Topic Separation) " + tooltip("Generates clustered, separated network topologies based on distinct scientific domains and ledger-evaluated subfields."), unsafe_allow_html=True)
+    st.markdown("This map dynamically separates distinct scientific domains and is updated by every ledger-evaluated paper.")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1061,43 +1074,63 @@ with tab2:
                 subfields = [s.title().strip() for s in json.loads(subfields_json)]
                 score = float(final_score) if final_score else 50.0
                 for f in fields: 
-                    if f.lower() not in exclude_terms: all_topics.append({'topic': f, 'weight': score})
+                    if f.lower() not in exclude_terms: all_topics.append({'topic': f, 'weight': score, 'category': 'Field'})
                 for s in subfields: 
-                    if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score})
+                    if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score, 'category': 'Subfield'})
             except: continue
                 
         if not all_topics: 
-            all_topics.append({'topic': 'Core Scientific Domain', 'weight': 50.0})
+            all_topics.append({'topic': 'Core Scientific Domain', 'weight': 50.0, 'category': 'Field'})
         
         df_topics = pd.DataFrame(all_topics)
-        topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
+        topic_counts = df_topics.groupby(['topic', 'category'])['weight'].sum().reset_index(name='weight')
         if topic_counts.empty: return html_string, table_html
             
         unique_topics = topic_counts['topic'].unique()
         def get_color(i, n):
-            h, s, v = i/n if n > 0 else 0, 0.7, 0.9
+            h, s, v = i/n if n > 0 else 0, 0.75, 0.95
             rgb = colorsys.hsv_to_rgb(h, s, v)
             return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb)
         
         color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
-        net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
-        physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
+        
+        # Enhanced PyVis Network with robust physics separation
+        net = Network(height='650px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
+        physics_options = """{
+            "physics": {
+                "barnesHut": {
+                    "gravitationalConstant": -3500,
+                    "centralGravity": 0.4,
+                    "springLength": 150,
+                    "springConstant": 0.04,
+                    "damping": 0.09,
+                    "avoidOverlap": 1.0
+                },
+                "stabilization": { "enabled": true, "iterations": 300 }
+            }
+        }"""
         net.set_options(physics_options)
         
         for _, row in topic_counts.iterrows():
-            node_size = max(30, 20 + (row['weight'] * 2.5))
-            net.add_node(n_id=row['topic'], label=row['topic'], title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
+            node_size = max(25, 15 + (row['weight'] * 2.0))
+            shape = "dot" if row['category'] == 'Subfield' else "box"
+            net.add_node(n_id=row['topic'], label=row['topic'], title=f"Category: {row['category']} | Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, shape=shape, physics=True, color=color_map[row['topic']])
         
+        # Add connecting edges between related nodes for clean cluster separation
+        topics_list = topic_counts['topic'].tolist()
+        for i in range(len(topics_list) - 1):
+            net.add_edge(topics_list[i], topics_list[i+1], width=1, color="#dcdde1")
+
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
             with open(tmp_file.name, 'r', encoding='utf-8') as f: html_string = f.read()
         os.remove(tmp_file.name)
         html_string = html_string.replace('mynetwork', f"pi_network_{int(time.time() * 1000)}")
 
-        table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
-        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
+        table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 25px; height: 25px; border-radius: 4px; display: inline-block; } </style>"
+        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 20%; text-align: center;'>Color</th><th>Topic / Subfield</th></tr></thead><tbody>"
         for _, row in topic_counts.sort_values(by="weight", ascending=False).iterrows():
-            table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td>{row['topic']}</td></tr>"
+            table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td><b>{row['topic']}</b> <span style='color:gray; font-size:11px;'>({row['category']})</span></td></tr>"
         table_html += "</tbody></table></div>"
         
         return html_string, table_html
@@ -1105,9 +1138,9 @@ with tab2:
     interactive_html, table_html = render_bubble_chart_clean(selected_author)
     if interactive_html:
         col1, col2 = st.columns([3, 1])
-        with col1: components.html(interactive_html, height=620, scrolling=True)
+        with col1: components.html(interactive_html, height=670, scrolling=True)
         with col2: 
-            st.markdown("### Legend " + tooltip("Color density maps proportionally to Pi-Index scores achieved in the domain."), unsafe_allow_html=True)
+            st.markdown("### Topic Clusters " + tooltip("Distinctly separated scientific domains and subfield hierarchies."), unsafe_allow_html=True)
             st.markdown(table_html, unsafe_allow_html=True)
     else: st.info("Awaiting sufficient data for this selection.")
 
@@ -1122,8 +1155,6 @@ with tab2:
         
         if search_query:
             query_clean = search_query.strip().lower()
-            
-            # Search by Digital Book Address (0x...)
             if query_clean.startswith("0x"):
                 cursor.execute("SELECT title, author_name, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
                 book_papers = cursor.fetchall()
@@ -1133,8 +1164,6 @@ with tab2:
                     st.dataframe(df_book, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"No records found for Digital Book '{search_query}'.")
-            
-            # Search by Author Name (Displays author, paper title, book address, filename, score, piQ)
             else:
                 cursor.execute("SELECT author_name, title, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
                 author_papers = cursor.fetchall()
@@ -1285,10 +1314,58 @@ with tab4:
         st.markdown(f"**Mathematical Constraint Check:** Predicted Sum = `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`")
 
 with tab5:
-    st.markdown("### The Pi-Index Framework: System Overview and Scientific Modernization")
+    st.markdown("### Pi-Index Program Architecture & End-to-End Pipeline")
+    st.write("The end-to-end flowchart of the decentralized assessment engine, detailing multi-source intake, AI extraction, adversarial discrimination, cryptographic zero-knowledge proofs, and Web3 smart contract minting.")
+    
+    # Thorough, detailed Graphviz architecture flowchart
+    arch_graph = graphviz.Digraph(node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': '#E8F4F8', 'fontname': 'Helvetica', 'color': '#2c3e50'})
+    arch_graph.attr(rankdir='TB', size='12,12')
+
+    with arch_graph.subgraph(name='cluster_intake') as c:
+        c.attr(label='1. Multi-Source Intake & Identity Layer', color='#3498db')
+        c.node('ORCID', 'ORCID / DID Vault Authentication')
+        c.node('Intake', 'Multi-Source Intake (Local PDFs, DOI, OpenAlex)')
+        c.edge('ORCID', 'Intake')
+
+    with arch_graph.subgraph(name='cluster_ai') as c:
+        c.attr(label='2. AI Extraction & Adversarial Discriminator', color='#e67e22')
+        c.node('Chunking', 'Adaptive Chunking (Max 12k Tokens)')
+        c.node('GroqAI', 'Groq AI Engine (Llama 3.3 70B & Fallback 8B)')
+        c.node('Discriminator', 'Synthetic Hallucination & Divergence Discriminator')
+        c.edge('Intake', 'Chunking')
+        c.edge('Chunking', 'GroqAI')
+        c.edge('GroqAI', 'Discriminator')
+
+    with arch_graph.subgraph(name='cluster_scoring') as c:
+        c.attr(label='3. Formulaic & Logic Scoring Engine', color='#2ecc71')
+        c.node('Criteria', '8-Criteria Formulaic Evaluation (C1 - C8)')
+        c.node('Logic', 'Adversarial Logic & Premise Integrity Matrix')
+        c.edge('Discriminator', 'Criteria')
+        c.edge('Criteria', 'Logic')
+
+    with arch_graph.subgraph(name='cluster_crypto') as c:
+        c.attr(label='4. Cryptographic Proof & Blockchain Ledger', color='#9b59b6')
+        c.node('ZKProof', 'ZK-SNARK Proof & ZK-Email Generation')
+        c.node('PoR', 'Proof-of-Research (PoR) Blockchain Consensus')
+        c.node('Mint', 'Web3 Smart Contract piQ Minting (Soulbound Tokens)')
+        c.edge('Logic', 'ZKProof')
+        c.edge('ZKProof', 'PoR')
+        c.edge('PoR', 'Mint')
+
+    with arch_graph.subgraph(name='cluster_output') as c:
+        c.attr(label='5. DORA Dossier & Science Cartography', color='#e74c3c')
+        c.node('Dossier', 'DORA-Aligned Research Integrity Dossier')
+        c.node('SciMap', 'Global Science Cartography (PyVis Topic Clustering)')
+        c.edge('Mint', 'Dossier')
+        c.edge('Mint', 'SciMap')
+
+    st.graphviz_chart(arch_graph, use_container_width=True)
+
     st.markdown("""
-    #### 1. System Overview
-    The Pi-Index Assessment Engine represents a paradigm shift in scientometrics, moving away from legacy bibliometrics (e.g., citation counts, Journal Impact Factors) toward a deterministic, multidimensional mathematical framework aligned with **DORA principles**.
+    #### Architectural Summary
+    * **Decentralized Verification:** Every assessment is verified against cryptographic hashes and recorded on-chain.
+    * **Resistance to Gaming:** Adversarial penalty matrices automatically mitigate AI preprint stuffing and semantic drift.
+    * **Soulbound Rewards:** Successfully validated papers mint non-transferable `piQ` tokens directly to the researcher's cryptographic identity book.
     """)
 
 st.markdown("---")
