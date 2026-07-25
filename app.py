@@ -478,7 +478,18 @@ Text: {text}"""
     response = groq_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=random.randint(1, 1000), response_format={"type": "json_object"}
     )
-    return json.loads(response.choices[0].message.content)
+    result_content = response.choices[0].message.content
+    try:
+        parsed = json.loads(result_content)
+        if isinstance(parsed, dict):
+            return parsed
+        elif isinstance(parsed, str):
+            sub_parsed = json.loads(parsed)
+            if isinstance(sub_parsed, dict):
+                return sub_parsed
+    except Exception:
+        pass
+    return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None"):
     if file_bytes is None or len(file_bytes) == 0:
@@ -537,6 +548,9 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
          
+    if not isinstance(raw_data, dict):
+        raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
+
     confidence = raw_data.get("Overall_Confidence", 1.0)
     if confidence < 0.50:
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
@@ -552,13 +566,14 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
     
     variables = raw_data.get("variables", {})
+    if not isinstance(variables, dict): variables = {}
     scores_dict = compute_formulaic_criteria(variables, reproducibility_score)
     scores = [scores_dict[k] for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
     
     logic_integrity = compute_logical_integrity(raw_data.get("logic_analysis", {}), gaming_penalty)
 
     title = raw_data.get("Extracted_Title", filename)
-    extracted_author = raw_data.get("Extracted_Author", "").strip()
+    extracted_author = str(raw_data.get("Extracted_Author", "")).strip()
     
     if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
         if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
@@ -894,7 +909,7 @@ with tab1:
             
             status_text.success("Pipeline processing complete.")
             time.sleep(1)
-            st.rerun() # Instantly refreshes to update Global Map and Explorer tables
+            st.rerun()
             
     st.markdown("---")
     st.markdown("### AI Peer Review Defense Strategy " + tooltip("Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy."), unsafe_allow_html=True)
