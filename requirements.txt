@@ -8,3 +8,4 @@ requests
 web3
 groq
 torch
+graphviz
