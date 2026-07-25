@@ -688,11 +688,11 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
     conn.commit()
     conn.close()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_index, reproducibility_score, False
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -843,8 +843,47 @@ with tab1:
         
         visible_results = st.session_state['alex_search_results'][:st.session_state.alex_visible_count]
         for idx, p in enumerate(visible_results):
-            if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
-                selected_alex_papers.append(p)
+            col_chk, col_btn = st.columns([4, 1])
+            with col_chk:
+                is_selected = st.checkbox(f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}")
+                if is_selected:
+                    selected_alex_papers.append(p)
+            with col_btn:
+                st.write("") # alignment spacer
+                if st.button("Auto-Assess", key=f"auto_assess_btn_{idx}_{st.session_state['reset_token']}"):
+                    with st.spinner(f"Automatically fetching and assessing: {p['title'][:30]}..."):
+                        pdf_bytes = None
+                        p_doi = p.get('doi', 'None')
+                        fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                        if p.get('pdf_url'):
+                            pdf_bytes = download_pdf_from_url(p['pdf_url'])
+                        if not pdf_bytes and p.get('doi'):
+                            metadata = fetch_doi_metadata(p['doi'])
+                            if metadata and metadata.get('pdf_url'):
+                                pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+                        
+                        if pdf_bytes:
+                            title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                                pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
+                            )
+                            eval_record = {
+                                'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
+                                'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                                'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                                'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                                'zk_proof': zk_proof, 'used_weights': used_weights, 
+                                'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+                            }
+                            st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                            st.success(f"Successfully assessed and added '{title}'!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        else:
+                            st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access.")
+                            if p.get('pdf_url'):
+                                st.markdown(f"🔗 **Direct PDF Link:** [{p['pdf_url']}]({p['pdf_url']})")
+                            if p.get('doi'):
+                                st.markdown(f"🌐 **DOI Link:** [https://doi.org/{p['doi'].replace('https://doi.org/', '')}](https://doi.org/{p['doi'].replace('https://doi.org/', '')})")
                 
         if st.session_state.alex_visible_count < len(st.session_state['alex_search_results']):
             if st.button("Show More OpenAlex Results"):
@@ -1160,6 +1199,7 @@ with tab2:
             avg_weight = metrics['weight_sum'] / metrics['frequency']
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
+            # label="" completely removes text labels rendered directly on the network bubbles while preserving hover titles
             net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
