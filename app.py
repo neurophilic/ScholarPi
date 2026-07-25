@@ -760,11 +760,12 @@ with tab1:
 
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
 
-    def render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, scope, h_index, i10_index, repro_score):
+    def render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, scope, h_index, i10_index, repro_score, filename):
         st.markdown("---")
         st.subheader(f"{title} by {author_name}")
         
         with st.expander("Ledger Data, Cryptographic Proofs & Reproducibility Audit"):
+            st.write(f"**File Name:** `{filename}`")
             st.write(f"**Evaluation Hash:** `{eval_hash}`")
             st.write(f"**piQ Minted:** `{piq}`")
             st.write(f"**zk-SNARK:** `{zk_proof}`")
@@ -786,11 +787,12 @@ with tab1:
         logic_multiplier = 0.7 + (logic_integrity / 333.3)
         st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
         st.markdown(f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from {logic_integrity:.1f}% raw logic score)")
-        st.markdown(f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}` &nbsp;|&nbsp; **h-index:** `{h_index}` &nbsp;|&nbsp; **i10-index:** `{i10_index}`")
+        st.markdown(f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}` &nbsp;|&nbsp; **h-index:** `{h_index}` &nbsp;|&nbsp; **i10-index:** `{i10_index}` &nbsp;|&nbsp; **File:** `{filename}`")
 
         dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
 **Title:** {title}
 **Author:** {author_name}
+**File Name:** {filename}
 **Evaluation Hash:** {eval_hash}
 **Final Pi-Index Score:** {score:.2f} / 100
 **Logic Integrity Score:** {logic_integrity:.1f}%
@@ -830,6 +832,7 @@ with tab1:
             if selected_alex_paper:
                 status_text.text(f"Fetching OpenAlex paper: {selected_alex_paper['title']}...")
                 pdf_bytes = None
+                fname = f"OpenAlex_{selected_alex_paper['title'][:20]}.pdf"
                 
                 if selected_alex_paper.get('doi'):
                     status_text.text(f"Routing OpenAlex DOI through Unpaywall for robust direct PDF extraction...")
@@ -843,23 +846,24 @@ with tab1:
 
                 if pdf_bytes:
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                        pdf_bytes, f"OpenAlex_{selected_alex_paper['title'][:20]}.pdf", research_scope, current_user, current_book, current_email
+                        pdf_bytes, fname, research_scope, current_user, current_book, current_email
                     )
-                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score)
+                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, fname)
                 else:
-                    st.error("Failed to securely download PDF for selected OpenAlex paper. The publisher or repository may be blocking direct binary access.")
+                    st.error("Failed to securely download PDF for selected OpenAlex paper.")
 
             if doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
                 metadata = fetch_doi_metadata(doi_input)
+                fname = f"DOI_{doi_input.replace('/', '_')}.pdf"
                 if metadata and metadata['pdf_url']:
                     pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, f"DOI_{doi_input.replace('/', '_')}.pdf", research_scope, current_user, current_book, current_email
+                            pdf_bytes, fname, research_scope, current_user, current_book, current_email
                         )
-                        render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score)
+                        render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, fname)
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
@@ -869,7 +873,7 @@ with tab1:
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
                         file.read(), file.name, research_scope, current_user, current_book, current_email
                     )
-                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score)
+                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, file.name)
                     progress_bar.progress((i + 1) / len(uploaded_files))
             
             status_text.success("Pipeline processing complete.")
@@ -902,9 +906,9 @@ with tab1:
     st.markdown("---")
     st.markdown("### Your Assessment and Reward History " + tooltip("Your permanently recorded academic evaluations mapped to your ORCID iD/DID."), unsafe_allow_html=True)
     if st.session_state.is_authenticated:
-        cursor.execute("SELECT title, author_name, scope, final_score, piq_minted, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
+        cursor.execute("SELECT title, author_name, filename, scope, final_score, piq_minted, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
         history_data = cursor.fetchall()
-        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Contributing Authors", "Scope", "Pi-Index Score", "piQ Earned", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
+        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Contributing Authors", "File Name", "Scope", "Pi-Index Score", "piQ Earned", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
         else: st.info("No assessment history found.")
     else: st.warning("Please connect your ORCID iD or DID in the sidebar.")
 
@@ -1012,28 +1016,27 @@ with tab2:
         if search_query:
             query_clean = search_query.strip().lower()
             
+            # Search by Digital Book Address (0x...)
             if query_clean.startswith("0x"):
-                cursor.execute("SELECT title, author_name, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
+                cursor.execute("SELECT title, author_name, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
                 book_papers = cursor.fetchall()
                 if book_papers:
                     st.success(f"Found {len(book_papers)} papers linked to Digital Book: `{search_query}`")
-                    df_book = pd.DataFrame(book_papers, columns=["Paper Title", "Author", "Pi-Index", "piQ Earned", "Timestamp"])
+                    df_book = pd.DataFrame(book_papers, columns=["Paper Title", "Author", "Digital Book Address", "File Name", "Pi-Index", "piQ Earned", "Timestamp"])
                     st.dataframe(df_book, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"No records found for Digital Book '{search_query}'.")
+            
+            # Search by Author Name (Displays author, paper title, book address, filename, score, piQ)
             else:
-                filtered_df = piq_df[piq_df["Contributing Author"].str.contains(search_query, case=False, na=False)]
-                if not filtered_df.empty:
-                    st.dataframe(filtered_df, use_container_width=True)
-                    
-                    cursor.execute("SELECT title, author_name, eth_book, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
-                    author_papers = cursor.fetchall()
-                    if author_papers:
-                        st.markdown("#### Papers Published Under Matched Author(s)")
-                        df_author = pd.DataFrame(author_papers, columns=["Paper Title", "Author", "Digital Book Vault", "Pi-Index", "piQ Earned", "Timestamp"])
-                        st.dataframe(df_author, use_container_width=True, hide_index=True)
+                cursor.execute("SELECT author_name, title, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
+                author_papers = cursor.fetchall()
+                if author_papers:
+                    st.success(f"Found {len(author_papers)} paper records for author matching '{search_query}'.")
+                    df_author = pd.DataFrame(author_papers, columns=["Author", "Paper Title", "Digital Book Address", "File Name", "Pi-Index", "piQ Earned", "Timestamp"])
+                    st.dataframe(df_author, use_container_width=True, hide_index=True)
                 else:
-                    st.warning(f"No piQ records found for author '{search_query}'.")
+                    st.warning(f"No papers or piQ records found for author '{search_query}'.")
         else:
             st.dataframe(piq_df, use_container_width=True)
     else:
