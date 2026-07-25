@@ -60,11 +60,11 @@ DB_PATH = os.path.join(BASE_DIR, "pi_index_main.db")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
 
 if not GROQ_API_KEY:
-    st.error(
-        "API Key not found! Please configure your environment variables or"
-        " Streamlit Secrets."
-    )
-    st.stop()
+  st.error(
+      "API Key not found! Please configure your environment variables or"
+      " Streamlit Secrets."
+  )
+  st.stop()
 
 w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
 groq_client = Groq(api_key=GROQ_API_KEY)
@@ -494,7 +494,6 @@ def compute_logical_integrity(extracted_logic_vars, gaming_penalty):
 def compute_formulaic_criteria(
     vars_dict, reproducibility_score, sciscore_adherence=0.8
 ):
-  """Simplified, transparent, audit-ready formulas replacing math-washed continuous calculus."""
   scores = {}
 
   c1_raw = (
@@ -1433,7 +1432,7 @@ def process_single_pdf(
       active_weights,
       mdar_score,
       rrid_count,
-      reproducibility_score,
+      repro_score,
       False,
   )
 
@@ -1897,7 +1896,7 @@ with tab1:
 
     with st.expander(f"Ledger Data & Dossier Details ({filename})"):
       st.write(f"**File Name:** `{filename}`")
-      st.write(f"**Evaluation Hash:** `{eval_hash}`")
+      st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
       st.write(f"**piQ Minted:** `{piq}`")
       st.write(f"**zk-SNARK:** `{zk_proof}`")
       st.write(f"**Tx Hash:** `{tx_hash}`")
@@ -1974,7 +1973,7 @@ with tab1:
 **Title:** {title}
 **Author:** {author_name}
 **File Name:** {filename}
-**Evaluation Hash:** {eval_hash}
+**Evaluation Hash (Paper Address):** {eval_hash}
 **Final Pi-Index Score:** {score:.2f} / 100
 **Logic Integrity Score:** {logic_integrity:.1f}%
 **Executable Reproducibility Score:** {repro_score * 100:.1f}%
@@ -2638,8 +2637,9 @@ with tab2:
       cursor = conn.cursor()
 
       if query_clean.startswith("0x"):
+        # Searching by Digital Book Address: show both book address and paper addresses (eval_hash)
         cursor.execute(
-            "SELECT title, author_name, eth_book, filename, final_score,"
+            "SELECT title, author_name, eth_book, filename, eval_hash, final_score,"
             " piq_minted, timestamp FROM papers_assessment WHERE"
             " LOWER(eth_book)=? ORDER BY timestamp DESC",
             (query_clean,),
@@ -2661,6 +2661,7 @@ with tab2:
                 r[4],
                 r[5],
                 r[6],
+                r[7],
             ))
           df_book = pd.DataFrame(
               formatted_book_rows,
@@ -2669,6 +2670,7 @@ with tab2:
                   "Author",
                   "Digital Book Address",
                   "File Name",
+                  "Paper Address (Eval Hash)",
                   "Pi-Index",
                   "piQ Earned",
                   "Timestamp",
@@ -2678,8 +2680,9 @@ with tab2:
         else:
           st.warning(f"No records found for Digital Book '{search_query}'.")
       else:
+        # Searching by Author Name: show both digital book address and paper addresses (eval_hash)
         cursor.execute(
-            "SELECT author_name, title, eth_book, filename, final_score,"
+            "SELECT author_name, title, eth_book, filename, eval_hash, final_score,"
             " piq_minted, timestamp FROM papers_assessment WHERE"
             " LOWER(author_name) LIKE ? ORDER BY timestamp DESC",
             (f"%{query_clean}%",),
@@ -2701,6 +2704,7 @@ with tab2:
                 r[4],
                 r[5],
                 r[6],
+                r[7],
             ))
           df_author = pd.DataFrame(
               formatted_auth_rows,
@@ -2709,6 +2713,7 @@ with tab2:
                   "Paper Title",
                   "Digital Book Address",
                   "File Name",
+                  "Paper Address (Eval Hash)",
                   "Pi-Index",
                   "piQ Earned",
                   "Timestamp",
