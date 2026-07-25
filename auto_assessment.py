@@ -1,9 +1,7 @@
-
 import os
 import re
 import json
 import time
-import math
 import random
 import sqlite3
 import hashlib
@@ -17,13 +15,8 @@ import numpy as np
 from web3 import Web3
 from groq import Groq
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-
 # ==========================================
-# 1. CONFIGURATION & ENVIRONMENT SETUP
+# CONFIGURATION & ENVIRONMENT SETUP
 # ==========================================
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
@@ -39,7 +32,8 @@ PINATA_SECRET_API_KEY = os.getenv("PINATA_SECRET_API_KEY", "")
 REGISTRY_CONTRACT_ADDRESS = os.getenv("REGISTRY_CONTRACT_ADDRESS", "")
 
 if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY missing in environment variables.")
+    print("Error: GROQ_API_KEY missing in environment variables.")
+    exit(1)
 
 BASE_DIR = os.path.expanduser("~/Scientometric_Pi_Index")
 os.makedirs(BASE_DIR, exist_ok=True)
@@ -71,7 +65,7 @@ GENESIS_BLOCK_CONFIG = {
 }
 
 # ==========================================
-# 2. STATE MANAGEMENT & DB SCHEMA
+# STATE MANAGEMENT & DB SCHEMA
 # ==========================================
 def restore_state_from_web3():
     if not w3.is_connected() or not REGISTRY_CONTRACT_ADDRESS:
@@ -105,7 +99,7 @@ def restore_state_from_web3():
                     os.remove(zip_path)
                 print("State successfully restored from Web3/IPFS.")
     except Exception as e:
-        print(f"Restore error: {e}")
+        print(f"Restore warning: {e}")
 
 def backup_state_to_web3():
     if not w3.is_connected() or not PINATA_API_KEY or not REGISTRY_CONTRACT_ADDRESS:
@@ -154,17 +148,21 @@ def enforce_database_schema():
                        c1 REAL, c2 REAL, c3 REAL, c4 REAL, c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
                        scope_alignment REAL, logic_score REAL, subfields TEXT, fields TEXT, 
                        author_name TEXT, final_score REAL, timestamp DATETIME)""")
+                       
     cursor.execute("""CREATE TABLE IF NOT EXISTS blockchain_por_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
                        w1 REAL, w2 REAL, w3 REAL, w4 REAL, w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
                        timestamp DATETIME, previous_hash TEXT, validator_node TEXT, 
-                       block_hash TEXT, eval_hash TEXT, model_used TEXT)""")
+                       block_hash TEXT, eval_hash TEXT, model_used TEXT,
+                       por_proof TEXT DEFAULT 'Genesis_Proof', formulas_hash TEXT DEFAULT 'Locked_State')""")
+                       
     cursor.execute("CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)")
     cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
-    
-    target_columns = {
+
+    # Auto-migration for missing columns in papers_assessment
+    target_columns_assessment = {
         "eth_book": "TEXT DEFAULT 'None'", "eth_wallet": "TEXT DEFAULT 'None'",
         "piq_minted": "REAL DEFAULT 0.0", "epc_minted": "REAL DEFAULT 0.0",
         "tx_hash": "TEXT DEFAULT 'Pending'", "zk_proof": "TEXT DEFAULT 'None'",
@@ -174,11 +172,24 @@ def enforce_database_schema():
         "reproducibility_score": "REAL DEFAULT 0.0", "doi": "TEXT DEFAULT 'None'"
     }
     cursor.execute("PRAGMA table_info(papers_assessment)")
-    existing = [row[1] for row in cursor.fetchall()]
-    for col, dtype in target_columns.items():
-        if col not in existing:
+    existing_assessment = [row[1] for row in cursor.fetchall()]
+    for col, dtype in target_columns_assessment.items():
+        if col not in existing_assessment:
             try: cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
             except: pass
+
+    # Auto-migration for missing columns in blockchain_por_weights
+    target_columns_weights = {
+        "por_proof": "TEXT DEFAULT 'Genesis_Proof'",
+        "formulas_hash": "TEXT DEFAULT 'Locked_State'"
+    }
+    cursor.execute("PRAGMA table_info(blockchain_por_weights)")
+    existing_weights = [row[1] for row in cursor.fetchall()]
+    for col, dtype in target_columns_weights.items():
+        if col not in existing_weights:
+            try: cursor.execute(f"ALTER TABLE blockchain_por_weights ADD COLUMN {col} {dtype}")
+            except: pass
+
     conn.commit()
     conn.close()
 
@@ -201,26 +212,29 @@ def get_db_connection():
     return conn
 
 # ==========================================
-# 3. OPENALEX HARVESTING & PROCESSING
+# OPENALEX HARVESTING & PROCESSING
 # ==========================================
 def fetch_random_hot_papers():
     topic = random.choice(HOT_TOPICS)
     print(f"Selected Hot Topic: '{topic}'")
-    url = f"https://api.openalex.org/works?search={requests.utils.quote(topic)}&filter=is_oa:true&per_page=20"
-    res = requests.get(url, timeout=10)
-    if res.status_code == 200:
-        results = res.json().get("results", [])
-        extracted = []
-        for item in results:
-            pdf_url = (item.get("best_oa_location") or {}).get("pdf_url") or item.get("open_access", {}).get("oa_url", "")
-            if pdf_url:
-                extracted.append({
-                    "title": item.get("title", "Untitled Paper"),
-                    "doi": item.get("doi", ""),
-                    "pdf_url": pdf_url,
-                    "topic": topic
-                })
-        return extracted
+    url = f"https://api.openalex.org/works?search={requests.utils.quote(topic)}&filter=is_oa:true&per_page=15"
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            results = res.json().get("results", [])
+            extracted = []
+            for item in results:
+                pdf_url = (item.get("best_oa_location") or {}).get("pdf_url") or item.get("open_access", {}).get("oa_url", "")
+                if pdf_url:
+                    extracted.append({
+                        "title": item.get("title", "Untitled Paper"),
+                        "doi": item.get("doi", ""),
+                        "pdf_url": pdf_url,
+                        "topic": topic
+                    })
+            return extracted
+    except Exception as e:
+        print(f"OpenAlex fetch warning: {e}")
     return []
 
 def download_pdf(pdf_url):
@@ -251,27 +265,34 @@ def process_paper_headless(pdf_bytes, filename, scope, doi):
         conn.close()
         return
 
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    full_text = " ".join([page.get_text() for page in doc])[:MAX_TEXT_TOKENS]
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        full_text = " ".join([page.get_text() for page in doc])[:MAX_TEXT_TOKENS]
+    except Exception as e:
+        print(f"PDF extraction failed: {e}")
+        conn.close()
+        return
     
     prompt = f"""Extract Metadata & 8 Criteria Variables (0.0 to 1.0) for this paper:
-    `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
+    `Extracted_Title`, `Extracted_Author`.
     Audit Variables: `semantic_novelty`, `laundering_penalty`, `rigor_index`, `citation_entropy`, `societal_linkage`, `D_open`, `J_code`, `citation_polarity_score`, `empirical_density`, `fair_compliance`.
-    Logic Mapping: `Evidence_Strength`, `Conclusion_Reach`, `Logical_Jumps`, `Premise_Validity`.
     Return ONLY valid JSON. Text: {full_text[:4000]}"""
     
-    res = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model=FALLBACK_MODEL,
-        temperature=0.0,
-        response_format={"type": "json_object"}
-    )
-    raw_data = json.loads(res.choices[0].message.content)
+    try:
+        res = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=FALLBACK_MODEL,
+            temperature=0.0,
+            response_format={"type": "json_object"}
+        )
+        raw_data = json.loads(res.choices[0].message.content)
+    except Exception as e:
+        print(f"Groq API extraction warning: {e}")
+        raw_data = {}
     
     title = raw_data.get("Extracted_Title", filename)
     author = raw_data.get("Extracted_Author", "Unidentified")
     
-    # Calculate scores
     scores = [
         round(raw_data.get("semantic_novelty", 0.7) * 100, 2),
         round(raw_data.get("rigor_index", 0.75) * 100, 2),
@@ -302,7 +323,7 @@ def process_paper_headless(pdf_bytes, filename, scope, doi):
     print(f"Successfully assessed and logged: '{title}' by {author}")
 
 # ==========================================
-# 4. EXECUTION PIPELINE
+# EXECUTION PIPELINE
 # ==========================================
 if __name__ == "__main__":
     print("Starting Background Paper Assessment Cron...")
@@ -317,7 +338,7 @@ if __name__ == "__main__":
         if pdf_bytes:
             process_paper_headless(pdf_bytes, f"Auto_{time.time()}.pdf", p["topic"], p["doi"])
             processed_count += 1
-            if processed_count >= 10:  
+            if processed_count >= 5:  
                 break
                 
     if processed_count > 0:
