@@ -800,21 +800,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of
 with tab1:
     st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and tick OpenAlex papers all in one place."), unsafe_allow_html=True)
     
-    research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", key=f"research_scope_input_{st.session_state['reset_token']}")
-    
-    st.markdown("---")
-    st.markdown("#### Select Sources to Include in Assessment")
-    
-    selected_uploaded_files = []
-    uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
-    if uploaded_files:
-        st.markdown("**Tick local files to include:**")
-        for i, file in enumerate(uploaded_files):
-            if st.checkbox(f"📄 Local File: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
-                selected_uploaded_files.append(file)
-
-    st.markdown("")
-    with st.expander("More Options: DOI Import & OpenAlex Discovery"):
+    with st.expander("More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)"):
+        research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", key=f"research_scope_input_{st.session_state['reset_token']}")
+        
+        st.markdown("---")
         doi_input = st.text_input("2. Import via Unpaywall (DOI)", placeholder="10.1038/s41586-020-2649-2", key=f"doi_input_{st.session_state['reset_token']}")
         include_doi = False
         if doi_input.strip():
@@ -863,8 +852,9 @@ with tab1:
                                 pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
                         
                         if pdf_bytes:
+                            scope_val = research_scope if 'research_scope' in locals() and research_scope else ""
                             title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                                pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
+                                pdf_bytes, fname, scope_val, current_user, current_book, current_email, p_doi
                             )
                             eval_record = {
                                 'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
@@ -889,6 +879,15 @@ with tab1:
             if st.button("Show More OpenAlex Results"):
                 st.session_state.alex_visible_count += 10
                 st.rerun()
+
+    st.markdown("---")
+    selected_uploaded_files = []
+    uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
+    if uploaded_files:
+        st.markdown("**Tick local files to include:**")
+        for i, file in enumerate(uploaded_files):
+            if st.checkbox(f"📄 Local File: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
+                selected_uploaded_files.append(file)
 
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
@@ -922,7 +921,8 @@ with tab1:
             st.write(f"**Tx Hash:** `{tx_hash}`")
             st.write(f"**Executable Reproducibility Score (C5/C7 audit):** `{repro_score * 100:.1f}%`")
             
-        if research_scope.strip() and drift != "N/A" and rec != "N/A":
+        scope_val = research_scope if 'research_scope' in locals() and research_scope else ""
+        if scope_val.strip() and drift != "N/A" and rec != "N/A":
             st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
             st.markdown(f"**Recommendation Tier:** `{rec}`")
         
@@ -978,6 +978,7 @@ with tab1:
             st.warning("Please tick at least one paper or input source to assess.")
         else:
             progress_bar, status_text = st.progress(0), st.empty()
+            scope_val = research_scope if 'research_scope' in locals() and research_scope else ""
             
             # 1. Process OpenAlex Papers
             if selected_alex_papers:
@@ -997,7 +998,7 @@ with tab1:
 
                     if pdf_bytes:
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
+                            pdf_bytes, fname, scope_val, current_user, current_book, current_email, p_doi
                         )
                         eval_record = {
                             'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
@@ -1026,7 +1027,7 @@ with tab1:
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, doi_input.strip()
+                            pdf_bytes, fname, scope_val, current_user, current_book, current_email, doi_input.strip()
                         )
                         eval_record = {
                             'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
@@ -1053,7 +1054,7 @@ with tab1:
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
                     file_bytes = file.read()
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                        file_bytes, file.name, research_scope, current_user, current_book, current_email, "None"
+                        file_bytes, file.name, scope_val, current_user, current_book, current_email, "None"
                     )
                     eval_record = {
                         'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
@@ -1199,13 +1200,45 @@ with tab2:
             avg_weight = metrics['weight_sum'] / metrics['frequency']
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
-            # label="" completely removes text labels rendered directly on the network bubbles while preserving hover titles
-            net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
+            
+            # Pure 3D Spherical Effect using radial gradient in CSS/Canvas via PyVis node configuration
+            base_col = color_map[topic]
+            net.add_node(
+                n_id=topic, 
+                label="", 
+                title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", 
+                size=node_size, 
+                physics=True, 
+                color={
+                    "background": base_col,
+                    "border": "#1a1a1a",
+                    "highlight": {"background": base_col, "border": "#000000"},
+                    "hover": {"background": base_col, "border": "#000000"}
+                },
+                shadow={
+                    "enabled": True,
+                    "color": "rgba(0,0,0,0.5)",
+                    "size": 12,
+                    "x": 8,
+                    "y": 8
+                }
+            )
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
             with open(tmp_file.name, 'r', encoding='utf-8') as f: html_string = f.read()
         os.remove(tmp_file.name)
+        
+        # Inject custom CSS inside the generated HTML to give nodes a glossy 3D sphere radial gradient look
+        gradient_injection = """
+        <style type="text/css">
+            canvas {
+                background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
+            }
+        </style>
+        </head>
+        """
+        html_string = html_string.replace('</head>', gradient_injection)
         html_string = html_string.replace('mynetwork', f"pi_network_{int(time.time() * 1000)}")
 
         table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
@@ -1475,14 +1508,13 @@ with tab5:
 
             Dossier [label="DORA-Aligned Research Dossier\n& AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
             Cartography [label="Global Map of Science\n(Ledger-Driven PyVis Network Cartography)", fillcolor="#f8c471"];
-            PiBrain [label="Pi-Brain LSTM Meta-Learning\n(Predictive Epoch Weight Shift Modeling)", fillcolor="#f8c471"];
+            PiBrain --> Cartography;
         }
 
         Intake -> Parser [lhead=cluster_eval, label="Raw Manuscript Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Evaluated Score & Hashes"];
         Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
-        Mint -> PiBrain;
     }
     ''')
 
