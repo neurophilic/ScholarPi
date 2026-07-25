@@ -529,6 +529,12 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", False
          
+    # Safeguard against string/malformed returns to prevent AttributeError on .get()
+    if isinstance(raw_data, str):
+        try:
+            raw_data = json.loads(raw_data)
+        except Exception:
+            raw_data = {}
     if not isinstance(raw_data, dict):
         raw_data = {}
 
