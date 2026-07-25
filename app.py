@@ -946,20 +946,21 @@ with tab1:
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
 
-    # Assessment Pipeline Run & Stop Controls
-    col_run, col_stop = st.columns([4, 1])
-    with col_run:
-        run_label = "Working..." if st.session_state['is_running'] else "Run Assessment Pipeline"
-        if st.button(run_label, type="primary", use_container_width=True, disabled=st.session_state['is_running']):
+    # Assessment Pipeline Run & Conditional Stop Controls
+    if st.session_state['is_running']:
+        col_run, col_stop = st.columns([4, 1])
+        with col_run:
+            st.button("Working...", type="primary", use_container_width=True, disabled=True)
+        with col_stop:
+            if st.button("Stop", type="secondary", use_container_width=True):
+                st.session_state['cancel_requested'] = True
+                st.session_state['is_running'] = False
+                st.info("Pipeline operation cancelled by user.")
+                st.rerun()
+    else:
+        if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
             st.session_state['is_running'] = True
             st.session_state['cancel_requested'] = False
-            st.rerun()
-
-    with col_stop:
-        if st.button("Stop", type="secondary", use_container_width=True, disabled=not st.session_state['is_running']):
-            st.session_state['cancel_requested'] = True
-            st.session_state['is_running'] = False
-            st.info("Pipeline operation cancelled by user.")
             st.rerun()
 
     def render_breakdown_item(item):
@@ -1090,7 +1091,9 @@ with tab1:
                             }
                             st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                         else:
-                            st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers restrict direct binary access.")
+                            clean_doi = p_doi.replace("https://doi.org/", "").strip() if p_doi else "None"
+                            doi_url = f"https://doi.org/{clean_doi}" if clean_doi and clean_doi != "None" else "N/A"
+                            st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers restrict direct binary access.\n\n**DOI:** `{clean_doi}` | **URL Link:** {doi_url}")
 
                 # 2. Process DOI Input
                 if include_doi and doi_input.strip() and not st.session_state['cancel_requested']:
@@ -1119,7 +1122,9 @@ with tab1:
                         }
                         st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else: 
-                        st.error(f"Could not directly download PDF for DOI '{doi_input}'.")
+                        clean_doi = doi_input.replace("https://doi.org/", "").strip()
+                        doi_url = f"https://doi.org/{clean_doi}"
+                        st.error(f"Could not directly download PDF for DOI '{clean_doi}'. Publishers restrict direct binary access.\n\n**DOI:** `{clean_doi}` | **URL Link:** {doi_url}")
                 
                 # 3. Process Ticked Local Files
                 if selected_uploaded_files and not st.session_state['cancel_requested']:
