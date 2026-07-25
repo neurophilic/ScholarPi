@@ -394,16 +394,38 @@ def fetch_doi_metadata(doi):
     except Exception: return None
 
 def download_pdf_from_url(pdf_url):
+    if not pdf_url:
+        return None
+    
+    # Handle arXiv specific landing page conversion to direct PDF link
+    if "arxiv.org/abs/" in pdf_url:
+        pdf_url = pdf_url.replace("/abs/", "/pdf/") + ".pdf"
+    elif "ncbi.nlm.nih.gov/pmc/articles/PMC" in pdf_url and not pdf_url.endswith(".pdf"):
+        parts = pdf_url.split("PMC")
+        if len(parts) > 1:
+            pmc_id = parts[1].split("/")[0]
+            pdf_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"
+
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/pdf,application/xhtml+xml,text/html;q=0.9,image/webp,*/*;q=0.8"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://scholar.google.com/",
+            "Connection": "keep-alive"
         }
-        res = requests.get(pdf_url, headers=headers, timeout=15, allow_redirects=True)
-        if res.status_code == 200 and b"%PDF" in res.content[:10]:
+        
+        session = requests.Session()
+        res = session.get(pdf_url, headers=headers, timeout=20, allow_redirects=True)
+        
+        content_type = res.headers.get("Content-Type", "").lower()
+        
+        if res.status_code == 200 and (b"%PDF" in res.content[:10] or "application/pdf" in content_type):
             return res.content
+            
         return None
-    except Exception: return None
+    except Exception:
+        return None
 
 def generate_rebuttal_strategy(scores_dict):
     if not scores_dict: return "No scores available to generate a rebuttal strategy."
@@ -688,7 +710,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
-    # FIXED: Replaced `i10_index` with `i10_idx` to correctly match the fetched variable name
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                    (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_minted, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
     conn.commit()
@@ -1045,7 +1066,6 @@ with tab1:
                     st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     progress_bar.progress((i + 1) / len(selected_uploaded_files))
             
-            # Clear checkboxes and bump reset token
             st.session_state['reset_token'] += 1
             st.session_state['assessment_update_token'] = time.time()
             
@@ -1053,7 +1073,6 @@ with tab1:
             time.sleep(1)
             st.rerun()
 
-    # Render persistent evaluated papers buffer
     if st.session_state['evaluated_papers_buffer']:
         st.markdown("---")
         st.markdown("### Active Session Assessment Results")
@@ -1251,7 +1270,6 @@ with tab2:
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Search by Digital Book Address (0x...)
             if query_clean.startswith("0x"):
                 cursor.execute("SELECT title, author_name, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
                 book_papers = cursor.fetchall()
@@ -1265,8 +1283,6 @@ with tab2:
                     st.dataframe(df_book, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"No records found for Digital Book '{search_query}'.")
-            
-            # Search by Author Name (Displays author, paper title, book address, filename, score, piQ)
             else:
                 cursor.execute("SELECT author_name, title, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
                 author_papers = cursor.fetchall()
