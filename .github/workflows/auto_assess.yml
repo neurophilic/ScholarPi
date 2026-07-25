@@ -2,8 +2,11 @@ name: Pi-Index Background Assessment Cron (5-Min Interval)
 
 on:
   schedule:
-    - cron: "*/5 * * * *" # Runs automatically every 5 minutes (minimum allowed interval)
-  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write # Required to allow GitHub Actions to commit and push changes back
 
 jobs:
   background-assessment:
@@ -11,6 +14,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
