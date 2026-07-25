@@ -17,8 +17,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from config import EPOCH_BLOCK_SIZE
-from blockchain import init_system
-from math_engine import get_pi_float
+from blockchain import init_system, generate_blockchain_pi
 from ai_engine import process_single_pdf, PiBlockchainDataset, PiBrainLSTM
 from services import fetch_doi_metadata, download_pdf_from_url, generate_rebuttal_strategy
 
@@ -310,7 +309,10 @@ with tab4:
         cursor.execute("SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE eval_hash != 'genesis'")
         total_papers_processed = cursor.fetchone()[0]
 
-        st.markdown(f"**Processed:** `{total_papers_processed}` | **Block Size:** `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:** `{block_height}` | **Pi Acc:** `{get_pi_float(block_height)}`")
+        # Fetch the algorithmic Pi value from the blockchain
+        current_pi_accuracy = generate_blockchain_pi(block_height)
+
+        st.markdown(f"**Processed:** `{total_papers_processed}` | **Block Size:** `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:** `{block_height}` | **Pi Algorithmic Precision:** `{current_pi_accuracy}`")
         
         cols = st.columns(4)
         labels = [("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"), ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"), ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"), ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$")]
