@@ -172,22 +172,15 @@ def process_single_pdf(file_bytes, filename, scope, user_id, eth_wallet="None"):
         active_weights = old_weights
 
     # --- TOKENOMICS & ZK-SNARK LOGIC ---
-    # 1. Fetch author's historical average
     cursor.execute("SELECT AVG(final_score) FROM papers_assessment WHERE author_name=?", (extracted_author,))
     past_avg = cursor.fetchone()[0] or 0.0
     
-    # 2. Calculate Token Multiplier (Improvement yields exponential rewards)
     improvement_multiplier = 1.0
     if final_score > past_avg and past_avg > 0:
-        improvement_multiplier = 1.5 + ((final_score - past_avg) / 50.0) # Bonus scales with improvement
-    
-    # 3. Base coins = high quality base score. Total = Base * Multiplier.
+        improvement_multiplier = 1.5 + ((final_score - past_avg) / 50.0) 
+        
     coins_to_mint = round((final_score / 10.0) * improvement_multiplier, 2)
-    
-    # 4. Generate zk-SNARK proof of the research
     zk_proof = generate_zk_snark_proof(file_hash, final_score, logic_integrity)
-    
-    # 5. Execute Ethereum Smart Contract transaction
     tx_hash = mint_pi_coin(eth_wallet, coins_to_mint, file_hash, zk_proof)
 
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
@@ -203,8 +196,7 @@ class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
         self.data = data_matrix
         self.lookback = lookback
-    def __len__(self):
-        return len(self.data) - self.lookback
+    def __len__(self): return len(self.data) - self.lookback
     def __getitem__(self, idx):
         x = self.data[idx : idx + self.lookback]
         y = self.data[idx + self.lookback]
