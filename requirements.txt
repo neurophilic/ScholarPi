@@ -1,17 +1,12 @@
-# Machine Learning & AI
 torch
 onnx
 onnxscript
 groq
-
-# Data & Utils
 pandas
 numpy
 pymupdf
 pyvis
 requests
-blockchain
-
-# Streamlit
 streamlit
-
+plotly
+xlsxwriter
