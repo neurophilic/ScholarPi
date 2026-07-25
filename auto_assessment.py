@@ -65,7 +65,7 @@ GENESIS_BLOCK_CONFIG = {
 }
 
 # ==========================================
-# STATE MANAGEMENT & DB SCHEMA
+# STATE MANAGEMENT & BULLETPROOF SCHEMA MIGRATION
 # ==========================================
 def restore_state_from_web3():
     if not w3.is_connected() or not REGISTRY_CONTRACT_ADDRESS:
@@ -89,7 +89,6 @@ def restore_state_from_web3():
                         break
                 except requests.RequestException:
                     continue
-                    
             if res and res.status_code == 200:
                 zip_path = BASE_DIR + "_restore.zip"
                 with open(zip_path, 'wb') as fp:
@@ -144,53 +143,48 @@ def enforce_database_schema():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
     cursor = conn.cursor()
     
-    # Base Table Creation
+    # 1. Base papers_assessment table
     cursor.execute("""CREATE TABLE IF NOT EXISTS papers_assessment 
                       (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
                        c1 REAL, c2 REAL, c3 REAL, c4 REAL, c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
                        scope_alignment REAL, logic_score REAL, subfields TEXT, fields TEXT, 
                        author_name TEXT, final_score REAL, timestamp DATETIME)""")
                        
-    cursor.execute("""CREATE TABLE IF NOT EXISTS blockchain_por_weights 
-                      (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       w1 REAL, w2 REAL, w3 REAL, w4 REAL, w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
-                       timestamp DATETIME, previous_hash TEXT, validator_node TEXT, 
-                       block_hash TEXT, eval_hash TEXT, model_used TEXT,
-                       por_proof TEXT DEFAULT 'Genesis_Proof', formulas_hash TEXT DEFAULT 'Locked_State')""")
+    # 2. Foolproof blockchain_por_weights migration & creation
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='blockchain_por_weights'")
+    table_exists = cursor.fetchone()
+    
+    if table_exists:
+        cursor.execute("PRAGMA table_info(blockchain_por_weights)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "por_proof" not in columns or "formulas_hash" not in columns:
+            cursor.execute("ALTER TABLE blockchain_por_weights RENAME TO old_blockchain_por_weights")
+            cursor.execute("""CREATE TABLE blockchain_por_weights 
+                              (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
+                               w1 REAL, w2 REAL, w3 REAL, w4 REAL, w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
+                               timestamp DATETIME, previous_hash TEXT, validator_node TEXT, 
+                               block_hash TEXT, eval_hash TEXT, model_used TEXT,
+                               por_proof TEXT DEFAULT 'Genesis_Proof', formulas_hash TEXT DEFAULT 'Locked_State')""")
+            try:
+                cursor.execute("""INSERT INTO blockchain_por_weights 
+                                  (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used)
+                                  SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used 
+                                  FROM old_blockchain_por_weights""")
+            except Exception:
+                pass
+            cursor.execute("DROP TABLE old_blockchain_por_weights")
+    else:
+        cursor.execute("""CREATE TABLE blockchain_por_weights 
+                          (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
+                           w1 REAL, w2 REAL, w3 REAL, w4 REAL, w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
+                           timestamp DATETIME, previous_hash TEXT, validator_node TEXT, 
+                           block_hash TEXT, eval_hash TEXT, model_used TEXT,
+                           por_proof TEXT DEFAULT 'Genesis_Proof', formulas_hash TEXT DEFAULT 'Locked_State')""")
                        
     cursor.execute("CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)")
     cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
-
-    # Robust Auto-Migration for missing columns in papers_assessment
-    target_columns_assessment = {
-        "eth_book": "TEXT DEFAULT 'None'", "eth_wallet": "TEXT DEFAULT 'None'",
-        "piq_minted": "REAL DEFAULT 0.0", "epc_minted": "REAL DEFAULT 0.0",
-        "tx_hash": "TEXT DEFAULT 'Pending'", "zk_proof": "TEXT DEFAULT 'None'",
-        "did": "TEXT DEFAULT 'None'", "zk_email_proof": "TEXT DEFAULT 'None'",
-        "gaming_penalty": "REAL DEFAULT 0.0", "mdar_adherence_score": "REAL DEFAULT 0.0",
-        "rrid_valid_count": "INTEGER DEFAULT 0", "credit_taxonomy_roles": "TEXT DEFAULT 'None'",
-        "reproducibility_score": "REAL DEFAULT 0.0", "doi": "TEXT DEFAULT 'None'"
-    }
-    cursor.execute("PRAGMA table_info(papers_assessment)")
-    existing_assessment = [row[1] for row in cursor.fetchall()]
-    for col, dtype in target_columns_assessment.items():
-        if col not in existing_assessment:
-            try: cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
-            except: pass
-
-    # Robust Auto-Migration for missing columns in blockchain_por_weights
-    target_columns_weights = {
-        "por_proof": "TEXT DEFAULT 'Genesis_Proof'",
-        "formulas_hash": "TEXT DEFAULT 'Locked_State'"
-    }
-    cursor.execute("PRAGMA table_info(blockchain_por_weights)")
-    existing_weights = [row[1] for row in cursor.fetchall()]
-    for col, dtype in target_columns_weights.items():
-        if col not in existing_weights:
-            try: cursor.execute(f"ALTER TABLE blockchain_por_weights ADD COLUMN {col} {dtype}")
-            except: pass
 
     conn.commit()
     conn.close()
