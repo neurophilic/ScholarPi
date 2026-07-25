@@ -11,6 +11,7 @@ from datetime import datetime
 from io import BytesIO
 
 import requests
+import cloudscraper
 import colorsys
 import fitz
 import pandas as pd
@@ -404,6 +405,23 @@ def fetch_doi_metadata(doi):
         return None
     except Exception: return None
 
+def fetch_semantic_scholar_pdf(title_or_doi):
+    if not title_or_doi:
+        return None
+    try:
+        clean_query = title_or_doi.replace("https://doi.org/", "").strip()
+        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={requests.utils.quote(clean_query)}&limit=1&fields=openAccessPdf,externalIds"
+        res = requests.get(url, timeout=10)
+        if res.status_code == 200:
+            data = res.json().get('data', [])
+            if data:
+                oa_pdf = data[0].get('openAccessPdf')
+                if oa_pdf and oa_pdf.get('url'):
+                    return oa_pdf['url']
+    except Exception:
+        pass
+    return None
+
 def download_pdf_from_url(pdf_url):
     if not pdf_url:
         return None
@@ -416,26 +434,37 @@ def download_pdf_from_url(pdf_url):
             pmc_id = parts[1].split("/")[0]
             pdf_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"
 
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://scholar.google.com/",
+        "Connection": "keep-alive"
+    }
+
+    # Tier 1: Standard Requests Session
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Referer": "https://scholar.google.com/",
-            "Connection": "keep-alive"
-        }
-        
         session = requests.Session()
-        res = session.get(pdf_url, headers=headers, timeout=20, allow_redirects=True)
-        
+        res = session.get(pdf_url, headers=headers, timeout=15, allow_redirects=True)
         content_type = res.headers.get("Content-Type", "").lower()
-        
         if res.status_code == 200 and (b"%PDF" in res.content[:10] or "application/pdf" in content_type):
             return res.content
-            
-        return None
     except Exception:
-        return None
+        pass
+
+    # Tier 2: Cloudscraper Fallback for WAF-protected publisher domains (Cloudflare)
+    try:
+        scraper = cloudscraper.create_scraper(
+            browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
+        )
+        res = scraper.get(pdf_url, timeout=20, allow_redirects=True)
+        content_type = res.headers.get("Content-Type", "").lower()
+        if res.status_code == 200 and (b"%PDF" in res.content[:10] or "application/pdf" in content_type):
+            return res.content
+    except Exception:
+        pass
+
+    return None
 
 def generate_rebuttal_strategy(scores_dict):
     if not scores_dict: return "No scores available to generate a rebuttal strategy."
@@ -501,7 +530,7 @@ def extract_unpublished_authors_fallback(text):
     for line in lines[1:12]:
         clean_line = re.sub(r'[\d\*\†\‡\§\¶\(\)]', '', line).strip()
         if re.match(r'^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+(\s*,\s*[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*$', clean_line):
-            if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal', 'bicocca', 'milano']):
+            if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal', 'bicocca', 'milano', 'institute']):
                 return clean_line
     return "Unidentified"
 
@@ -621,7 +650,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     extracted_author = clean_author_name(str(raw_data.get("Extracted_Author", "")))
     extracted_topics = str(raw_data.get("Extracted_Topics", "Core Research Domain")).strip()
     
-    # Institution filtering and robust fallback check
+    # Institution check & fallback
     if is_likely_institution(extracted_author) or not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
         if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"] and not is_likely_institution(pdf_meta_author):
             extracted_author = clean_author_name(pdf_meta_author.strip())
@@ -725,11 +754,11 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_minted, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_minted, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
     conn.commit()
     conn.close()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_index, reproducibility_score, False
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -759,6 +788,9 @@ st.sidebar.title("System Access")
 if 'assessment_update_token' not in st.session_state: st.session_state['assessment_update_token'] = time.time()
 if 'reset_token' not in st.session_state: st.session_state['reset_token'] = 0
 if 'evaluated_papers_buffer' not in st.session_state: st.session_state['evaluated_papers_buffer'] = []
+if 'is_running' not in st.session_state: st.session_state['is_running'] = False
+if 'cancel_requested' not in st.session_state: st.session_state['cancel_requested'] = False
+
 if 'orcid_id' not in st.session_state:
     st.session_state.orcid_id = "0000-0000-0000-0000"
     st.session_state.orcid_name = ""
@@ -905,6 +937,22 @@ with tab1:
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
 
+    # Assessment Pipeline Run & Stop Controls
+    col_run, col_stop = st.columns([4, 1])
+    with col_run:
+        run_label = "Working..." if st.session_state['is_running'] else "Run Assessment Pipeline"
+        if st.button(run_label, type="primary", use_container_width=True, disabled=st.session_state['is_running']):
+            st.session_state['is_running'] = True
+            st.session_state['cancel_requested'] = False
+            st.rerun()
+
+    with col_stop:
+        if st.button("Stop", type="secondary", use_container_width=True, disabled=not st.session_state['is_running']):
+            st.session_state['cancel_requested'] = True
+            st.session_state['is_running'] = False
+            st.info("Pipeline operation cancelled by user.")
+            st.rerun()
+
     def render_breakdown_item(item):
         title = item['title']
         author_name = clean_author_name(item['author_name'])
@@ -984,59 +1032,69 @@ with tab1:
             key=f"download_dossier_{eval_hash}_{time.time()}"
         )
 
-    if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
+    # Pipeline Execution when triggered
+    if st.session_state['is_running']:
         if not stake_amount:
             st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
+            st.session_state['is_running'] = False
         elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not selected_alex_papers:
             st.warning("Please tick at least one paper or input source to assess.")
+            st.session_state['is_running'] = False
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             scope_val = research_scope if 'research_scope' in locals() and research_scope else ""
             
-            # 1. Process OpenAlex Papers
-            if selected_alex_papers:
-                for p in selected_alex_papers:
-                    status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
-                    pdf_bytes = None
-                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
-                    p_doi = p.get('doi', 'None')
-                    
-                    if p.get('pdf_url'):
-                        pdf_bytes = download_pdf_from_url(p['pdf_url'])
-                    
-                    if not pdf_bytes and p.get('doi'):
-                        metadata = fetch_doi_metadata(p['doi'])
-                        if metadata and metadata.get('pdf_url'):
-                            pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
-
-                    if pdf_bytes:
-                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, fname, scope_val, current_user, current_book, current_email, p_doi
-                        )
-                        eval_record = {
-                            'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
-                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-                            'zk_proof': zk_proof, 'used_weights': used_weights, 
-                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
-                        }
-                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
-                    else:
-                        st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages.")
+            try:
+                # 1. Process OpenAlex Papers
+                if selected_alex_papers and not st.session_state['cancel_requested']:
+                    for p in selected_alex_papers:
+                        if st.session_state['cancel_requested']: break
+                        status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
+                        pdf_bytes = None
+                        fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                        p_doi = p.get('doi', 'None')
+                        
                         if p.get('pdf_url'):
-                            st.markdown(f"🔗 **Direct PDF Link:** [{p['pdf_url']}]({p['pdf_url']})")
-                        if p.get('doi'):
-                            st.markdown(f"🌐 **DOI Link:** [https://doi.org/{p['doi'].replace('https://doi.org/', '')}](https://doi.org/{p['doi'].replace('https://doi.org/', '')})")
-                        st.info("Tip: Copy the link above to view/download the paper manually, then upload it via the local PDF uploader.")
+                            pdf_bytes = download_pdf_from_url(p['pdf_url'])
+                        
+                        if not pdf_bytes and (p.get('title') or p.get('doi')):
+                            s2_url = fetch_semantic_scholar_pdf(p.get('doi') or p.get('title'))
+                            if s2_url:
+                                pdf_bytes = download_pdf_from_url(s2_url)
 
-            # 2. Process DOI Input
-            if include_doi and doi_input.strip():
-                status_text.text(f"Resolving DOI: {doi_input}...")
-                metadata = fetch_doi_metadata(doi_input)
-                fname = f"DOI_{doi_input.replace('/', '_')}.pdf"
-                if metadata and metadata['pdf_url']:
-                    pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+                        if not pdf_bytes and p.get('doi'):
+                            metadata = fetch_doi_metadata(p['doi'])
+                            if metadata and metadata.get('pdf_url'):
+                                pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+
+                        if pdf_bytes:
+                            title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                                pdf_bytes, fname, scope_val, current_user, current_book, current_email, p_doi
+                            )
+                            eval_record = {
+                                'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
+                                'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                                'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                                'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                                'zk_proof': zk_proof, 'used_weights': used_weights, 
+                                'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+                            }
+                            st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                        else:
+                            st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers restrict direct binary access.")
+
+                # 2. Process DOI Input
+                if include_doi and doi_input.strip() and not st.session_state['cancel_requested']:
+                    status_text.text(f"Resolving DOI: {doi_input}...")
+                    metadata = fetch_doi_metadata(doi_input)
+                    fname = f"DOI_{doi_input.replace('/', '_')}.pdf"
+                    pdf_bytes = None
+                    if metadata and metadata.get('pdf_url'):
+                        pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+                    if not pdf_bytes:
+                        s2_url = fetch_semantic_scholar_pdf(doi_input)
+                        if s2_url: pdf_bytes = download_pdf_from_url(s2_url)
+                        
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
                         title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
@@ -1052,40 +1110,39 @@ with tab1:
                         }
                         st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else: 
-                        st.error(f"Could not directly download PDF for DOI '{doi_input}'. Publishers often restrict direct binary access.")
-                        clean_d = doi_input.replace('https://doi.org/', '').replace('doi.org/', '').strip()
-                        st.markdown(f"🌐 **DOI Link:** [https://doi.org/{clean_d}](https://doi.org/{clean_d})")
-                        st.info("Tip: Access the DOI link to download the PDF manually and upload it locally.")
-                else: 
-                    st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
-                    clean_d = doi_input.replace('https://doi.org/', '').replace('doi.org/', '').strip()
-                    st.markdown(f"🌐 **DOI Link:** [https://doi.org/{clean_d}](https://doi.org/{clean_d})")
-            
-            # 3. Process Ticked Local Files
-            if selected_uploaded_files:
-                for i, file in enumerate(selected_uploaded_files):
-                    status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
-                    file_bytes = file.read()
-                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                        file_bytes, file.name, scope_val, current_user, current_book, current_email, "None"
-                    )
-                    eval_record = {
-                        'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
-                        'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-                        'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-                        'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-                        'zk_proof': zk_proof, 'used_weights': used_weights, 
-                        'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': file.name
-                    }
-                    st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
-                    progress_bar.progress((i + 1) / len(selected_uploaded_files))
-            
-            st.session_state['reset_token'] += 1
-            st.session_state['assessment_update_token'] = time.time()
-            
-            status_text.success("Pipeline processing complete.")
-            time.sleep(1)
-            st.rerun()
+                        st.error(f"Could not directly download PDF for DOI '{doi_input}'.")
+                
+                # 3. Process Ticked Local Files
+                if selected_uploaded_files and not st.session_state['cancel_requested']:
+                    for i, file in enumerate(selected_uploaded_files):
+                        if st.session_state['cancel_requested']: break
+                        status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
+                        file_bytes = file.read()
+                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                            file_bytes, file.name, scope_val, current_user, current_book, current_email, "None"
+                        )
+                        eval_record = {
+                            'title': title, 'author_name': clean_author_name(author_name), 'score': score, 
+                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                            'zk_proof': zk_proof, 'used_weights': used_weights, 
+                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': file.name
+                        }
+                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                        progress_bar.progress((i + 1) / len(selected_uploaded_files))
+                
+                if st.session_state['cancel_requested']:
+                    st.warning("Pipeline operation was stopped.")
+                else:
+                    status_text.success("Pipeline processing complete.")
+                    time.sleep(1)
+            finally:
+                st.session_state['is_running'] = False
+                st.session_state['cancel_requested'] = False
+                st.session_state['reset_token'] += 1
+                st.session_state['assessment_update_token'] = time.time()
+                st.rerun()
 
     if st.session_state['evaluated_papers_buffer']:
         st.markdown("---")
@@ -1135,7 +1192,6 @@ with tab1:
             st.dataframe(pd.DataFrame(cleaned_history, columns=["Paper Title", "Contributing Authors", "File Name", "Scope", "Pi-Index Score", "piQ Earned", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
         else: st.info("No assessment history found.")
     else: st.warning("Please connect your ORCID iD or DID in the sidebar.")
-
 
 with tab2:
     st.markdown("### Global Map of Science (Ledger-Driven Cartography) " + tooltip("Generates dynamic network topologies based on the aggregate metadata of all ledger-evaluated papers."), unsafe_allow_html=True)
