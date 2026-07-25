@@ -93,7 +93,6 @@ def search_openalex_topics(topic_query, limit=5):
                 title = item.get('title', 'Untitled Paper')
                 doi = item.get('doi', '')
                 
-                # Robust extraction for OpenAlex OA links
                 best_oa = item.get('best_oa_location') or {}
                 pdf_url = best_oa.get('pdf_url') or item.get('open_access', {}).get('oa_url', '')
                 
@@ -151,23 +150,25 @@ def init_system():
                        scope_alignment REAL, logic_score REAL,
                        subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)''')
                        
-    new_columns = [
-        ("eth_book", "TEXT DEFAULT 'None'"),
-        ("epc_minted", "REAL DEFAULT 0.0"),
-        ("tx_hash", "TEXT DEFAULT 'Pending'"),
-        ("zk_proof", "TEXT DEFAULT 'None'"),
-        ("did", "TEXT DEFAULT 'None'"),
-        ("zk_email_proof", "TEXT DEFAULT 'None'"),
-        ("gaming_penalty", "REAL DEFAULT 0.0"),
-        ("h_index", "TEXT DEFAULT 'N/A'"),
-        ("i10_index", "TEXT DEFAULT 'N/A'")
-    ]
+    # Robust PRAGMA table check to prevent schema desync OperationalError
+    cursor.execute("PRAGMA table_info(papers_assessment);")
+    existing_cols = [row[1] for row in cursor.fetchall()]
     
-    for col_name, col_type in new_columns:
-        try:
-            cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col_name} {col_type}")
-        except sqlite3.OperationalError:
-            pass
+    required_cols = {
+        "eth_book": "TEXT DEFAULT 'None'",
+        "epc_minted": "REAL DEFAULT 0.0",
+        "tx_hash": "TEXT DEFAULT 'Pending'",
+        "zk_proof": "TEXT DEFAULT 'None'",
+        "did": "TEXT DEFAULT 'None'",
+        "zk_email_proof": "TEXT DEFAULT 'None'",
+        "gaming_penalty": "REAL DEFAULT 0.0",
+        "h_index": "TEXT DEFAULT 'N/A'",
+        "i10_index": "TEXT DEFAULT 'N/A'"
+    }
+    
+    for col, definition in required_cols.items():
+        if col not in existing_cols:
+            cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {definition}")
             
     cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -729,7 +730,10 @@ with tab1:
                 st.warning("No Open Access papers found matching this topic.")
 
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
-        alex_options = {f"{p['title']} ({p['authors']})": p for p in st.session_state['alex_search_results']}
+        alex_options = {"-- Select a paper to assess --": None}
+        for p in st.session_state['alex_search_results']:
+            alex_options[f"{p['title']} ({p['authors']})"] = p
+            
         chosen_alex_label = st.selectbox("Select a paper discovered via OpenAlex to rate:", list(alex_options.keys()))
         selected_alex_paper = alex_options[chosen_alex_label]
 
@@ -788,7 +792,7 @@ with tab1:
                     )
                     render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, epc, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx)
                 else:
-                    st.error("Failed to securely download PDF for selected OpenAlex paper. The publisher may be blocking automated access.")
+                    st.error("Failed to securely download PDF for selected OpenAlex paper. The publisher may be blocking automated access or providing an HTML splash page instead of raw PDF data.")
 
             # Process DOI Input
             if doi_input.strip():
@@ -955,7 +959,7 @@ with tab2:
         if search_query:
             query_clean = search_query.strip().lower()
             
-            # Identify Digital Book Hex Address
+            # Identify Digital Book Hex Address Search
             if query_clean.startswith("0x"):
                 cursor.execute("SELECT title, author_name, final_score, epc_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
                 book_papers = cursor.fetchall()
