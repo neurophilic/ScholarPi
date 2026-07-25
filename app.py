@@ -338,7 +338,9 @@ def search_openalex_topics(topic_query, limit=100):
 def get_author_piq_dict():
   conn = get_db_connection()
   cursor = conn.cursor()
-  cursor.execute("SELECT author_name, piq_minted, eth_book FROM papers_assessment")
+  cursor.execute(
+      "SELECT author_name, piq_minted, eth_book FROM papers_assessment"
+  )
   data = cursor.fetchall()
   conn.close()
   author_piq = {}
@@ -388,7 +390,9 @@ def validate_block_por(
 
 
 def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str=""):
-  circuit_input = f"{eval_hash}:{final_score}:{logic_score}:{email_str}:{time.time()}"
+  circuit_input = (
+      f"{eval_hash}:{final_score}:{logic_score}:{email_str}:{time.time()}"
+  )
   return "0x0" + hashlib.sha3_256(circuit_input.encode("utf-8")).hexdigest()
 
 
@@ -1867,7 +1871,9 @@ with tab1:
         st.info("Pipeline operation cancelled by user.")
         st.rerun()
   else:
-    if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
+    if st.button(
+        "Run Assessment Pipeline", type="primary", use_container_width=True
+    ):
       st.session_state["is_running"] = True
       st.session_state["cancel_requested"] = False
       st.rerun()
@@ -2451,7 +2457,10 @@ with tab2:
   def render_bubble_chart_clean(target_author):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT fields, subfields, final_score, author_name FROM papers_assessment")
+    cursor.execute(
+        "SELECT fields, subfields, final_score, author_name FROM"
+        " papers_assessment"
+    )
     data = cursor.fetchall()
     conn.close()
 
@@ -2637,7 +2646,6 @@ with tab2:
       cursor = conn.cursor()
 
       if query_clean.startswith("0x"):
-        # Searching by Digital Book Address: show both book address and paper addresses (eval_hash)
         cursor.execute(
             "SELECT title, author_name, eth_book, filename, eval_hash, final_score,"
             " piq_minted, timestamp FROM papers_assessment WHERE"
@@ -2680,7 +2688,6 @@ with tab2:
         else:
           st.warning(f"No records found for Digital Book '{search_query}'.")
       else:
-        # Searching by Author Name: show both digital book address and paper addresses (eval_hash)
         cursor.execute(
             "SELECT author_name, title, eth_book, filename, eval_hash, final_score,"
             " piq_minted, timestamp FROM papers_assessment WHERE"
@@ -3042,8 +3049,9 @@ with tab4:
       with torch.no_grad():
         st.session_state.predicted_next_weights = (
             model(
-                torch.tensor(weight_data[-lookback_window:], dtype=np.float32)
-                .unsqueeze(0)
+                torch.tensor(
+                    weight_data[-lookback_window:], dtype=torch.float32
+                ).unsqueeze(0)
             )
             .squeeze()
             .numpy()
