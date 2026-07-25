@@ -678,7 +678,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
     conn.commit()
     
     return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_index, reproducibility_score, False
@@ -1115,8 +1115,8 @@ with tab2:
             avg_weight = metrics['weight_sum'] / metrics['frequency']
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
-            # Completely remove text label under/on the bubble while preserving hover tooltips
-            net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
+            # Set label to empty space " " to explicitly override default node text rendering underneath bubbles
+            net.add_node(n_id=topic, label=" ", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
@@ -1282,15 +1282,18 @@ with tab4:
     cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height ASC")
     historical_rows = cursor.fetchall()
     
-    lookback_window = 5
-    if len(historical_rows) < lookback_window + 2:
-        st.warning(f"Not enough blockchain data to train the meta-model. You need at least {lookback_window + 2} blocks.")
+    min_blocks_required = 2
+    if len(historical_rows) < min_blocks_required:
+        st.warning(f"Not enough blockchain data to train the meta-model. You need at least {min_blocks_required} blocks (Currently on ledger: {len(historical_rows)}). Assess at least 1 manuscript to generate block 2.")
     else:
         current_block_count = len(historical_rows)
+        # Dynamically scale lookback window based on available block count (down to 1 lookback step for 2 blocks)
+        lookback_window = max(1, min(5, current_block_count - 1))
+        
         if 'last_trained_blocks' not in st.session_state or st.session_state.last_trained_blocks != current_block_count:
             weight_data = np.array(historical_rows, dtype=np.float32)
             dataset = PiBlockchainDataset(weight_data, lookback_window)
-            dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
+            dataloader = DataLoader(dataset, batch_size=min(4, len(dataset)), shuffle=False)
             
             model, loss_function, optimizer = PiBrainLSTM(), nn.MSELoss(), optim.Adam(PiBrainLSTM().parameters(), lr=0.001)
             progress_bar, status_text = st.progress(0), st.empty()
@@ -1306,7 +1309,7 @@ with tab4:
                     optimizer.step()
                     total_loss += loss.item()
                 if epoch % 10 == 0 or epoch == epochs - 1:
-                    status_text.text(f"Training Epoch {epoch}/{epochs} | MSE Loss: {total_loss / len(dataloader):.6f}")
+                    status_text.text(f"Training Epoch {epoch}/{epochs} | MSE Loss: {total_loss / max(1, len(dataloader)):.6f}")
                     progress_bar.progress((epoch + 1) / epochs)
             
             model.eval()
