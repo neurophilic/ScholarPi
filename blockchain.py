@@ -22,7 +22,7 @@ def init_system():
     try: cursor.execute("ALTER TABLE papers_assessment ADD COLUMN author_name TEXT DEFAULT 'Unknown Author'")
     except: pass 
         
-    # Blockchain ledger table
+    # Blockchain ledger table with PoR proof
     cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
                        w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
@@ -60,7 +60,7 @@ def validate_block_por(block_index, weights, timestamp, previous_hash, eval_hash
     """
     Proof-of-Research (PoR) Consensus: 
     Validates a block by cryptographically sealing the peer-review evaluation metrics 
-    (the eval_hash and the mathematical score) instead of wasting energy on PoW.
+    (the eval_hash and the mathematical score).
     """
     validator_node = "Validator_Pi_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
     
