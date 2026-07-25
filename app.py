@@ -118,7 +118,7 @@ if 'orcid_id' not in st.session_state:
 if not st.session_state.is_authenticated:
     st.sidebar.markdown("### Authenticate")
     manual_orcid = st.sidebar.text_input("Enter ORCID iD", placeholder="XXXX-XXXX-XXXX-XXXX")
-    wallet_input = st.sidebar.text_input("Ethereum Wallet Address (For $PIC Rewards)", placeholder="0x...")
+    wallet_input = st.sidebar.text_input("Ethereum Wallet ($EPC Rewards)", placeholder="0x...")
     
     if st.sidebar.button("🔗 Validate & Connect"):
         clean_orcid = manual_orcid.strip()
@@ -175,7 +175,7 @@ with st.expander("View π-Index Grading Criteria (Math to Plain English Translat
         st.markdown("**C8: Future Actionability**\n*Plain English:* Predicts whether the paper will trigger a cascade of actionable future research.")
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Assessment & DOI Import", "📊 Global Map of Science", "🚀 Super Features", "⛓️ Active Epoch constants", "🧠 π-Brain Neural Network"])
+tab1, tab2, tab3, tab4 = st.tabs(["📤 Assessment & Rebuttals", "📊 Global Map of Science", "⛓️ Active Epoch Constants", "🧠 π-Brain Neural Network"])
 
 with tab1:
     st.subheader("Document Assessment & Import")
@@ -189,7 +189,7 @@ with tab1:
         st.markdown("#### Import via Unpaywall (DOI)")
         doi_input = st.text_input("Enter Document Object Identifier (DOI)", placeholder="10.1038/s41586-020-2649-2")
     
-    if st.button("🚀 Run Assessment Pipeline & Mint Rewards", type="primary", use_container_width=True):
+    if st.button("🚀 Run Assessment Pipeline & Mint Epistemic Capital", type="primary", use_container_width=True):
         if not uploaded_files and not doi_input.strip():
             st.warning("Please upload a PDF or provide a valid DOI to proceed.")
         else:
@@ -203,12 +203,12 @@ with tab1:
                     pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
-                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, coins, tx_hash, zk_proof = process_single_pdf(
+                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, epc, tx_hash, zk_proof = process_single_pdf(
                             pdf_bytes, f"DOI_{doi_input.replace('/', '_')}.pdf", research_scope, current_user, current_wallet
                         )
                         record = {
                             "Source": "DOI", "Title": title, "Primary Author": author_name, 
-                            "π-Index": round(score, 1), "$PIC Minted": coins, "zk-SNARK": f"{zk_proof[:10]}..."
+                            "π-Index": round(score, 1), "$EPC Minted": epc, "zk-SNARK": f"{zk_proof[:10]}..."
                         }
                         results_list.append(record)
                     else: st.error("Failed to securely download PDF from the Open Access source.")
@@ -217,13 +217,13 @@ with tab1:
             if uploaded_files:
                 for i, file in enumerate(uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(uploaded_files)}: {file.name}...")
-                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, coins, tx_hash, zk_proof = process_single_pdf(
+                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, epc, tx_hash, zk_proof = process_single_pdf(
                         file.read(), file.name, research_scope, current_user, current_wallet
                     )
                     
                     record = {
                         "Source": "File", "Title": title, "Primary Author": author_name, 
-                        "π-Index": round(score, 1), "$PIC Minted": coins, "zk-SNARK": f"{zk_proof[:10]}..."
+                        "π-Index": round(score, 1), "$EPC Minted": epc, "zk-SNARK": f"{zk_proof[:10]}..."
                     }
                     results_list.append(record)
                     progress_bar.progress((i + 1) / len(uploaded_files))
@@ -237,15 +237,51 @@ with tab1:
     if 'latest_assessment_results' in st.session_state:
         st.dataframe(st.session_state['latest_assessment_results'], use_container_width=True, hide_index=True)
 
+    st.markdown("---")
     st.markdown("### Your Assessment & Reward History")
+    conn = get_db_connection()
+    cursor = conn.cursor()
     if st.session_state.is_authenticated:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT title, author_name, scope, final_score, coins_minted, zk_proof, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
+        cursor.execute("SELECT title, author_name, scope, final_score, epc_minted, zk_proof, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
         history_data = cursor.fetchall()
-        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Primary Author", "Scope", "π-Index Score", "$PIC Minted", "zk-SNARK Proof", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
+        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Primary Author", "Scope", "π-Index Score", "$EPC Minted", "zk-SNARK Proof", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
         else: st.info("No assessment history found.")
     else: st.warning("Please connect your ORCID iD in the sidebar.")
+
+    # --- SUPER FEATURE MERGE ---
+    st.markdown("---")
+    st.subheader("🛡️ AI Peer Review Defense Strategy")
+    cursor.execute("SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50", (current_user,))
+    user_papers = cursor.fetchall()
+    
+    if not user_papers:
+        st.info("You must assess at least one paper to unlock the AI Defense Strategy tool.")
+    else:
+        paper_options = {f"{p[1][:50]}... ({p[2]})" if len(p[1]) > 50 else f"{p[1]} ({p[2]})": p for p in user_papers}
+        selected_super_paper = st.selectbox("Select an assessed paper to generate a strategic defense:", list(paper_options.keys()))
+        
+        if st.button("Generate Strategy"):
+            paper_data = paper_options[selected_super_paper]
+            scores = {
+                "C1_Originality": paper_data[3], "C2_Methodological_Rigor": paper_data[4],
+                "C3_Interdisciplinary": paper_data[5], "C4_Societal_Impact": paper_data[6],
+                "C5_Open_Science_Potential": paper_data[7], "C6_Literature_Integration": paper_data[8],
+                "C7_Empirical_Density": paper_data[9], "C8_Future_Actionability": paper_data[10]
+            }
+            rebuttal = generate_rebuttal_strategy(scores)
+            st.success("Defense Strategy Generated Successfully.")
+            st.markdown(rebuttal)
+
+    # --- LATEST LEDGER HASHES ---
+    st.markdown("---")
+    st.subheader("📜 Latest Blockchain Ledger Hashes")
+    cursor.execute("SELECT block_height, eval_hash, block_hash, timestamp FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 10")
+    recent_hashes = cursor.fetchall()
+    if recent_hashes:
+        df_hashes = pd.DataFrame(recent_hashes, columns=["Block Height", "Evaluation Hash", "Block Hash", "Timestamp"])
+        st.dataframe(df_hashes, use_container_width=True, hide_index=True)
+    else:
+        st.info("No hashes to display yet.")
 
 with tab2:
     st.subheader("Global Map of Science (Ledger-Driven Cartography)")
@@ -269,33 +305,6 @@ with tab2:
     else: st.info("Awaiting sufficient data for this selection.")
 
 with tab3:
-    st.subheader("🚀 System Super Features")
-    st.markdown("Use these advanced utilities to gain strategic insights into your evaluations.")
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC", (current_user,))
-    user_papers = cursor.fetchall()
-    
-    if not user_papers:
-        st.info("You must assess at least one paper to unlock the Super Features.")
-    else:
-        paper_options = {f"{p[1][:50]}... ({p[2]})" if len(p[1]) > 50 else f"{p[1]} ({p[2]})": p for p in user_papers}
-        selected_super_paper = st.selectbox("Select a paper to analyze:", list(paper_options.keys()))
-        
-        if st.button("🛡️ Generate AI Peer Review Defense Strategy"):
-            paper_data = paper_options[selected_super_paper]
-            scores = {
-                "C1_Originality": paper_data[3], "C2_Methodological_Rigor": paper_data[4],
-                "C3_Interdisciplinary": paper_data[5], "C4_Societal_Impact": paper_data[6],
-                "C5_Open_Science_Potential": paper_data[7], "C6_Literature_Integration": paper_data[8],
-                "C7_Empirical_Density": paper_data[9], "C8_Future_Actionability": paper_data[10]
-            }
-            rebuttal = generate_rebuttal_strategy(scores)
-            st.success("Defense Strategy Generated Successfully.")
-            st.markdown(rebuttal)
-
-with tab4:
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -340,7 +349,7 @@ with tab4:
             except:
                 st.error("Error reading database schema. Try refreshing the app.")
 
-with tab5:
+with tab4:
     st.subheader("π-Brain: Meta-Learning on the PoR Blockchain")
     conn = get_db_connection()
     cursor = conn.cursor()
