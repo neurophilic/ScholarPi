@@ -462,16 +462,17 @@ CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles, alternative structural layouts, or resource-constrained syntax. Normalize linguistic style and evaluate strictly on scientific substance and methodological merit.
 
 CRITICAL INSTRUCTION FOR AUTHORS:
-- Scan the first 2 pages carefully for human author names. Output as a comma-separated list (no "et al."). If none, output "Unidentified".
+- Scan the first 2 pages carefully for human author names and extract the precise, specific scientific subfields and topics discussed in the paper. Output as a comma-separated list of topics/subfields.
+- For author names, output as a comma-separated list (no "et al."). If none, output "Unidentified".
 
-Extract Metadata: `Extracted_Title`, `Extracted_Author`.
+Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
 Extract Variables (0.0 to 1.0): `H_novel`, `K_epistemic`, `zeta`, `I_existing`, `Sigma_error`, `mu_signal`, `rho_k`, `p_disciplines` (Array), `bridge_capacity`, `Utility_vector`, `decay_rate`, `q_fractional`, `D_open`, `J_code`, `P_FAIR`, `d_g_distance`, `R_xi`, `PR_xi`, `I_Fisher`, `KL_divergence`, `V_baseline`, `omega_data`, `sum_lambda_kappa`, `eta_steps`, `Lambda_Lyapunov`.
 Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Jumps`, `Premise_Validity`.
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
 Return ONLY a valid JSON object. Text: {text}""",
         f"""Perform a deep scientometric extraction on the provided manuscript/preprint text, applying linguistic equity normalization (ignoring stylistic/non-native variations). 
-Identify ALL contributing human authors listed in the title header or affiliations (no "et al.").
-Output JSON containing `Extracted_Title`, `Extracted_Author`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix (`Evidence_Strength`, `Conclusion_Reach`...) and an `Overall_Confidence` metric. Ensure strictly constrained float values.
+Identify ALL contributing human authors listed in the title header or affiliations (no "et al.") and parse the precise specific scientific topics and subfields of the paper.
+Output JSON containing `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix (`Evidence_Strength`, `Conclusion_Reach`...) and an `Overall_Confidence` metric. Ensure strictly constrained float values.
 Text: {text}"""
     ]
     
@@ -490,7 +491,7 @@ Text: {text}"""
                 return sub_parsed
     except Exception:
         pass
-    return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
+    return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Extracted_Topics": "General Science", "Overall_Confidence": 0.0}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None"):
     if file_bytes is None or len(file_bytes) == 0:
@@ -550,7 +551,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
          
     if not isinstance(raw_data, dict):
-        raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
+        raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Extracted_Topics": "General Science", "Overall_Confidence": 0.0}
 
     confidence = raw_data.get("Overall_Confidence", 1.0)
     if confidence < 0.50:
@@ -559,12 +560,23 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
 
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = str(raw_data.get("Extracted_Author", "")).strip()
+    extracted_topics = str(raw_data.get("Extracted_Topics", "General Science")).strip()
     
     if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
         if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
             extracted_author = pdf_meta_author.strip()
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
+
+    # Process subfields and topics from extracted string/array
+    if isinstance(extracted_topics, str):
+        subfields = [s.strip() for s in extracted_topics.split(',') if s.strip()]
+    elif isinstance(extracted_topics, list):
+        subfields = [str(s).strip() for s in extracted_topics if str(s).strip()]
+    else:
+        subfields = ["Core Research Topic"]
+    if not subfields: subfields = ["Core Research Topic"]
+    fields = [subfields[0]]
 
     # Canonical Deduplication Check (by DOI or Normalized Title + Author)
     normalized_title = re.sub(r'[^a-z0-9]', '', title.lower())
@@ -578,8 +590,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         if ex_title_row:
             ex_norm_title = re.sub(r'[^a-z0-9]', '', ex_title_row[0].lower())
             if (provided_doi != "None" and provided_doi) or (ex_norm_title == normalized_title and normalized_title != ""):
-                fields = ["Unspecified Domain"]
-                subfields = ["Unspecified Sub-domain"]
                 c_scores = ex_rest[:8]
                 piq_minted, tx_hash, zk_proof, h_index, i10_index, repro_score = ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13]
                 drift = calculate_complex_drift(scope_alignment, c_scores) if scope.strip() else "N/A"
@@ -608,8 +618,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     scores = [scores_dict[k] for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
     
     logic_integrity = compute_logical_integrity(raw_data.get("logic_analysis", {}), gaming_penalty)
-
-    fields, subfields = raw_data.get("fields", ["Unspecified Domain"]), raw_data.get("subfields", ["Unspecified Sub-domain"])
     
     raw_final_score = float(np.dot(scores, old_weights)) / 8.0
     final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
@@ -1051,7 +1059,7 @@ with tab2:
         if not data: return html_string, table_html
         
         all_topics = []
-        exclude_terms = {"general", "general science", "unspecified domain", "unspecified sub-domain"}
+        exclude_terms = {"general", "general science", "unspecified domain", "unspecified sub-domain", "core research topic"}
         
         for fields_json, subfields_json, final_score, author_str in data:
             if target_author and target_author != "All Authors" and target_author not in author_str:
@@ -1086,7 +1094,7 @@ with tab2:
         
         for _, row in topic_counts.iterrows():
             node_size = max(30, 20 + (row['weight'] * 2.5))
-            # Omit the label property entirely so that bubble labels are hidden while retaining hover tooltips
+            # Leave label blank to remove text from inside/beside the bubbles
             net.add_node(n_id=row['topic'], label="", title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
@@ -1352,7 +1360,7 @@ with tab5:
 
         Intake -> Parser [lhead=cluster_eval, label="Raw Manuscript Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Evaluated Score & Hashes"];
-        Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
+        Mint -> Dossier [lhead=cluster_outputs, label="LedgerSeal & Tokens"];
         Mint -> Cartography;
         Mint -> PiBrain;
     }
