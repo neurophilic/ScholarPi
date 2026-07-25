@@ -1902,7 +1902,11 @@ with tab1:
 
     with st.expander(f"Ledger Data & Dossier Details ({filename})"):
       st.write(f"**File Name:** `{filename}`")
-      st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
+      st.write(
+          f"**Evaluation Hash (Paper Address - Shared by all co-authors):**"
+          f" `{eval_hash}`"
+      )
+      st.write(f"**Author-Specific Book Address (eth_book):** `{current_book}`")
       st.write(f"**piQ Minted:** `{piq}`")
       st.write(f"**zk-SNARK:** `{zk_proof}`")
       st.write(f"**Tx Hash:** `{tx_hash}`")
@@ -1979,7 +1983,8 @@ with tab1:
 **Title:** {title}
 **Author:** {author_name}
 **File Name:** {filename}
-**Evaluation Hash (Paper Address):** {eval_hash}
+**Evaluation Hash (Paper Address - Shared by co-authors):** {eval_hash}
+**Author Book Address:** {current_book}
 **Final Pi-Index Score:** {score:.2f} / 100
 **Logic Integrity Score:** {logic_integrity:.1f}%
 **Executable Reproducibility Score:** {repro_score * 100:.1f}%
@@ -2737,6 +2742,32 @@ with tab2:
     st.info("No Pi Quotient has been minted yet.")
 
 with tab3:
+  st.markdown(
+      "### Active Epoch & DeSci Staking Guide "
+      + tooltip(
+          "Detailed explanation of how blockchain blocks, epochs, proof-of-research"
+          " validation, and DeSci staking work in Tab 3."
+      ),
+      unsafe_allow_html=True,
+  )
+
+  with st.expander(
+      "📖 Detailed Guide: How Tab 3 Works (Blockchain Ledger & Staking)",
+      expanded=True,
+  ):
+    st.markdown("""
+    Tab 3 manages the immutable decentralization layer of the Pi-Index Assessment Engine. Here is how each component operates:
+    1. **Active Epoch & Block Height**: The system tracks an incremental block counter (`block_height`). Every evaluation increments the global evaluation counter. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+    2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: 
+       - Combines the block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+       - Guarantees complete auditability and cryptographic non-repudiation of every assessment round.
+    3. **Dynamic Weight Adjustment**: Weights shift dynamically across epochs driven by model evaluation statistics and algorithmic pi ($\pi$) convergence precision.
+    4. **DeSci Peer Attestation & Staking**: 
+       - High-reputation researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either **endorse** or **challenge** specific manuscript assessments on-chain (`desci_attestations` table).
+       - This provides decentralized crowd-auditing and stakes reputation against fraudulent or low-rigor preprints.
+    5. **Ledger Hashes & zk-SNARK Inspection**: Displays the chronological list of recent smart contract executions, linking paper evaluation hashes (`eval_hash`) to block hashes and zero-knowledge verification proofs.
+    """)
+
   conn = get_db_connection()
   cursor = conn.cursor()
   try:
@@ -2990,6 +3021,22 @@ with tab4:
       ),
       unsafe_allow_html=True,
   )
+
+  with st.expander(
+      "🧠 Detailed Guide: How Pi-Brain LSTM Meta-Learning Works", expanded=True
+  ):
+    st.markdown("""
+    Pi-Brain is an on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks:
+    1. **Data Pipeline (`PiBlockchainDataset`)**: Extracts historical weight matrices from the `blockchain_por_weights` table using a rolling lookback window (`lookback`).
+    2. **Recurrent Architecture (`nn.LSTM`)**: 
+       - Utilizes a Long Short-Term Memory (LSTM) layer with a hidden dimension size of 32 to capture temporal dependencies and drift patterns across successive epochs.
+    3. **Linear Regression & Softmax Normalization**: 
+       - Passes the final hidden state through a sequential multi-layer perceptron (Linear $\rightarrow$ ReLU $\rightarrow$ Linear) to output 8 projected criterion weights.
+       - Applies `torch.softmax(dim=-1) * 8.0` to strictly preserve the mathematical normalization constraint where the sum of all 8 criteria weights equals exactly 8.0.
+    4. **Optimization & Training Loop**: 
+       - Trains dynamically using Mean Squared Error loss (`nn.MSELoss`) and the Adam optimizer over 200 epochs to forecast how evaluation weights will shift in the upcoming epoch.
+    """)
+
   conn = get_db_connection()
   cursor = conn.cursor()
   cursor.execute(
@@ -3016,10 +3063,8 @@ with tab4:
         or st.session_state.last_trained_blocks != current_block_count
     ):
       weight_data = np.array(historical_rows, dtype=np.float32)
-      
-      # FIX: Ensure we do not slice more than available rows to prevent empty tensor/shape error
       actual_lookback = min(lookback_window, len(weight_data))
-      
+
       dataset = PiBlockchainDataset(weight_data, actual_lookback)
       dataloader = DataLoader(
           dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
@@ -3118,9 +3163,9 @@ with tab5:
             color = "#34495e";
             fillcolor = "#ecf0f1";
 
-            Auth [label="Researcher Authentication\\n(ORCID iD / W3C DID & ZK-Email)", fillcolor="#aed6f1"];
-            Intake [label="Multi-Source Ingestion Engine\\n• Local PDFs & DOI Unpaywall\\n• OpenAlex Topic Discovery", fillcolor="#aed6f1"];
-            ZKBlind [label="ZK Double-Blind Assignment\\n(Merkle Tree Non-Membership Proofs)", fillcolor="#aed6f1"];
+            Auth [label="Researcher Authentication\\n• ORCID iD / W3C DID Verification\\n• ZK-Email Institutional Proof", fillcolor="#aed6f1"];
+            Intake [label="Multi-Source Ingestion Engine\\n• Local Binary PDFs Extraction\\n• Unpaywall DOI Resolver\\n• OpenAlex Topic API Search", fillcolor="#aed6f1"];
+            ZKBlind [label="ZK Double-Blind Assignment\\n• Merkle Tree Non-Membership Proofs\\n• Anonymous Author Shielding", fillcolor="#aed6f1"];
             Auth -> Intake -> ZKBlind;
         }
 
@@ -3130,10 +3175,10 @@ with tab5:
             color = "#27ae60";
             fillcolor = "#e8f8f5";
 
-            SciParser [label="Deterministic SciScore API\\n(MDAR Adherence & Valid RRIDs)", fillcolor="#a3e4d7"];
-            IRTCalib [label="Item Response Theory (IRT) Calibration\\n& Counterfactual Stress Testing", fillcolor="#a3e4d7"];
-            Criteria [label="8 Transparent Criteria Rubrics\\n(C1 Semantic Originality to C8 FAIR)", fillcolor="#a3e4d7"];
-            Logic [label="Adversarial Logic Integrity Matrix\\n(Premise Validity & Laundering Penalty)", fillcolor="#a3e4d7"];
+            SciParser [label="Deterministic SciScore API\\n• MDAR Reporting Adherence\\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
+            IRTCalib [label="Item Response Theory Calibration\\n• Counterfactual Stress Testing\\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
+            Criteria [label="8 Transparent Criteria Rubrics\\n• C1 Originality to C8 FAIR Actionability\\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
+            Logic [label="Adversarial Logic Integrity Matrix\\n• Premise Validity & Evidence Strength\\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
             
             SciParser -> IRTCalib -> Criteria -> Logic;
         }
@@ -3144,9 +3189,9 @@ with tab5:
             color = "#8e44ad";
             fillcolor = "#f4ecf7";
 
-            PoR [label="Proof-of-Research (PoR) Validation\\n• Dynamic Epoch Weight Shifting\\n• Formulas Hash Stamping", fillcolor="#d7bde2"];
-            Slashing [label="Anti-Laundering Slashing Guard\\n(Smart Contract piQ Burn for Fraud)", fillcolor="#f5b7b1"];
-            Mint [label="Soulbound Token Minting\\n(piQ Credit & Tx Hash)", fillcolor="#d7bde2"];
+            PoR [label="Proof-of-Research (PoR) Validation\\n• Dynamic Epoch Weight Shifting\\n• Formulas Hash Stamping & SHA-256 Block", fillcolor="#d7bde2"];
+            Slashing [label="Anti-Laundering Slashing Guard\\n• Smart Contract piQ Burn for Fraud\\n• Stake Penalty Enforcement", fillcolor="#f5b7b1"];
+            Mint [label="Soulbound Token Minting\\n• Author-Specific Book Address (eth_book)\\n• Shared Paper Address (eval_hash) & Tx Hash", fillcolor="#d7bde2"];
             
             PoR -> Slashing -> Mint;
         }
@@ -3157,12 +3202,12 @@ with tab5:
             color = "#d35400";
             fillcolor = "#fef5e7";
 
-            Dossier [label="CoARA & DORA-Aligned Dossier\\n& AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
-            Cartography [label="Global Map of Science\\n(Ledger PyVis Network Cartography)", fillcolor="#f8c471"];
-            PiBrain [label="Pi-Brain LSTM Meta-Learning\\n(Calibration Drift & Epoch Prediction)", fillcolor="#f8c471"];
+            Dossier [label="CoARA & DORA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
+            Cartography [label="Global Map of Science\\n• Ledger PyVis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
+            PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
 
-        Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Text");
+        Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Audited Score & Hashes"];
         Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
