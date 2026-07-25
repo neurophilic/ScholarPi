@@ -643,6 +643,7 @@ class PiBrainLSTM(nn.Module):
 st.sidebar.title("System Access")
 
 if 'assessment_update_token' not in st.session_state: st.session_state['assessment_update_token'] = time.time()
+if 'reset_token' not in st.session_state: st.session_state['reset_token'] = 0
 if 'orcid_id' not in st.session_state:
     st.session_state.orcid_id = "0000-0000-0000-0000"
     st.session_state.orcid_name = ""
@@ -723,12 +724,23 @@ with tab1:
     research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", help="Calculating the scope drift provides quantitative insight into paradigm divergence.")
     
     col_up, col_doi = st.columns(2)
+    
+    selected_uploaded_files = []
     with col_up:
         st.markdown("#### Upload Local PDF / Manuscript")
         uploaded_files = st.file_uploader("Upload Academic Papers", type=["pdf"], accept_multiple_files=True, help="Supports parsing of multi-page academic PDF documents using adaptive token chunking.")
+        if uploaded_files:
+            st.markdown("**Tick local files to include in assessment:**")
+            for i, file in enumerate(uploaded_files):
+                if st.checkbox(f"Include file: {file.name}", value=True, key=f"up_chk_{i}_{st.session_state['reset_token']}"):
+                    selected_uploaded_files.append(file)
+
+    include_doi = False
     with col_doi:
         st.markdown("#### Import via Unpaywall (DOI)")
         doi_input = st.text_input("Enter Document Object Identifier (DOI)", placeholder="10.1038/s41586-020-2649-2", help="Directly imports the paper if an Open Access copy is identified via the Unpaywall registry.")
+        if doi_input.strip():
+            include_doi = st.checkbox("Include this DOI in assessment", value=True, key=f"doi_chk_{st.session_state['reset_token']}")
     
     st.markdown("---")
     st.markdown("#### Discover & Rate Papers via OpenAlex Topic Search " + tooltip("Search open-access papers by specific research topics and automatically feed them into the Pi-Index assessment pipeline."), unsafe_allow_html=True)
@@ -745,18 +757,15 @@ with tab1:
             alex_results = search_openalex_topics(alex_topic_input.strip(), limit=5)
             if alex_results:
                 st.session_state['alex_search_results'] = alex_results
-                for idx in range(len(alex_results)):
-                    st.session_state[f"alex_chk_{idx}"] = False
                 st.success(f"Found {len(alex_results)} Open Access papers.")
             else:
                 st.warning("No Open Access papers found matching this topic.")
 
     selected_alex_papers = []
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
-        st.markdown("**Select OpenAlex papers to assess (tick checkboxes):**")
+        st.markdown("**Tick OpenAlex papers to include in assessment:**")
         for idx, p in enumerate(st.session_state['alex_search_results']):
-            is_checked = st.checkbox(f"{p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}")
-            if is_checked:
+            if st.checkbox(f"{p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
                 selected_alex_papers.append(p)
 
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
@@ -825,12 +834,12 @@ with tab1:
     if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
         if not stake_amount:
             st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
-        elif not uploaded_files and not doi_input.strip() and not selected_alex_papers:
-            st.warning("Please upload a PDF, enter a DOI, or tick at least one paper from the OpenAlex Topic search.")
+        elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not selected_alex_papers:
+            st.warning("Please tick at least one paper or input source to assess.")
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
-            # Process Ticked OpenAlex Papers
+            # 1. Process OpenAlex Papers
             if selected_alex_papers:
                 for p in selected_alex_papers:
                     status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
@@ -853,8 +862,8 @@ with tab1:
                     else:
                         st.warning(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
 
-            # Process DOI Input
-            if doi_input.strip():
+            # 2. Process DOI Input
+            if include_doi and doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
                 metadata = fetch_doi_metadata(doi_input)
                 fname = f"DOI_{doi_input.replace('/', '_')}.pdf"
@@ -869,22 +878,23 @@ with tab1:
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
-            # Process Uploaded Local Files
-            if uploaded_files:
-                for i, file in enumerate(uploaded_files):
-                    status_text.text(f"Analyzing uploaded file {i+1} of {len(uploaded_files)}: {file.name}...")
+            # 3. Process Ticked Local Files
+            if selected_uploaded_files:
+                for i, file in enumerate(selected_uploaded_files):
+                    status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
                         file.read(), file.name, research_scope, current_user, current_book, current_email
                     )
                     render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score, file.name)
-                    progress_bar.progress((i + 1) / len(uploaded_files))
+                    progress_bar.progress((i + 1) / len(selected_uploaded_files))
             
-            # Clear ticked OpenAlex checkboxes after assessment runs
-            if 'alex_search_results' in st.session_state:
-                for idx in range(len(st.session_state['alex_search_results'])):
-                    st.session_state[f"alex_chk_{idx}"] = False
-
+            # Clear all ticked checkboxes across all input methods by bumping reset_token
+            st.session_state['reset_token'] += 1
+            st.session_state['assessment_update_token'] = time.time()
+            
             status_text.success("Pipeline processing complete.")
+            time.sleep(1)
+            st.rerun() # Instantly refreshes to update Global Map and Explorer tables
             
     st.markdown("---")
     st.markdown("### AI Peer Review Defense Strategy " + tooltip("Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy."), unsafe_allow_html=True)
