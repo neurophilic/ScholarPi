@@ -53,7 +53,8 @@ PIQ_CONTRACT_ADDRESS = os.getenv(
     "PIQ_CONTRACT_ADDRESS", "0xYourDeployedContractAddressHere"
 )
 
-BASE_DIR = os.path.abspath("./Scientometric_Pi_Index")
+# Persistent local machine storage directory (User Home Directory) ensuring data is saved automatically
+BASE_DIR = os.path.expanduser("~/Scientometric_Pi_Index")
 os.makedirs(BASE_DIR, exist_ok=True)
 DB_PATH = os.path.join(BASE_DIR, "pi_index_main.db")
 
@@ -1480,6 +1481,20 @@ class PiBrainLSTM(nn.Module):
 # ==========================================
 st.sidebar.title("System Access")
 
+# Add Backup Database button to sidebar for permanent local machine saving
+if os.path.exists(DB_PATH):
+  with open(DB_PATH, "rb") as f:
+    st.sidebar.download_button(
+        label="📥 Download Local DB Backup",
+        data=f,
+        file_name="pi_index_main.db",
+        mime="application/x-sqlite3",
+        help=(
+            "Downloads the permanent SQLite database file directly to your"
+            " local machine."
+        ),
+    )
+
 if "assessment_update_token" not in st.session_state:
   st.session_state["assessment_update_token"] = time.time()
 if "reset_token" not in st.session_state:
@@ -1653,7 +1668,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+        r"$$ C_4 = \text{vapri}_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
         r" U_v(\tau, \mathbf{x}) \right] $$"
     )
   with col2:
@@ -1661,7 +1676,7 @@ with st.expander(
         "**C5: Open Science & Executable Reproducibility** "
         + tooltip(
             "Cryptographic verification of open data/code repositories and"
-            " sandboxed container execution[cite: 1]."
+            " sandboxed container execution."
         ),
         unsafe_allow_html=True,
     )
@@ -1679,7 +1694,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+        r"$$ C_6 = \text{vapri}_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
         r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
     )
 
@@ -1692,7 +1707,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+        r"$$ C_7 = \text{vapri}_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
         r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
     )
 
@@ -1705,7 +1720,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+        r"$$ C_8 = \text{vapri}_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
         r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
     )
 
@@ -2759,7 +2774,7 @@ with tab3:
     Tab 3 manages the immutable decentralization layer of the Pi-Index Assessment Engine. Here is how each component operates:
     1. **Active Epoch & Block Height**: The system tracks an incremental block counter (`block_height`). Every evaluation increments the global evaluation counter. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
     2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: 
-       - Combines the block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+       - Combines the block index, criteria weights ($\text{vapri}_1$ to $\text{vapri}_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
        - Guarantees complete auditability and cryptographic non-repudiation of every assessment round.
     3. **Dynamic Weight Adjustment**: Weights shift dynamically across epochs driven by model evaluation statistics and algorithmic pi ($\pi$) convergence precision.
     4. **DeSci Peer Attestation & Staking**: 
@@ -2815,14 +2830,14 @@ with tab3:
 
     cols = st.columns(4)
     labels = [
-        ("C1", r"$\varpi_1$"),
-        ("C2", r"$\varpi_2$"),
-        ("C3", r"$\varpi_3$"),
-        ("C4", r"$\varpi_4$"),
-        ("C5", r"$\varpi_5$"),
-        ("C6", r"$\varpi_6$"),
-        ("C7", r"$\varpi_7$"),
-        ("C8", r"$\varpi_8$"),
+        ("C1", r"$\text{vapri}_1$"),
+        ("C2", r"$\text{vapri}_2$"),
+        ("C3", r"$\text{vapri}_3$"),
+        ("C4", r"$\text{vapri}_4$"),
+        ("C5", r"$\text{vapri}_5$"),
+        ("C6", r"$\text{vapri}_6$"),
+        ("C7", r"$\text{vapri}_7$"),
+        ("C8", r"$\text{vapri}_8$"),
     ]
     for i, col in enumerate(cols * 2):
       if i < 8:
