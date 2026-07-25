@@ -193,16 +193,15 @@ def backup_state_to_web3(ui_feedback=False):
         
         estimated_gas = contract.functions.updateCID(cid).estimate_gas({"from": account.address})
         
+        # FIXED: Using legacy gasPrice parameter to avoid EIP-1559 fee discrepancies on testnet
         tx = contract.functions.updateCID(cid).build_transaction({
             "from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address),
             "gas": int(estimated_gas * 1.2),
-            "maxFeePerGas": w3.eth.gas_price,
-            "maxPriorityFeePerGas": w3.to_wei("2", "gwei"),
+            "gasPrice": w3.eth.gas_price,
         })
         
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=ETH_ADMIN_PRIVATE_KEY)
-        # FIXED: Changed rawTransaction to raw_transaction for web3.py v6+ compatibility
         tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         
         msg = f"Backup Success! Tx Hash: {tx_hash.hex()}"
@@ -555,14 +554,12 @@ def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
         "from": account.address,
         "nonce": w3.eth.get_transaction_count(account.address),
         "gas": 200000,
-        "maxFeePerGas": w3.eth.gas_price,
-        "maxPriorityFeePerGas": w3.to_wei("2", "gwei"),
+        "gasPrice": w3.eth.gas_price,
     })
 
     signed_tx = w3.eth.account.sign_transaction(
         tx, private_key=ETH_ADMIN_PRIVATE_KEY
     )
-    # FIXED: Changed rawTransaction to raw_transaction for web3.py v6+ compatibility
     tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
     return tx_hash.hex()
   except Exception as e:
