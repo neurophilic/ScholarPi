@@ -969,7 +969,12 @@ with tab1:
                         }
                         st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else:
-                        st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
+                        st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages.")
+                        if p.get('pdf_url'):
+                            st.markdown(f"🔗 **Direct PDF Link:** [{p['pdf_url']}]({p['pdf_url']})")
+                        if p.get('doi'):
+                            st.markdown(f"🌐 **DOI Link:** [https://doi.org/{p['doi'].replace('https://doi.org/', '')}](https://doi.org/{p['doi'].replace('https://doi.org/', '')})")
+                        st.info("Tip: Copy the link above to view/download the paper manually, then upload it via the local PDF uploader.")
 
             # 2. Process DOI Input
             if include_doi and doi_input.strip():
@@ -992,8 +997,15 @@ with tab1:
                             'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
                         }
                         st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
-                    else: st.error("Failed to download PDF from Open Access source.")
-                else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
+                    else: 
+                        st.error(f"Could not directly download PDF for DOI '{doi_input}'. Publishers often restrict direct binary access.")
+                        clean_d = doi_input.replace('https://doi.org/', '').replace('doi.org/', '').strip()
+                        st.markdown(f"🌐 **DOI Link:** [https://doi.org/{clean_d}](https://doi.org/{clean_d})")
+                        st.info("Tip: Access the DOI link to download the PDF manually and upload it locally.")
+                else: 
+                    st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
+                    clean_d = doi_input.replace('https://doi.org/', '').replace('doi.org/', '').strip()
+                    st.markdown(f"🌐 **DOI Link:** [https://doi.org/{clean_d}](https://doi.org/{clean_d})")
             
             # 3. Process Ticked Local Files
             if selected_uploaded_files:
@@ -1405,7 +1417,7 @@ with tab5:
             label = "3. Blockchain Consensus, Cryptographic Proofs & Tokenomics";
             style = rounded;
             color = "#8e44ad";
-            fillcolor = "#f4ecf7";
+            fillcolor =тном;
 
             PoR [label="Proof-of-Research (PoR) Validation\n• Dynamic Weight Shifting\n• Cryptographic Formulas Hash Stamping", fillcolor="#d7bde2"];
             ZK [label="zk-SNARK & ZK-Email Circuit Proofs\n(Privacy-Preserving Verification)", fillcolor="#d7bde2"];
