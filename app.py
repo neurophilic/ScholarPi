@@ -408,7 +408,13 @@ def is_likely_institution(name):
       "iss",
       "università",
   ]
-  return any(kw in lower_name for kw in inst_keywords)
+  # BUG FIX: Use regex word boundaries (\b) to prevent substring false positives
+  # (e.g. matching "inc" in "Vincent" or "lab" in "Labib")
+  for kw in inst_keywords:
+    pattern = r'\b' + re.escape(kw.rstrip('.')) + r'\b'
+    if re.search(pattern, lower_name):
+      return True
+  return False
 
 def fetch_author_coara_metrics(author_name):
   try:
@@ -1600,7 +1606,7 @@ st.sidebar.title("System Access")
 
 if "initialized" not in st.session_state:
   st.session_state["initialized"] = True
-  st.toast("Application initialized successfully.", icon="🚀")
+  st.toast("Application initialized successfully.")
 
 client_ip = "127.0.0.1"
 try:
@@ -1652,7 +1658,7 @@ conn_cnt.close()
 st.markdown(
     f"""
     <div style="position: absolute; top: 15px; right: 20px; background-color: #2c3e50; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 999;">
-        📊 Analyzed Papers: {total_analyzed_count}
+        Analyzed Papers: {total_analyzed_count}
     </div>
     """,
     unsafe_allow_html=True,
@@ -1897,7 +1903,7 @@ with tab1:
     st.markdown("**Tick local files to include:**")
     for i, file in enumerate(uploaded_files):
       if st.checkbox(
-          f"📄 Local File: {file.name}",
+          f"Local File: {file.name}",
           value=True,
           key=f"up_chk_{i}_{st.session_state['reset_token']}",
       ):
@@ -1975,7 +1981,7 @@ with tab1:
       st.markdown("#### OpenAlex Harvested Results")
     with col_close_btn:
       if st.button(
-          "❌ Close", key=f"close_alex_{st.session_state['reset_token']}"
+          "Close", key=f"close_alex_{st.session_state['reset_token']}"
       ):
         del st.session_state["alex_search_results"]
         st.rerun()
@@ -2000,7 +2006,7 @@ with tab1:
     ]
     for idx, p in enumerate(visible_results):
       is_selected = st.checkbox(
-          f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*",
+          f"OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*",
           key=f"alex_chk_{idx}_{st.session_state['reset_token']}",
       )
       if is_selected:
@@ -2447,7 +2453,7 @@ with tab1:
     st.markdown("### Active Session Assessment Results")
 
     if st.session_state.get("download_errors"):
-      st.markdown("#### ⚠️ Publisher Access & Download Restrictions")
+      st.markdown("#### Publisher Access & Download Restrictions")
       for err_idx, err_data in enumerate(
           st.session_state["download_errors"]
       ):
@@ -2461,7 +2467,7 @@ with tab1:
           )
         with err_col2:
           if st.button(
-              "❌ Close",
+              "Close",
               key=f"close_err_{err_idx}_{st.session_state['reset_token']}",
           ):
             st.session_state["download_errors"].pop(err_idx)
@@ -2582,7 +2588,7 @@ with tab1:
 
   st.markdown("---")
   st.markdown(
-      "### 📋 Last 5 Assessed Papers across the Ledger"
+      "### Last 5 Assessed Papers across the Ledger"
       + tooltip(
           "Displays the 5 most recently evaluated papers globally from the database"
           " with full breakdown details."
@@ -3007,7 +3013,7 @@ with tab3:
   )
 
   with st.expander(
-      "📖 Detailed Guide: How Tab 3 Works (Blockchain Ledger & Staking)",
+      "Detailed Guide: How Tab 3 Works (Blockchain Ledger & Staking)",
       expanded=False,
   ):
     st.markdown("""
@@ -3278,7 +3284,7 @@ with tab4:
   )
 
   with st.expander(
-      "🧠 Detailed Guide: How Pi-Brain LSTM Meta-Learning Works", expanded=False
+      "Detailed Guide: How Pi-Brain LSTM Meta-Learning Works", expanded=False
   ):
     st.markdown("""
     Pi-Brain is an on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks:
