@@ -43,8 +43,9 @@ FALLBACK_MODEL = "llama-3.1-8b-instant"
 MAX_TEXT_TOKENS = 12000
 EPOCH_BLOCK_SIZE = 1
 
+# FIXED: Pointing to Sepolia testnet instead of Mainnet
 WEB3_PROVIDER_URI = os.getenv(
-    "WEB3_PROVIDER_URI", "https://mainnet.infura.io/v3/330b2fcc6352474ba4b2f60aa4e9ec7a"
+    "WEB3_PROVIDER_URI", "https://sepolia.infura.io/v3/330b2fcc6352474ba4b2f60aa4e9ec7a"
 )
 ETH_ADMIN_PRIVATE_KEY = os.getenv(
     "ETH_ADMIN_PRIVATE_KEY",
@@ -101,20 +102,26 @@ GENESIS_BLOCK_CONFIG = {
 # ==========================================
 def restore_state_from_web3():
     """Fetches the latest IPFS CID from Sepolia Ethereum and restores the DB and Neural Net."""
-    if not REGISTRY_CONTRACT_ADDRESS or not w3.is_connected():
+    if not w3.is_connected():
+        print("Restore Error: Web3 is not connected. Check Infura URI.")
+        return
+    if not REGISTRY_CONTRACT_ADDRESS:
+        print("Restore Error: Registry Contract Address is missing.")
         return
     
     try:
         abi = '[{"inputs":[],"name":"getCID","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
         
         if len(REGISTRY_CONTRACT_ADDRESS) != 42 or not REGISTRY_CONTRACT_ADDRESS.startswith("0x"):
+            print("Restore Error: Invalid Registry Contract Address format.")
             return
             
         contract = w3.eth.contract(address=w3.to_checksum_address(REGISTRY_CONTRACT_ADDRESS), abi=json.loads(abi))
         cid = contract.functions.getCID().call()
         
         if cid:
-            res = requests.get(f"ivory-worrying-boa-917.mypinata.cloud/ipfs/{cid}", timeout=30)
+            # FIXED: Added https:// prefix for valid request routing
+            res = requests.get(f"https://ivory-worrying-boa-917.mypinata.cloud/ipfs/{cid}", timeout=30)
             if res.status_code == 200:
                 zip_path = BASE_DIR + ".zip"
                 with open(zip_path, 'wb') as fp:
@@ -122,12 +129,22 @@ def restore_state_from_web3():
                 shutil.unpack_archive(zip_path, BASE_DIR)
                 if os.path.exists(zip_path):
                     os.remove(zip_path)
+                print("State successfully restored from Web3/IPFS.")
+            else:
+                print(f"Restore Error: Pinata returned status code {res.status_code}")
     except Exception as e:
         print(f"Failed to restore state from Web3: {e}")
 
 def backup_state_to_web3():
     """Zips the local state, pins to IPFS via Pinata, and updates the Sepolia Ethereum registry."""
-    if not PINATA_API_KEY or not REGISTRY_CONTRACT_ADDRESS or not w3.is_connected():
+    if not w3.is_connected():
+        print("Backup Error: Web3 is not connected. Check Infura URI.")
+        return
+    if not PINATA_API_KEY:
+        print("Backup Error: Pinata API key missing.")
+        return
+    if not REGISTRY_CONTRACT_ADDRESS:
+        print("Backup Error: Registry Contract Address is missing.")
         return
         
     try:
@@ -150,25 +167,32 @@ def backup_state_to_web3():
             os.remove(zip_path)
         
         if not cid:
+            print("Backup Error: Failed to get CID from Pinata.")
             return
 
         abi = '[{"inputs":[{"internalType":"string","name":"_cid","type":"string"}],"name":"updateCID","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
         
         if len(REGISTRY_CONTRACT_ADDRESS) != 42 or not REGISTRY_CONTRACT_ADDRESS.startswith("0x"):
+            print("Backup Error: Invalid Registry Contract Address format.")
             return
             
         contract = w3.eth.contract(address=w3.to_checksum_address(REGISTRY_CONTRACT_ADDRESS), abi=json.loads(abi))
         account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
         
+        # FIXED: Dynamic gas estimation and EIP-1559 transaction fees
+        estimated_gas = contract.functions.updateCID(cid).estimate_gas({"from": account.address})
+        
         tx = contract.functions.updateCID(cid).build_transaction({
             "from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address),
-            "gas": 150000,
-            "gasPrice": w3.to_wei("10", "gwei"),
+            "gas": int(estimated_gas * 1.2), # 20% safety buffer
+            "maxFeePerGas": w3.eth.gas_price,
+            "maxPriorityFeePerGas": w3.to_wei("2", "gwei"),
         })
         
         signed_tx = w3.eth.account.sign_transaction(tx, private_key=ETH_ADMIN_PRIVATE_KEY)
-        w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        print(f"Backup Success: Tx Hash {tx_hash.hex()}")
     except Exception as e:
         print(f"Failed to backup state to Web3: {e}")
 
@@ -512,7 +536,8 @@ def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
         "from": account.address,
         "nonce": w3.eth.get_transaction_count(account.address),
         "gas": 200000,
-        "gasPrice": w3.to_wei("10", "gwei"),
+        "maxFeePerGas": w3.eth.gas_price,
+        "maxPriorityFeePerGas": w3.to_wei("2", "gwei"),
     })
 
     signed_tx = w3.eth.account.sign_transaction(
