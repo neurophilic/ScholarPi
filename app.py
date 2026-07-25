@@ -17,7 +17,6 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from pyvis.network import Network
-import graphviz
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -82,7 +81,6 @@ def enforce_database_schema():
     cursor.execute('''CREATE TABLE IF NOT EXISTS desci_attestations 
                       (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)''')
     
-    # CoARA/UNIMIB Compliant Columns (Removed h_index and i10_index)
     target_columns_assessment = {
         "eth_book": "TEXT DEFAULT 'None'",
         "eth_wallet": "TEXT DEFAULT 'None'",
@@ -93,9 +91,8 @@ def enforce_database_schema():
         "did": "TEXT DEFAULT 'None'",
         "zk_email_proof": "TEXT DEFAULT 'None'",
         "gaming_penalty": "REAL DEFAULT 0.0",
-        "mdar_adherence_score": "REAL DEFAULT 0.0",
-        "rrid_valid_count": "INTEGER DEFAULT 0",
-        "credit_taxonomy_roles": "TEXT DEFAULT 'None'",
+        "h_index": "TEXT DEFAULT 'N/A'",
+        "i10_index": "TEXT DEFAULT 'N/A'",
         "reproducibility_score": "REAL DEFAULT 0.0",
         "doi": "TEXT DEFAULT 'None'"
     }
@@ -154,14 +151,21 @@ def tooltip(text):
     svg_icon = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-left: 6px; cursor: help;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'''
     return f"<span title=\"{text}\">{svg_icon}</span>"
 
-# Simulated SciScore/MDAR Extraction to replace legacy metrics
-def fetch_empirical_sciscore_metrics(text_chunk):
-    # In a real environment, this would call the SciScore API endpoint.
-    return {
-        "mdar_score": round(random.uniform(60.0, 98.0), 1),
-        "rrid_count": random.randint(0, 15),
-        "credit_roles": "Conceptualization, Methodology, Writing - Original Draft"
-    }
+def fetch_author_metrics(author_name):
+    try:
+        if not author_name or author_name.lower() in ["unidentified", "unknown"]:
+            return "N/A", "N/A"
+        first_author = author_name.split(',')[0].strip()
+        url = f"https://api.openalex.org/authors?search={first_author}"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get('results') and len(data['results']) > 0:
+                stats = data['results'][0].get('summary_stats', {})
+                return str(stats.get('h_index', 'N/A')), str(stats.get('i10_index', 'N/A'))
+    except Exception:
+        pass
+    return "N/A", "N/A"
 
 def search_openalex_topics(topic_query, limit=5):
     try:
@@ -179,7 +183,7 @@ def search_openalex_topics(topic_query, limit=5):
                 
                 authorships = item.get('authorships', [])
                 authors_list = [a.get('author', {}).get('display_name', '') for a in authorships]
-                authors_str = ", ".join([a.title() for a in authors_list if a]) if authors_list else "Unidentified"
+                authors_str = ", ".join([a for a in authors_list if a]) if authors_list else "Unidentified"
                 
                 if pdf_url or doi:
                     extracted.append({
@@ -202,7 +206,7 @@ def get_author_piq_dict():
     for authors_str, piq in data:
         if not authors_str or authors_str.lower() in ["unidentified", "unknown", "research scholar"]: 
             continue
-        alist = [a.strip().title() for a in authors_str.split(',') if a.strip()]
+        alist = [a.strip() for a in authors_str.split(',') if a.strip()]
         if not alist: continue
         share = piq / len(alist)
         for a in alist:
@@ -297,11 +301,10 @@ def compute_logical_integrity(extracted_logic_vars, gaming_penalty):
 
 def compute_formulaic_criteria(vars_dict, reproducibility_score):
     scores = {}
-    c1_raw = ((vars_dict.get('H_novel', 0.5) * vars_dict.get('K_epistemic', 0.5)) / (vars_dict.get('zeta', 0.5) * vars_dict.get('I_existing', 0.5) + 1e-9)) * 60
+    c1_raw = ((vars_dict.get('H_novel', 0.5) * vars_dict.get('K_epistemic', 0.5)) / (vars_dict.get('zeta', 0.5) * vars_dict.get('I_existing', 0.5) + 0.1)) * 60
     scores["C1_Originality"] = min(100.0, max(0.0, c1_raw))
     
-    # Adjusted to prioritize Empirical extraction (MDAR / SciScore emulation parameters)
-    rigor_matrix = max(0.0, 1.0 - (vars_dict.get('Sigma_error', 0.2) / (vars_dict.get('mu_signal', 0.8) + 1e-9)))
+    rigor_matrix = max(0.0, 1.0 - (vars_dict.get('Sigma_error', 0.2) / (vars_dict.get('mu_signal', 0.8) + 0.1)))
     c2_raw = rigor_matrix * vars_dict.get('rho_k', 0.5) * math.gamma(1.5) * 140
     scores["C2_Methodological_Rigor"] = min(100.0, max(0.0, c2_raw))
     
@@ -321,7 +324,7 @@ def compute_formulaic_criteria(vars_dict, reproducibility_score):
     c6_raw = np.exp(-1.5 * vars_dict.get('d_g_distance', 0.5)) * vars_dict.get('R_xi', 0.5) * vars_dict.get('PR_xi', 0.5) * 180
     scores["C6_Literature_Integration"] = min(100.0, max(0.0, c6_raw))
     
-    density_inner = (vars_dict.get('I_Fisher', 0.5) * vars_dict.get('KL_divergence', 0.5) * (0.8 + 0.2 * reproducibility_score)) / (vars_dict.get('V_baseline', 0.5) * vars_dict.get('omega_data', 0.5) + 1e-9)
+    density_inner = (vars_dict.get('I_Fisher', 0.5) * vars_dict.get('KL_divergence', 0.5) * (0.8 + 0.2 * reproducibility_score)) / (vars_dict.get('V_baseline', 0.5) * vars_dict.get('omega_data', 0.5) + 0.1)
     c7_raw = np.tanh(density_inner) * vars_dict.get('sum_lambda_kappa', 1.0) * 85
     scores["C7_Empirical_Density"] = min(100.0, max(0.0, c7_raw))
     
@@ -340,7 +343,7 @@ def calculate_complex_drift(alignment, scores):
     average_score = np.mean(scores)
     standard_deviation = np.std(scores)
     alignment_gap = (100.0 - alignment) / 100.0
-    drift_metric = 100.0 * (1.0 - np.exp(-3.0 * (alignment_gap ** 1.5) * (1.0 + (standard_deviation / 100.0)) / (1e-9 + (average_score / 100.0))))
+    drift_metric = 100.0 * (1.0 - np.exp(-3.0 * (alignment_gap ** 1.5) * (1.0 + (standard_deviation / 100.0)) / (0.1 + (average_score / 100.0))))
     return float(max(0.0, min(100.0, drift_metric)))
 
 def get_recommendation_spectrum(score, drift):
@@ -365,22 +368,20 @@ def fetch_doi_metadata(doi):
             res = response.json()
             title = res.get("title", "Unknown Title")
             authors_list = res.get("z_authors", [])
-            authors = ", ".join([a.get("family", "").title() for a in authors_list]) if authors_list else "Unknown Author"
+            authors = ", ".join([a.get("family", "") for a in authors_list]) if authors_list else "Unknown Author"
             pdf_url = res.get("best_oa_location", {}).get("url_for_pdf", None) if res.get("best_oa_location") else None
             return {"title": title, "authors": authors, "pdf_url": pdf_url}
         return None
     except Exception: return None
 
 def download_pdf_from_url(pdf_url):
-    if not pdf_url: return None
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "application/pdf,application/xhtml+xml,text/html;q=0.9,image/webp,*/*;q=0.8",
-            "Referer": "https://doi.org/"
+            "Accept": "application/pdf,application/xhtml+xml,text/html;q=0.9,image/webp,*/*;q=0.8"
         }
-        res = requests.get(pdf_url, headers=headers, timeout=20, allow_redirects=True)
-        if res.status_code == 200 and res.content.startswith(b"%PDF"):
+        res = requests.get(pdf_url, headers=headers, timeout=15, allow_redirects=True)
+        if res.status_code == 200 and b"%PDF" in res.content[:10]:
             return res.content
         return None
     except Exception: return None
@@ -424,7 +425,7 @@ Output a JSON object with two keys:
 Text: {text_chunk}"""
     try:
         response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=42, response_format={"type": "json_object"}
+            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, response_format={"type": "json_object"}
         )
         res_json = json.loads(response.choices[0].message.content)
         return float(res_json.get("Gaming_Penalty", 0.0)), float(res_json.get("Reproducibility_Score", 0.5))
@@ -438,7 +439,7 @@ Return ONLY a valid JSON object with a single key "Scope_Alignment" containing a
 Text: {text}"""
     try:
         response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=42, response_format={"type": "json_object"}
+            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, response_format={"type": "json_object"}
         )
         return float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
     except Exception: return 0.0
@@ -450,79 +451,73 @@ def extract_unpublished_authors_fallback(text):
         clean_line = re.sub(r'[\d\*\†\‡\§\¶\(\)]', '', line).strip()
         if re.match(r'^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+(\s*,\s*[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*$', clean_line):
             if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal']):
-                return clean_line.title()
+                return clean_line
     return "Unidentified"
 
 def evaluate_pdf_text_ensemble(text, model, text_limit):
     text = adaptive_chunking(text, text_limit)
-    prompt = f"""You are the theoretical parser for the Pi-Index. Read the academic paper and extract structured metadata.
+    prompts = [
+        f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and variables.
 CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles, alternative structural layouts, or resource-constrained syntax. Normalize linguistic style and evaluate strictly on scientific substance and methodological merit.
 
 CRITICAL INSTRUCTION FOR AUTHORS:
-- Scan the first 2 pages carefully for human author names. Output as a comma-separated list of Title Cased names (no brackets, no quotes, no "et al."). If none, output "Unidentified".
+- Scan the first 2 pages carefully for human author names. Output as a comma-separated list (no "et al."). If none, output "Unidentified".
 
-CRITICAL INSTRUCTION: Return ONLY a valid JSON object matching this exact structure:
-{{
-    "metadata": {{
-        "Extracted_Title": "String",
-        "Extracted_Author": "String"
-    }},
-    "fields": ["Primary Domain", "Secondary Domain"],
-    "subfields": ["Specific Sub-topic 1", "Specific Sub-topic 2"],
-    "variables": {{
-        "H_novel": 0.5, "K_epistemic": 0.5, "zeta": 0.5, "I_existing": 0.5, "Sigma_error": 0.5, 
-        "mu_signal": 0.5, "rho_k": 0.5, "p_disciplines": [0.5, 0.5], "bridge_capacity": 0.5, 
-        "Utility_vector": 0.5, "decay_rate": 0.5, "q_fractional": 0.5, "D_open": 0.5, "J_code": 0.5, 
-        "P_FAIR": 0.5, "d_g_distance": 0.5, "R_xi": 0.5, "PR_xi": 0.5, "I_Fisher": 0.5, 
-        "KL_divergence": 0.5, "V_baseline": 0.5, "omega_data": 0.5, "sum_lambda_kappa": 0.5, 
-        "eta_steps": 0.5, "Lambda_Lyapunov": 0.5
-    }},
-    "logic_analysis": {{
-        "Evidence_Strength": 0.5, "Conclusion_Reach": 0.5, "Logical_Jumps": 0.5, "Premise_Validity": 0.5
-    }},
-    "Overall_Confidence": 0.95
-}}
+Extract Metadata: `Extracted_Title`, `Extracted_Author`.
+Extract Variables (0.0 to 1.0): `H_novel`, `K_epistemic`, `zeta`, `I_existing`, `Sigma_error`, `mu_signal`, `rho_k`, `p_disciplines` (Array), `bridge_capacity`, `Utility_vector`, `decay_rate`, `q_fractional`, `D_open`, `J_code`, `P_FAIR`, `d_g_distance`, `R_xi`, `PR_xi`, `I_Fisher`, `KL_divergence`, `V_baseline`, `omega_data`, `sum_lambda_kappa`, `eta_steps`, `Lambda_Lyapunov`.
+Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Jumps`, `Premise_Validity`.
+REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
+Return ONLY a valid JSON object. Text: {text}""",
+        f"""Perform a deep scientometric extraction on the provided manuscript/preprint text, applying linguistic equity normalization (ignoring stylistic/non-native variations). 
+Identify ALL contributing human authors listed in the title header or affiliations (no "et al.").
+Output JSON containing `Extracted_Title`, `Extracted_Author`, and the 25 proxy variables (`H_novel`, `K_epistemic`, `zeta`...). Include the adversarial logic matrix (`Evidence_Strength`, `Conclusion_Reach`...) and an `Overall_Confidence` metric. Ensure strictly constrained float values.
 Text: {text}"""
+    ]
     
+    prompt = random.choice(prompts)
+    response = groq_client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=random.randint(1, 1000), response_format={"type": "json_object"}
+    )
+    result_content = response.choices[0].message.content
     try:
-        response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=42, response_format={"type": "json_object"}
-        )
-        result_content = response.choices[0].message.content
         parsed = json.loads(result_content)
         if isinstance(parsed, dict):
             return parsed
+        elif isinstance(parsed, str):
+            sub_parsed = json.loads(parsed)
+            if isinstance(sub_parsed, dict):
+                return sub_parsed
     except Exception:
         pass
-    return {"metadata": {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified"}, "Overall_Confidence": 0.0}
+    return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None"):
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-        return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, 0.0, 0, "None", 0.0, False
+        return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", 0.0, False
     
     file_hash = hashlib.sha256(file_bytes).hexdigest() 
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, reproducibility_score FROM papers_assessment WHERE eval_hash=?", (file_hash,))
+    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index, reproducibility_score FROM papers_assessment WHERE eval_hash=?", (file_hash,))
     cached_result = cursor.fetchone()
     
     try:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
-        pdf_meta_author = doc.metadata.get("author", "").strip().title()
+        pdf_meta_author = doc.metadata.get("author", "").strip()
         full_text = " ".join([page.get_text() for page in doc])
     except Exception:
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-        return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, 0.0, 0, "None", 0.0, False
+        return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", 0.0, False
 
     scope_alignment = evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS) if scope.strip() else 0.0
 
     if cached_result:
         score, logic_score, title, fields_str, subfields_str, author_name, *rest = cached_result
         c_scores = rest[:8]
-        piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, credit_roles, repro_score = rest[8], rest[9], rest[10], rest[11], rest[12], rest[13], rest[14]
+        piq_minted, tx_hash, zk_proof, h_index, i10_index, repro_score = rest[8], rest[9], rest[10], rest[11], rest[12], rest[13]
         fields = json.loads(fields_str) if fields_str else ["Unspecified Domain"]
         subfields = json.loads(subfields_str) if subfields_str else ["Unspecified Sub-domain"]
         
@@ -537,7 +532,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         weight_res = cursor.fetchone()
         used_weights = weight_res if weight_res else [1.0] * 8
         
-        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, mdar_score, rrid_count, credit_roles, repro_score, True
+        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
     gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(full_text, FALLBACK_MODEL)
 
@@ -552,30 +547,28 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             model_used = FALLBACK_MODEL
         except Exception:
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, 0.0, 0, "None", reproducibility_score, False
+            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
          
     if not isinstance(raw_data, dict):
-        raw_data = {"metadata": {"Extracted_Title": filename, "Extracted_Author": "Unidentified"}, "Overall_Confidence": 0.0}
+        raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Overall_Confidence": 0.0}
 
     confidence = raw_data.get("Overall_Confidence", 1.0)
-    metadata = raw_data.get("metadata", {})
-    
     if confidence < 0.50:
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-         return "Indeterminate Format (Upload JSON Manifest)", metadata.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, 0.0, 0, "None", reproducibility_score, False
+         return "Indeterminate Format (Upload JSON Manifest)", raw_data.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
 
-    title = metadata.get("Extracted_Title", filename)
-    extracted_author = str(metadata.get("Extracted_Author", "")).strip().title()
-    extracted_author = re.sub(r'[\[\]\'\"]', '', extracted_author).strip()
+    title = raw_data.get("Extracted_Title", filename)
+    extracted_author = str(raw_data.get("Extracted_Author", "")).strip()
     
-    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0].title():
-        if pdf_meta_author and pdf_meta_author.lower() not in ["unknown", "none"]:
-            extracted_author = pdf_meta_author
+    if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
+        if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
+            extracted_author = pdf_meta_author.strip()
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
 
+    # Canonical Deduplication Check (by DOI or Normalized Title + Author)
     normalized_title = re.sub(r'[^a-z0-9]', '', title.lower())
-    cursor.execute("SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, reproducibility_score FROM papers_assessment WHERE doi=? OR author_name=?", (provided_doi, extracted_author))
+    cursor.execute("SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index, reproducibility_score FROM papers_assessment WHERE doi=? OR author_name=?", (provided_doi, extracted_author))
     existing_records = cursor.fetchall()
     
     for rec_row in existing_records:
@@ -588,7 +581,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
                 fields = ["Unspecified Domain"]
                 subfields = ["Unspecified Sub-domain"]
                 c_scores = ex_rest[:8]
-                piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, credit_roles, repro_score = ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13], ex_rest[14]
+                piq_minted, tx_hash, zk_proof, h_index, i10_index, repro_score = ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13]
                 drift = calculate_complex_drift(scope_alignment, c_scores) if scope.strip() else "N/A"
                 rec_spec = get_recommendation_spectrum(ex_score, drift) if scope.strip() else "N/A"
                 scores_dict = {
@@ -598,13 +591,13 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
                 cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights WHERE eval_hash=?", (ex_hash,))
                 weight_res = cursor.fetchone()
                 used_weights = weight_res if weight_res else [1.0] * 8
-                return title, extracted_author, ex_score, ex_logic, drift, rec_spec, fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof, used_weights, mdar_score, rrid_count, credit_roles, repro_score, True
+                return title, extracted_author, ex_score, ex_logic, drift, rec_spec, fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
     conn.commit()
     cursor.execute("SELECT count FROM global_eval_counter")
     total_evals = cursor.fetchone()[0]
-          
+         
     cursor.execute("SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
     epoch_data = cursor.fetchone()
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
@@ -631,11 +624,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     else:
         active_weights = old_weights
 
-    # Fetch empirical metrics using simulated SciScore wrapper
-    empirical_metrics = fetch_empirical_sciscore_metrics(full_text[:5000])
-    mdar_score = empirical_metrics["mdar_score"]
-    rrid_count = empirical_metrics["rrid_count"]
-    credit_roles = empirical_metrics["credit_roles"]
+    h_idx, i10_idx = fetch_author_metrics(extracted_author)
 
     cursor.execute("SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE author_name=?", (extracted_author,))
     row = cursor.fetchone()
@@ -665,26 +654,11 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
-    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, mdar_score, rrid_count, credit_roles, reproducibility_score, provided_doi))
+    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
     conn.commit()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_to_mint, tx_hash, zk_proof, active_weights, mdar_score, rrid_count, credit_roles, repro_score, False
-
-def run_paper_evaluation(pdf_bytes, fname, scope, current_user, current_book, current_email, p_doi="None"):
-    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, mdar_score, rrid_count, credit_roles, repro_score, is_cached = process_single_pdf(
-        pdf_bytes, fname, scope, current_user, current_book, current_email, p_doi
-    )
-    eval_record = {
-        'title': title, 'author_name': author_name, 'score': score, 
-        'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-        'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-        'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-        'zk_proof': zk_proof, 'used_weights': used_weights, 
-        'mdar_score': mdar_score, 'rrid_count': rrid_count, 'credit_roles': credit_roles, 
-        'repro_score': repro_score, 'filename': fname
-    }
-    st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -751,48 +725,48 @@ current_user = st.session_state.orcid_id
 current_book = "0x" + hashlib.sha256(current_user.encode()).hexdigest()[:40] if current_user else "None"
 current_email = st.session_state.get('inst_email', "None")
 
-st.title("Pi-Index Assessment Engine", help="Automated peer-review framework powered by DeSci rubrics and multidimensional blockchain consensus.")
-st.markdown("**Upload papers, define your scope of research, let Pi-Index filter noise and yield quantitative empirical results.**")
+st.title("Pi-Index Assessment Engine", help="Automated peer-review framework powered by neural networks and multidimensional blockchain consensus.")
+st.markdown("**Upload papers, define your scope of research, let Pi-Index filter noise and yield quantitative results.**")
 
-with st.expander("View Pi-Index CoARA-Compliant Evaluation Rubrics"):
-    st.subheader("Empirical Metrics & Adversarial Logic Calibration")
+with st.expander("View Pi-Index Grading Criteria Formulations"):
+    st.subheader("Evaluation Metrics, Executable Reproducibility & Adversarial Logic Engine")
     st.markdown("---")
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**Adversarial Logic Calibration** " + tooltip("Maps the paper's reasoning structure using Item Response Theory (IRT) and Counterfactual Shadow testing to isolate logical misalignment from AI verbosity bias."), unsafe_allow_html=True)
-        st.markdown("`L_score = IRT_Calibration(Premise_Validity, Conclusion_Reach) * Counterfactual_Resilience`")
+        st.markdown(r"**Adversarial Logic Gap ($\Delta_{Logic}$)** " + tooltip("We map the paper's reasoning structure before giving a final score. If the authors make claims that aren't supported by their own evidence, the system exponentially penalizes the paper."), unsafe_allow_html=True)
+        st.markdown(r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \times \frac{1}{1 + e^{-\Delta Premise}} $$")
         
-        st.markdown("**C1: Originality & Epistemic Delta** " + tooltip("Multi-dimensional semantic distance mapping against a verified, timestamped corpus baseline."), unsafe_allow_html=True)
-        st.markdown("`C1 = α * D_semantic(P_target, P_corpus) * (1 - λ_laundering)`")
+        st.markdown("**C1: Originality** " + tooltip("Does this paper disrupt existing knowledge (high score), or is it mostly derivative of older work (low score)?"), unsafe_allow_html=True)
+        st.markdown(r"$$O = \varpi_1 \cdot \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^{N} |Z_i| \, dV} \cdot e^{-0.1 \zeta} $$")
         
-        st.markdown("**C2: Methodological Rigor (SciScore / MDAR)** " + tooltip("Grounds rigor entirely in the empirical detection of the MDAR checklist variables via the SciScore API."), unsafe_allow_html=True)
-        st.markdown("`C2 = w1*I_blinding + w2*I_randomization + w3*I_power + w4*(N_valid_RRID / N_expected_RRID)`")
+        st.markdown("**C2: Methodological Rigor** " + tooltip("Are the methods statistically sound, and is the risk of a fundamental flaw minimized?"), unsafe_allow_html=True)
+        st.markdown(r"$$R = \varpi_2 \cdot \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \mathbb{E}[\rho_k] $$")
         
-        st.markdown("**C3: Interdisciplinary Synergy** " + tooltip("Calculated utilizing the Shannon entropy of the manuscript's verified citation network across diverse subfields."), unsafe_allow_html=True)
-        st.markdown("`C3 = -Σ(p_i * ln(p_i)) where p_i is the proportion of references in distinct domains.`")
+        st.markdown("**C3: Interdisciplinary** " + tooltip("How well does the research bridge multiple disciplines together rather than staying in an isolated silo?"), unsafe_allow_html=True)
+        st.markdown(r"$$I = \varpi_3 \cdot \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot bridge\_capacity $$")
         
-        st.markdown("**C4: Societal & Open Infrastructure Impact** " + tooltip("Measures the computational linkage of the manuscript to public datasets, civic policy documents, and open-source repositories."), unsafe_allow_html=True)
-        st.markdown("`C4 = Dataset_Linkages + Policy_Citations + Open_Source_Integration`")
+        st.markdown("**C4: Societal Impact** " + tooltip("What is the predicted long-term, real-world utility of the research findings?"), unsafe_allow_html=True)
+        st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
     with col2:
-        st.markdown("**C5: Open Science & Executable Reproducibility** " + tooltip("Rewards transparency and containerized/functional code execution verification using persistent identifiers."), unsafe_allow_html=True)
-        st.markdown("`C5 = β1*V_data + β2*V_code + β3*Z_container_execution`")
+        st.markdown("**C5: Open Science & Executable Reproducibility** " + tooltip("Rewards transparency and containerized/functional code execution verification."), unsafe_allow_html=True)
+        st.markdown(r"$$O_s = \varpi_5 \cdot \frac{0.5 \mathcal{D}_{open} + 0.2 \mathbf{J}_{code} + 0.3 \mathcal{R}_{exec}}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} \cdot \mathcal{P}_{FAIR} $$")
         
-        st.markdown("**C6: Literature Integration (Citation Polarity)** " + tooltip("Utilizes citation context extraction to classify citations as supporting, contrasting, or merely mentioning prior work."), unsafe_allow_html=True)
-        st.markdown("`C6 = Polarity_Score(Supporting_Citations, Contrasting_Citations, Mentions)`")
+        st.markdown("**C6: Literature Integration** " + tooltip("Assesses how firmly grounded the paper is in foundational literature without being completely reliant on it."), unsafe_allow_html=True)
+        st.markdown(r"$$L = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum PR} $$")
         
-        st.markdown("**C7: Empirical Density (Sample & Data Volume)** " + tooltip("Derived from the deterministic extraction of specific experimental geometries (e.g., n-values, degrees of freedom)."), unsafe_allow_html=True)
-        st.markdown("`C7 = f(N_samples, Data_Volume, Cohort_Size) validated against stated statistical models.`")
+        st.markdown("**C7: Empirical Density & Validation** " + tooltip("Measures sheer depth and volume of analyzed data coupled with reproducibility fidelity."), unsafe_allow_html=True)
+        st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right] \cdot (0.8 + 0.2 \mathcal{R}_{exec})}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right) $$")
         
-        st.markdown("**C8: Future Actionability & FAIR Compliance** " + tooltip("A strict, measurable assessment of how well the associated data and methodologies adhere to FAIR principles."), unsafe_allow_html=True)
-        st.markdown("`C8 = Findability + Accessibility + Interoperability + Reusability`")
+        st.markdown("**C8: Future Actionability** " + tooltip("Predicts whether the paper will trigger a cascade of actionable future research."), unsafe_allow_html=True)
+        st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of Science", "Active Epoch & DeSci Staking", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
 with tab1:
-    st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and evaluate OpenAlex papers all in one place."), unsafe_allow_html=True)
+    st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and tick OpenAlex papers all in one place."), unsafe_allow_html=True)
     
-    research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Structural integrity, pi framework, neuroscience...", key="research_scope_input")
+    research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", placeholder="e.g., Application of deep learning in vascular imaging...", key=f"research_scope_input_{st.session_state['reset_token']}")
     
     st.markdown("---")
     st.markdown("#### Select Sources to Include in Assessment")
@@ -812,7 +786,7 @@ with tab1:
         include_doi = st.checkbox("Include this DOI in assessment", value=True, key=f"doi_chk_{st.session_state['reset_token']}")
 
     st.markdown("")
-    alex_topic_input = st.text_input("3. Discover via OpenAlex Topic Search", placeholder="e.g., structural integrity, neuroscience, oncology", key=f"alex_topic_{st.session_state['reset_token']}")
+    alex_topic_input = st.text_input("3. Discover via OpenAlex Topic Search", placeholder="e.g., structural integrity, neural networks, oncology", key=f"alex_topic_{st.session_state['reset_token']}")
     search_alex_btn = st.button("Search OpenAlex Papers")
 
     if search_alex_btn and alex_topic_input.strip():
@@ -824,28 +798,12 @@ with tab1:
             else:
                 st.warning("No Open Access papers found matching this topic.")
 
+    selected_alex_papers = []
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
-        st.markdown("#### Discovered OpenAlex Papers")
-        selected_alex_papers = []
+        st.markdown("**Tick OpenAlex papers to include:**")
         for idx, p in enumerate(st.session_state['alex_search_results']):
-            expander_title = f"{p['title']} — {p['authors']}"
-            
-            col1, col2 = st.columns([0.5, 11.5])
-            with col1:
-                is_selected = st.checkbox(" ", key=f"chk_alex_{idx}_{st.session_state['reset_token']}")
-                if is_selected:
-                    selected_alex_papers.append(p)
-            with col2:
-                with st.expander(expander_title):
-                    if p.get('doi'):
-                        st.markdown(f"**DOI:** [{p['doi']}](https://doi.org/{p['doi']})")
-                    else:
-                        st.markdown("**DOI:** Not Available")
-                        
-                    if p.get('pdf_url'):
-                        st.markdown(f"**PDF URL:** [{p['pdf_url']}]({p['pdf_url']})")
-                    else:
-                        st.markdown("**PDF URL:** Direct binary link restricted by publisher")
+            if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{p['authors']}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
+                selected_alex_papers.append(p)
 
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
@@ -863,9 +821,8 @@ with tab1:
         zk_proof = item['zk_proof']
         drift = item['drift']
         rec = item['rec']
-        mdar_score = item['mdar_score']
-        rrid_count = item['rrid_count']
-        credit_roles = item['credit_roles']
+        h_index = item['h_idx']
+        i10_index = item['i10_idx']
         repro_score = item['repro_score']
         filename = item['filename']
 
@@ -894,10 +851,10 @@ with tab1:
         raw_base = sum(breakdown_df["Weighted Value"]) / 8.0
         logic_multiplier = 0.7 + (logic_integrity / 333.3)
         st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
-        st.markdown(f"**Logic Integrity Multiplier (IRT Calibrated):** `{logic_multiplier:.4f}`")
-        st.markdown(f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}` &nbsp;|&nbsp; **MDAR Adherence:** `{mdar_score}%` &nbsp;|&nbsp; **RRIDs Validated:** `{rrid_count}` &nbsp;|&nbsp; **File:** `{filename}`")
+        st.markdown(f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from {logic_integrity:.1f}% raw logic score)")
+        st.markdown(f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}` &nbsp;|&nbsp; **h-index:** `{h_index}` &nbsp;|&nbsp; **i10-index:** `{i10_index}` &nbsp;|&nbsp; **File:** `{filename}`")
 
-        dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA & CoARA-Aligned)
+        dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
 **Title:** {title}
 **Author:** {author_name}
 **File Name:** {filename}
@@ -905,11 +862,7 @@ with tab1:
 **Final Pi-Index Score:** {score:.2f} / 100
 **Logic Integrity Score:** {logic_integrity:.1f}%
 **Executable Reproducibility Score:** {repro_score * 100:.1f}%
-
-## Empirical SciScore Metrics
-- **MDAR Adherence Score:** {mdar_score}%
-- **Validated RRIDs:** {rrid_count}
-- **CRediT Taxonomy Roles:** {credit_roles}
+**h-index / i10-index:** {h_index} / {i10_index}
 
 ## 8-Criteria Evaluation Breakdown
 - C1 Originality: {scores_dict.get("C1_Originality",0)}
@@ -924,11 +877,9 @@ with tab1:
 ## Cryptographic Proofs & Ledger Seal
 - zk-SNARK: {zk_proof}
 - Tx Hash: {tx_hash}
-
-**CoARA Alignment Statement:** This dossier adheres to the Coalition for Advancing Research Assessment (CoARA) guidelines. Legacy metrics (h-index/i10-index) have been intentionally excluded. Quantitative methodologies (SciScore RTI) are utilized responsibly to support expert evaluation, focusing exclusively on qualitative research transparency, open science infrastructure, and data reproducibility.
 """
         st.download_button(
-            label=f"Download CoARA-Aligned Research Integrity Dossier ({filename})",
+            label=f"Download DORA-Aligned Research Integrity Dossier ({filename})",
             data=dossier_content,
             file_name=f"Dossier_{eval_hash[:10]}.md",
             mime="text/markdown",
@@ -936,14 +887,46 @@ with tab1:
         )
 
     if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
-        selected_alex = 'alex_search_results' in st.session_state and 'selected_alex_papers' in locals() and selected_alex_papers
         if not stake_amount:
             st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
-        elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not selected_alex:
-            st.warning("Please tick at least one local file, OpenAlex paper, or input a DOI to assess.")
+        elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not selected_alex_papers:
+            st.warning("Please tick at least one paper or input source to assess.")
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
+            # 1. Process OpenAlex Papers
+            if selected_alex_papers:
+                for p in selected_alex_papers:
+                    status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
+                    pdf_bytes = None
+                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                    p_doi = p.get('doi', 'None')
+                    
+                    if p.get('pdf_url'):
+                        pdf_bytes = download_pdf_from_url(p['pdf_url'])
+                    
+                    if not pdf_bytes and p.get('doi'):
+                        metadata = fetch_doi_metadata(p['doi'])
+                        if metadata and metadata.get('pdf_url'):
+                            pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+
+                    if pdf_bytes:
+                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
+                        )
+                        eval_record = {
+                            'title': title, 'author_name': author_name, 'score': score, 
+                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                            'zk_proof': zk_proof, 'used_weights': used_weights, 
+                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+                        }
+                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                    else:
+                        st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
+
+            # 2. Process DOI Input
             if include_doi and doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
                 metadata = fetch_doi_metadata(doi_input)
@@ -952,35 +935,41 @@ with tab1:
                     pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
                     if pdf_bytes:
                         status_text.text(f"Assessing Open Access document from DOI...")
-                        run_paper_evaluation(pdf_bytes, fname, research_scope, current_user, current_book, current_email, doi_input.strip())
+                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, doi_input.strip()
+                        )
+                        eval_record = {
+                            'title': title, 'author_name': author_name, 'score': score, 
+                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                            'zk_proof': zk_proof, 'used_weights': used_weights, 
+                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+                        }
+                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
+            # 3. Process Ticked Local Files
             if selected_uploaded_files:
                 for i, file in enumerate(selected_uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
                     file_bytes = file.read()
-                    run_paper_evaluation(file_bytes, file.name, research_scope, current_user, current_book, current_email, "None")
+                    title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                        file_bytes, file.name, research_scope, current_user, current_book, current_email, "None"
+                    )
+                    eval_record = {
+                        'title': title, 'author_name': author_name, 'score': score, 
+                        'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                        'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                        'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                        'zk_proof': zk_proof, 'used_weights': used_weights, 
+                        'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': file.name
+                    }
+                    st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
                     progress_bar.progress((i + 1) / len(selected_uploaded_files))
-                    
-            if selected_alex:
-                for i, p in enumerate(selected_alex_papers):
-                    status_text.text(f"Analyzing OpenAlex file {i+1} of {len(selected_alex_papers)}: {p['title']}...")
-                    pdf_bytes = None
-                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
-                    p_doi = p.get('doi', 'None')
-                    if p.get('pdf_url'):
-                        pdf_bytes = download_pdf_from_url(p['pdf_url'])
-                    if not pdf_bytes and p.get('doi'):
-                        metadata = fetch_doi_metadata(p['doi'])
-                        if metadata and metadata.get('pdf_url'):
-                            pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
-                    if pdf_bytes:
-                        run_paper_evaluation(pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi)
-                    else:
-                        st.error(f"Could not directly download PDF for {p['title']}.")
-                    progress_bar.progress((i + 1) / len(selected_alex_papers))
             
+            # Clear checkboxes and bump reset token
             st.session_state['reset_token'] += 1
             st.session_state['assessment_update_token'] = time.time()
             
@@ -988,6 +977,7 @@ with tab1:
             time.sleep(1)
             st.rerun()
 
+    # Render persistent evaluated papers buffer
     if st.session_state['evaluated_papers_buffer']:
         st.markdown("---")
         st.markdown("### Active Session Assessment Results")
@@ -1030,8 +1020,8 @@ with tab1:
 
 
 with tab2:
-    st.markdown("### Global Map of Science (Ledger-Driven Cartography & Topic Separation) " + tooltip("Generates clustered, separated network topologies based on distinct scientific domains and ledger-evaluated subfields."), unsafe_allow_html=True)
-    st.markdown("This map dynamically separates distinct scientific domains and is updated by every ledger-evaluated paper.")
+    st.markdown("### Global Map of Science (Ledger-Driven Cartography) " + tooltip("Generates dynamic network topologies based on the aggregate metadata of all ledger-evaluated papers."), unsafe_allow_html=True)
+    st.markdown("This map is permanently updated by every user assessing documents on the blockchain ledger, forming an unalterable topological view of current scientific trends.")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1039,7 +1029,7 @@ with tab2:
     all_global_authors = []
     for row in cursor.fetchall():
         if row[0]:
-            all_global_authors.extend([a.strip().title() for a in row[0].split(',') if a.strip()])
+            all_global_authors.extend([a.strip() for a in row[0].split(',') if a.strip()])
     all_global_authors = sorted(list(set(all_global_authors)))
     
     selected_author = None
@@ -1071,49 +1061,43 @@ with tab2:
                 subfields = [s.title().strip() for s in json.loads(subfields_json)]
                 score = float(final_score) if final_score else 50.0
                 for f in fields: 
-                    if f.lower() not in exclude_terms: all_topics.append({'topic': f, 'weight': score, 'category': 'Field'})
+                    if f.lower() not in exclude_terms: all_topics.append({'topic': f, 'weight': score})
                 for s in subfields: 
-                    if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score, 'category': 'Subfield'})
+                    if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score})
             except: continue
                 
         if not all_topics: 
-            return "", "<div style='padding: 10px; color: #7f8c8d;'><b>No specific domains extracted yet.</b> Please run an assessment on a valid research paper to populate the Map of Science.</div>"
+            all_topics.append({'topic': 'Core Scientific Domain', 'weight': 50.0})
         
         df_topics = pd.DataFrame(all_topics)
-        topic_counts = df_topics.groupby(['topic', 'category'])['weight'].sum().reset_index(name='weight')
+        topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
         if topic_counts.empty: return html_string, table_html
             
         unique_topics = topic_counts['topic'].unique()
         def get_color(i, n):
-            h, s, v = i/n if n > 0 else 0, 0.75, 0.95
+            h, s, v = i/n if n > 0 else 0, 0.7, 0.9
             rgb = colorsys.hsv_to_rgb(h, s, v)
             return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb)
         
         color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
-        
         net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
         physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
         net.set_options(physics_options)
         
         for _, row in topic_counts.iterrows():
-            node_size = max(25, 15 + (row['weight'] * 2.0))
-            shape = "dot" if row['category'] == 'Subfield' else "box"
-            net.add_node(n_id=row['topic'], label=" ", title=f"Category: {row['category']} | Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, shape=shape, physics=True, color=color_map[row['topic']])
+            node_size = max(30, 20 + (row['weight'] * 2.5))
+            net.add_node(n_id=row['topic'], label=row['topic'], title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
         
-        topics_list = topic_counts['topic'].tolist()
-        for i in range(len(topics_list) - 1):
-            net.add_edge(topics_list[i], topics_list[i+1], width=1, color="#dcdde1")
-
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
             with open(tmp_file.name, 'r', encoding='utf-8') as f: html_string = f.read()
         os.remove(tmp_file.name)
         html_string = html_string.replace('mynetwork', f"pi_network_{int(time.time() * 1000)}")
 
-        table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 25px; height: 25px; border-radius: 4px; display: inline-block; } </style>"
-        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 20%; text-align: center;'>Color</th><th>Topic / Subfield</th></tr></thead><tbody>"
+        table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
+        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
         for _, row in topic_counts.sort_values(by="weight", ascending=False).iterrows():
-            table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td><b>{row['topic']}</b> <span style='color:gray; font-size:11px;'>({row['category']})</span></td></tr>"
+            table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td>{row['topic']}</td></tr>"
         table_html += "</tbody></table></div>"
         
         return html_string, table_html
@@ -1121,12 +1105,11 @@ with tab2:
     interactive_html, table_html = render_bubble_chart_clean(selected_author)
     if interactive_html:
         col1, col2 = st.columns([3, 1])
-        with col1: components.html(interactive_html, height=670, scrolling=True)
+        with col1: components.html(interactive_html, height=620, scrolling=True)
         with col2: 
-            st.markdown("### Topic Clusters " + tooltip("Distinctly separated scientific domains and subfield hierarchies."), unsafe_allow_html=True)
+            st.markdown("### Legend " + tooltip("Color density maps proportionally to Pi-Index scores achieved in the domain."), unsafe_allow_html=True)
             st.markdown(table_html, unsafe_allow_html=True)
-    else: 
-        st.markdown(table_html, unsafe_allow_html=True)
+    else: st.info("Awaiting sufficient data for this selection.")
 
     st.markdown("---")
     st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard " + tooltip("piQ is a Soulbound Token (SBT). It cannot be transferred, bought, or sold. It permanently attaches to the author's identity."), unsafe_allow_html=True)
@@ -1139,6 +1122,8 @@ with tab2:
         
         if search_query:
             query_clean = search_query.strip().lower()
+            
+            # Search by Digital Book Address (0x...)
             if query_clean.startswith("0x"):
                 cursor.execute("SELECT title, author_name, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
                 book_papers = cursor.fetchall()
@@ -1148,6 +1133,8 @@ with tab2:
                     st.dataframe(df_book, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"No records found for Digital Book '{search_query}'.")
+            
+            # Search by Author Name (Displays author, paper title, book address, filename, score, piQ)
             else:
                 cursor.execute("SELECT author_name, title, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
                 author_papers = cursor.fetchall()
@@ -1181,7 +1168,7 @@ with tab3:
         st.markdown(f"**Processed:** `{total_papers_processed}` | **Block Size:** `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:** `{block_height}` | **Pi Algorithmic Precision:** `{current_pi_accuracy}`")
         
         cols = st.columns(4)
-        labels = [("C1", r"w_1"), ("C2", r"w_2"), ("C3", r"w_3"), ("C4", r"w_4"), ("C5", r"w_5"), ("C6", r"w_6"), ("C7", r"w_7"), ("C8", r"w_8")]
+        labels = [("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"), ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"), ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"), ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$")]
         for i, col in enumerate(cols * 2):
             if i < 8:
                 col.markdown(f"**{labels[i][0]} ({labels[i][1]})**")
@@ -1268,10 +1255,7 @@ with tab4:
             dataset = PiBlockchainDataset(weight_data, lookback_window)
             dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
             
-            model = PiBrainLSTM()
-            loss_function = nn.MSELoss()
-            optimizer = optim.Adam(model.parameters(), lr=0.001)
-            
+            model, loss_function, optimizer = PiBrainLSTM(), nn.MSELoss(), optim.Adam(PiBrainLSTM().parameters(), lr=0.001)
             progress_bar, status_text = st.progress(0), st.empty()
             epochs = 200
             
@@ -1301,53 +1285,11 @@ with tab4:
         st.markdown(f"**Mathematical Constraint Check:** Predicted Sum = `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`")
 
 with tab5:
-    st.markdown("### Next-Generation Pi-Index Architecture (CoARA-Compliant)")
-    st.write("This flowchart details the decentralized assessment engine, featuring deterministic SciScore extraction, IRT calibration, ZK double-blind reviews, and DeSci slashing mechanisms.")
-    
-    arch_graph = graphviz.Digraph(node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': '#E8F4F8', 'fontname': 'Helvetica', 'color': '#2c3e50'})
-    arch_graph.attr(rankdir='TB', size='12,12')
-
-    with arch_graph.subgraph(name='cluster_intake') as c:
-        c.attr(label='1. Intake & Identity (ZIP-600 Double-Blind)', color='#3498db')
-        c.node('ORCID', 'ORCID / DID Vault Authentication')
-        c.node('Intake', 'Multi-Source Intake (PDFs, DOI, OpenAlex)')
-        c.node('ZK_Review', 'Zero-Knowledge Reviewer Assignment (ZIP-600)')
-        c.edge('ORCID', 'Intake')
-        c.edge('Intake', 'ZK_Review')
-
-    with arch_graph.subgraph(name='cluster_extraction') as c:
-        c.attr(label='2. Empirical Extraction & Synthesis', color='#e67e22')
-        c.node('SciScore', 'SciScore API (MDAR Adherence & RRID Validation)')
-        c.node('Synthesis', 'Multi-Agent LLM Synthesis (Length-Aware Rubrics)')
-        c.edge('ZK_Review', 'SciScore')
-        c.edge('SciScore', 'Synthesis')
-
-    with arch_graph.subgraph(name='cluster_scoring') as c:
-        c.attr(label='3. Calibrated Scoring Engine (C1-C8)', color='#2ecc71')
-        c.node('Criteria', 'Discrete Empirical Rubrics (No Math-Washing)')
-        c.node('Counterfactual', 'Counterfactual Logical Stress Testing')
-        c.node('IRT', 'LLM Calibration via Item Response Theory (IRT)')
-        c.edge('Synthesis', 'Criteria')
-        c.edge('Criteria', 'Counterfactual')
-        c.edge('Counterfactual', 'IRT')
-
-    with arch_graph.subgraph(name='cluster_crypto') as c:
-        c.attr(label='4. Cryptoeconomics & Ledger Consensus', color='#9b59b6')
-        c.node('PoR', 'Proof-of-Research Blockchain Consensus')
-        c.node('Mint', 'Smart Contract piQ Minting')
-        c.node('Slash', 'Parasitic Deterrence (Stake Slashing Conditions)')
-        c.edge('IRT', 'PoR')
-        c.edge('PoR', 'Mint')
-        c.edge('PoR', 'Slash')
-
-    with arch_graph.subgraph(name='cluster_output') as c:
-        c.attr(label='5. DORA-Aligned Output', color='#e74c3c')
-        c.node('Dossier', 'RRA-Compliant Dossier (No h-index/i10-index)')
-        c.node('SciMap', 'Global Science Cartography')
-        c.edge('Mint', 'Dossier')
-        c.edge('Mint', 'SciMap')
-
-    st.graphviz_chart(arch_graph, use_container_width=True)
+    st.markdown("### The Pi-Index Framework: System Overview and Scientific Modernization")
+    st.markdown("""
+    #### 1. System Overview
+    The Pi-Index Assessment Engine represents a paradigm shift in scientometrics, moving away from legacy bibliometrics (e.g., citation counts, Journal Impact Factors) toward a deterministic, multidimensional mathematical framework aligned with **DORA principles**.
+    """)
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
