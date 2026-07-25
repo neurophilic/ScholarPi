@@ -163,7 +163,7 @@ def enforce_database_schema():
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
 
-    # Auto-migration for missing columns in papers_assessment
+    # Robust Auto-Migration for missing columns in papers_assessment
     target_columns_assessment = {
         "eth_book": "TEXT DEFAULT 'None'", "eth_wallet": "TEXT DEFAULT 'None'",
         "piq_minted": "REAL DEFAULT 0.0", "epc_minted": "REAL DEFAULT 0.0",
@@ -180,7 +180,7 @@ def enforce_database_schema():
             try: cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
             except: pass
 
-    # Auto-migration for missing columns in blockchain_por_weights (Ensures table updates if loaded from older IPFS backup)
+    # Robust Auto-Migration for missing columns in blockchain_por_weights
     target_columns_weights = {
         "por_proof": "TEXT DEFAULT 'Genesis_Proof'",
         "formulas_hash": "TEXT DEFAULT 'Locked_State'"
