@@ -12,8 +12,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 
 from config import GROQ_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, SEED_NUMBER, EPOCH_BLOCK_SIZE
-from math_engine import compute_formulaic_criteria, compute_logical_integrity, calculate_model_driven_weights, calculate_complex_drift, get_recommendation_spectrum
-from blockchain import validate_block_por, init_system
+from math_engine import compute_formulaic_criteria, compute_logical_integrity, calculate_model_driven_weights, calculate_complex_drift, get_recommendation_spectrum, get_formulas_hash
+from blockchain import validate_block_por, init_system, generate_zk_snark_proof, mint_pi_coin
 
 if not GROQ_API_KEY:
     st.error("API Key not found! Please configure your environment variables or Streamlit Secrets.")
@@ -25,19 +25,13 @@ conn = init_system()
 def evaluate_scope_alignment(text, scope, model, text_limit):
     if not scope.strip(): return 0.0
     if len(text) > text_limit: text = text[:text_limit]
-        
-    prompt = f"""You are a research alignment tool.
-Read the following paper text and evaluate how well it aligns with this specific research scope/keyword: "{scope}"
+    prompt = f"""You are a research alignment tool. Read the following paper text and evaluate how well it aligns with this specific research scope/keyword: "{scope}"
 Return ONLY a valid JSON object with a single key "Scope_Alignment" containing a float between 0.0 and 100.0.
-{{
-    "Scope_Alignment": 85.5
-}}
-Text: {text}
-"""
+{{ "Scope_Alignment": 85.5 }}
+Text: {text}"""
     try:
         response = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model, temperature=0.0, response_format={"type": "json_object"}
+            messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, response_format={"type": "json_object"}
         )
         return float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
     except Exception: return 0.0
@@ -48,7 +42,7 @@ def evaluate_pdf_text(text, model, text_limit):
 Instead of assigning arbitrary scores, you must read the academic paper and extract the underlying mathematical proxy variables based purely on the document's objective scientific merit.
 
 CRITICAL INSTRUCTION - AUTHOR EXTRACTION:
-Carefully look at the first page of the text to find the actual names of the human authors written below the title. Look for names formatted like "Firstname Lastname" or "Author Name". Do NOT use the file name, do NOT use university names, do NOT use journal names, and do NOT write "Unknown Author". If multiple authors exist, provide the primary/first author name followed by "et al." (e.g. "Jane Doe et al.").
+Carefully look at the first page of the text to find the actual names of the human authors written below the title.
 
 1. Extracted Metadata:
 - `Extracted_Title`: The full title of the paper.
@@ -88,40 +82,22 @@ Identify logical structural flaws and gaps in reasoning:
 - `Logical_Jumps`: (0.1 = Highly logical flow, 0.9 = Major non-sequiturs).
 - `Premise_Validity`: (0.1 = Questionable assumptions, 0.9 = Solid definitions).
 
-Return ONLY a valid JSON object matching exactly this structure:
-{{
-    "Extracted_Title": "Title", 
-    "Extracted_Author": "Author Name",
-    "variables": {{
-        "H_novel": 0.8, "K_epistemic": 0.7, "zeta": 0.5, "I_existing": 0.5, "Sigma_error": 0.1, "mu_signal": 0.9, "rho_k": 0.8,
-        "p_disciplines": [0.6, 0.4], "bridge_capacity": 0.8, "Utility_vector": 0.7, "decay_rate": 0.2, "q_fractional": 1.2,
-        "D_open": 0.2, "J_code": 0.1, "P_FAIR": 0.3, "d_g_distance": 0.2, "R_xi": 0.9, "PR_xi": 0.8,
-        "I_Fisher": 0.8, "KL_divergence": 0.7, "V_baseline": 0.4, "omega_data": 0.8, "sum_lambda_kappa": 1.1,
-        "eta_steps": 3, "Lambda_Lyapunov": 0.4
-    }},
-    "logic_analysis": {{
-        "Evidence_Strength": 0.8, "Conclusion_Reach": 0.5, "Logical_Jumps": 0.1, "Premise_Validity": 0.9
-    }},
-    "fields": ["Field1", "Field2"], 
-    "subfields": ["Subfield1"]
-}}
+Return ONLY a valid JSON object.
 Text: {text}
 """
     response = client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model=model, temperature=0.0, seed=SEED_NUMBER, response_format={"type": "json_object"}
+        messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=SEED_NUMBER, response_format={"type": "json_object"}
     )
     return json.loads(response.choices[0].message.content)
 
-def process_single_pdf(file_bytes, filename, scope, user_id):
-    """Main workflow to process a single PDF file and grade it."""
+def process_single_pdf(file_bytes, filename, scope, user_id, eth_wallet="None"):
     if file_bytes is None or len(file_bytes) == 0:
         return None
     
     file_hash = hashlib.sha256(file_bytes).hexdigest() 
     cursor = conn.cursor()
     
-    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
+    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, coins_minted, tx_hash, zk_proof FROM papers_assessment WHERE eval_hash=? AND user_id=?", (file_hash, user_id))
     cached_result = cursor.fetchone()
     
     doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -131,7 +107,9 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
     scope_alignment = evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS) if scope.strip() else 0.0
 
     if cached_result:
-        score, logic_score, title, fields_str, subfields_str, author_name, *c_scores = cached_result
+        score, logic_score, title, fields_str, subfields_str, author_name, *rest = cached_result
+        c_scores = rest[:8]
+        coins_minted, tx_hash, zk_proof = rest[8], rest[9], rest[10]
         fields = json.loads(fields_str) if fields_str else ["General Science"]
         subfields = json.loads(subfields_str) if subfields_str else ["General"]
         if not author_name or author_name in ["Unknown Author", os.path.splitext(filename)[0]]:
@@ -140,25 +118,23 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
         drift = calculate_complex_drift(scope_alignment, c_scores) if scope.strip() else "N/A"
         rec = get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
         scores_dict = {
-            "C1_Originality": c_scores[0], "C2_Methodological_Rigor": c_scores[1],
-            "C3_Interdisciplinary": c_scores[2], "C4_Societal_Impact": c_scores[3],
-            "C5_Open_Science_Potential": c_scores[4], "C6_Literature_Integration": c_scores[5],
-            "C7_Empirical_Density": c_scores[6], "C8_Future_Actionability": c_scores[7]
+            "C1_Originality": c_scores[0], "C2_Methodological_Rigor": c_scores[1], "C3_Interdisciplinary": c_scores[2], "C4_Societal_Impact": c_scores[3],
+            "C5_Open_Science_Potential": c_scores[4], "C6_Literature_Integration": c_scores[5], "C7_Empirical_Density": c_scores[6], "C8_Future_Actionability": c_scores[7]
         }
-        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash
+        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, coins_minted, tx_hash, zk_proof
 
     try:
         raw_data = evaluate_pdf_text(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS)
         model_used = PRIMARY_MODEL
     except Exception as e:
-        st.warning(f"Primary model hit a limit. Trying fallback model...")
+        st.warning("Primary model hit a limit. Trying fallback model...")
         try:
             reduced_limit = MAX_TEXT_TOKENS // 2 if 'limit' in str(e).lower() or '413' in str(e) else MAX_TEXT_TOKENS
             raw_data = evaluate_pdf_text(full_text, FALLBACK_MODEL, reduced_limit)
             model_used = FALLBACK_MODEL
-        except Exception as e2:
+        except Exception:
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-            return "Extraction Failed", pdf_meta_author or "Research Scholar", 0.0, 0.0, "N/A", "N/A", ["Unknown"], ["Unknown"], empty_scores, "Failed"
+            return "Extraction Failed", pdf_meta_author or "Research Scholar", 0.0, 0.0, "N/A", "N/A", ["Unknown"], ["Unknown"], empty_scores, "Failed", 0.0, "None", "None"
          
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
     conn.commit()
@@ -167,7 +143,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
          
     cursor.execute("SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
     epoch_data = cursor.fetchone()
-    
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
     
     variables = raw_data.get("variables", {})
@@ -183,38 +158,53 @@ def process_single_pdf(file_bytes, filename, scope, user_id):
 
     fields, subfields = raw_data.get("fields", ["General Science"]), raw_data.get("subfields", ["General"])
     
-    # Mathematical score calculation happens before blockchain validation to act as the PoR proof
     raw_final_score = float(np.dot(scores, old_weights)) / 8.0
     final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
+    formulas_hash = get_formulas_hash()
 
     if total_evals % EPOCH_BLOCK_SIZE == 0:
         active_weights = calculate_model_driven_weights(old_weights, scores, model_used, block_height)
         timestamp = datetime.now().isoformat()
-        # Pass the final score into the validator to act as the Proof of Research
-        val_node, block_hash, por_proof = validate_block_por(block_height + 1, active_weights, timestamp, previous_hash, file_hash, model_used, final_score)
-        cursor.execute('''INSERT INTO blockchain_por_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                       (*active_weights, timestamp, previous_hash, val_node, block_hash, file_hash, model_used, por_proof))
+        val_node, block_hash, por_proof = validate_block_por(block_height + 1, active_weights, timestamp, previous_hash, file_hash, model_used, final_score, formulas_hash)
+        cursor.execute('''INSERT INTO blockchain_por_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                       (*active_weights, timestamp, previous_hash, val_node, block_hash, file_hash, model_used, por_proof, formulas_hash))
     else:
         active_weights = old_weights
+
+    # --- TOKENOMICS & ZK-SNARK LOGIC ---
+    # 1. Fetch author's historical average
+    cursor.execute("SELECT AVG(final_score) FROM papers_assessment WHERE author_name=?", (extracted_author,))
+    past_avg = cursor.fetchone()[0] or 0.0
+    
+    # 2. Calculate Token Multiplier (Improvement yields exponential rewards)
+    improvement_multiplier = 1.0
+    if final_score > past_avg and past_avg > 0:
+        improvement_multiplier = 1.5 + ((final_score - past_avg) / 50.0) # Bonus scales with improvement
+    
+    # 3. Base coins = high quality base score. Total = Base * Multiplier.
+    coins_to_mint = round((final_score / 10.0) * improvement_multiplier, 2)
+    
+    # 4. Generate zk-SNARK proof of the research
+    zk_proof = generate_zk_snark_proof(file_hash, final_score, logic_integrity)
+    
+    # 5. Execute Ethereum Smart Contract transaction
+    tx_hash = mint_pi_coin(eth_wallet, coins_to_mint, file_hash, zk_proof)
 
     drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
-    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat()))
+    cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_wallet, coins_minted, tx_hash, zk_proof) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), eth_wallet, coins_to_mint, tx_hash, zk_proof))
     conn.commit()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, coins_to_mint, tx_hash, zk_proof
 
-# --- PyTorch Models ---
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
         self.data = data_matrix
         self.lookback = lookback
-
     def __len__(self):
         return len(self.data) - self.lookback
-
     def __getitem__(self, idx):
         x = self.data[idx : idx + self.lookback]
         y = self.data[idx + self.lookback]
@@ -224,10 +214,7 @@ class PiBrainLSTM(nn.Module):
     def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
         super(PiBrainLSTM, self).__init__()
         self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
-        self.linear = nn.Sequential(
-            nn.Linear(hidden_layer_size, 16), nn.ReLU(), nn.Linear(16, output_size)
-        )
-
+        self.linear = nn.Sequential(nn.Linear(hidden_layer_size, 16), nn.ReLU(), nn.Linear(16, output_size))
     def forward(self, x):
         lstm_out, _ = self.lstm(x)
         predictions = self.linear(lstm_out[:, -1, :])
