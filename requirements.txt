@@ -1,12 +1,19 @@
+# Machine Learning & AI
 torch
 onnx
 onnxscript
 groq
+
+# Data & Utils
 pandas
 numpy
 pymupdf
 pyvis
 requests
+
+# Web3 & Cryptography
+web3
+eth-account
+
+# Streamlit
 streamlit
-plotly
-xlsxwriter
