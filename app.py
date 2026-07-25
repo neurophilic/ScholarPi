@@ -370,7 +370,6 @@ def fetch_doi_metadata(doi):
     except Exception: return None
 
 def download_pdf_from_url(pdf_url):
-    """Securely fetches PDF bytes with browser masquerading and sanity checks."""
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -469,7 +468,14 @@ Text: {text}"""
     response = groq_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}], model=model, temperature=0.0, seed=random.randint(1, 1000), response_format={"type": "json_object"}
     )
-    return json.loads(response.choices[0].message.content)
+    res_content = response.choices[0].message.content
+    try:
+        parsed = json.loads(res_content)
+        if not isinstance(parsed, dict):
+            return {}
+        return parsed
+    except Exception:
+        return {}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None"):
     if file_bytes is None or len(file_bytes) == 0:
@@ -523,6 +529,9 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", False
          
+    if not isinstance(raw_data, dict):
+        raw_data = {}
+
     confidence = raw_data.get("Overall_Confidence", 1.0)
     if confidence < 0.50:
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
@@ -538,10 +547,16 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     block_height, previous_hash, old_weights = epoch_data[0], epoch_data[1], epoch_data[2:]
     
     variables = raw_data.get("variables", {})
+    if not isinstance(variables, dict):
+        variables = {}
+
     scores_dict = compute_formulaic_criteria(variables)
     scores = [scores_dict[k] for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]]
     
-    logic_integrity = compute_logical_integrity(raw_data.get("logic_analysis", {}), gaming_penalty)
+    logic_analysis = raw_data.get("logic_analysis", {})
+    if not isinstance(logic_analysis, dict):
+        logic_analysis = {}
+    logic_integrity = compute_logical_integrity(logic_analysis, gaming_penalty)
 
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = raw_data.get("Extracted_Author", "").strip()
@@ -552,7 +567,10 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
 
-    fields, subfields = raw_data.get("fields", ["Unspecified Domain"]), raw_data.get("subfields", ["Unspecified Sub-domain"])
+    fields = raw_data.get("fields", ["Unspecified Domain"])
+    subfields = raw_data.get("subfields", ["Unspecified Sub-domain"])
+    if not isinstance(fields, list): fields = ["Unspecified Domain"]
+    if not isinstance(subfields, list): subfields = ["Unspecified Sub-domain"]
     
     raw_final_score = float(np.dot(scores, old_weights)) / 8.0
     final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
