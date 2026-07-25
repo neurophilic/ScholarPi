@@ -114,7 +114,7 @@ def restore_state_from_web3():
         cid = contract.functions.getCID().call()
         
         if cid:
-            res = requests.get(f"https://gateway.pinata.cloud/ipfs/{cid}", timeout=30)
+            res = requests.get(f"https://app.pinata.cloud/ipfs/{cid}", timeout=30)
             if res.status_code == 200:
                 zip_path = BASE_DIR + ".zip"
                 with open(zip_path, 'wb') as fp:
