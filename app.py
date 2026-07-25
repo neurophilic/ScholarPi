@@ -1201,7 +1201,6 @@ with tab2:
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
             
-            # Pure 3D Spherical Effect using radial gradient in CSS/Canvas via PyVis node configuration
             base_col = color_map[topic]
             net.add_node(
                 n_id=topic, 
@@ -1229,7 +1228,6 @@ with tab2:
             with open(tmp_file.name, 'r', encoding='utf-8') as f: html_string = f.read()
         os.remove(tmp_file.name)
         
-        # Inject custom CSS inside the generated HTML to give nodes a glossy 3D sphere radial gradient look
         gradient_injection = """
         <style type="text/css">
             canvas {
@@ -1508,13 +1506,14 @@ with tab5:
 
             Dossier [label="DORA-Aligned Research Dossier\n& AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
             Cartography [label="Global Map of Science\n(Ledger-Driven PyVis Network Cartography)", fillcolor="#f8c471"];
-            PiBrain --> Cartography;
+            PiBrain [label="Pi-Brain LSTM Meta-Learning\n(Predictive Epoch Weight Shift Modeling)", fillcolor="#f8c471"];
         }
 
         Intake -> Parser [lhead=cluster_eval, label="Raw Manuscript Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Evaluated Score & Hashes"];
         Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
+        Mint -> PiBrain;
     }
     ''')
 
