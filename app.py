@@ -81,6 +81,11 @@ def enforce_database_schema():
     cursor.execute('''CREATE TABLE IF NOT EXISTS desci_attestations 
                       (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)''')
     
+    # Ensure initial counter row exists
+    cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
+
     target_columns_assessment = {
         "eth_book": "TEXT DEFAULT 'None'",
         "eth_wallet": "TEXT DEFAULT 'None'",
@@ -1016,6 +1021,7 @@ with tab1:
             
     st.markdown("---")
     st.markdown("### AI Peer Review Defense Strategy " + tooltip("Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy."), unsafe_allow_html=True)
+    
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50", (current_user,))
@@ -1131,7 +1137,7 @@ with tab2:
             avg_weight = metrics['weight_sum'] / metrics['frequency']
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
-            # Set label to empty string so no text displays under or on the bubbles
+            # Completely remove text label under/on the bubble while preserving hover tooltips
             net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
@@ -1311,7 +1317,7 @@ with tab4:
         current_block_count = len(historical_rows)
         lookback_window = max(1, min(5, current_block_count - 1))
         
-        if 'last_trained_blocks' not in st.session_state or st.session_state.last_trained_blocks != current_block_count:
+        if 'last_trained_blocks' not in st.session_state || st.session_state.last_trained_blocks != current_block_count:
             weight_data = np.array(historical_rows, dtype=np.float32)
             dataset = PiBlockchainDataset(weight_data, lookback_window)
             dataloader = DataLoader(dataset, batch_size=min(4, len(dataset)), shuffle=False)
