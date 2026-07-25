@@ -814,14 +814,15 @@ with tab1:
                 selected_uploaded_files.append(file)
 
     st.markdown("")
-    doi_input = st.text_input("2. Import via Unpaywall (DOI)", placeholder="10.1038/s41586-020-2649-2", key=f"doi_input_{st.session_state['reset_token']}")
-    include_doi = False
-    if doi_input.strip():
-        include_doi = st.checkbox("Include this DOI in assessment", value=True, key=f"doi_chk_{st.session_state['reset_token']}")
+    with st.expander("More Options: DOI Import & OpenAlex Discovery"):
+        doi_input = st.text_input("2. Import via Unpaywall (DOI)", placeholder="10.1038/s41586-020-2649-2", key=f"doi_input_{st.session_state['reset_token']}")
+        include_doi = False
+        if doi_input.strip():
+            include_doi = st.checkbox("Include this DOI in assessment", value=True, key=f"doi_chk_{st.session_state['reset_token']}")
 
-    st.markdown("")
-    alex_topic_input = st.text_input("3. Discover via OpenAlex Topic Search", placeholder="e.g., structural integrity, neural networks, oncology", key=f"alex_topic_{st.session_state['reset_token']}")
-    search_alex_btn = st.button("Search OpenAlex Papers")
+        st.markdown("")
+        alex_topic_input = st.text_input("3. Discover via OpenAlex Topic Search", placeholder="e.g., structural integrity, neural networks, oncology", key=f"alex_topic_{st.session_state['reset_token']}")
+        search_alex_btn = st.button("Search OpenAlex Papers")
 
     if 'alex_visible_count' not in st.session_state:
         st.session_state.alex_visible_count = 10
