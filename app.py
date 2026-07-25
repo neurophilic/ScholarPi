@@ -85,7 +85,7 @@ def enforce_database_schema():
         "eth_book": "TEXT DEFAULT 'None'",
         "eth_wallet": "TEXT DEFAULT 'None'",
         "piq_minted": "REAL DEFAULT 0.0",
-        "epc_minted": "REAL DEFAULT 0.0", # Backward compatibility
+        "epc_minted": "REAL DEFAULT 0.0",
         "tx_hash": "TEXT DEFAULT 'Pending'",
         "zk_proof": "TEXT DEFAULT 'None'",
         "did": "TEXT DEFAULT 'None'",
@@ -317,7 +317,6 @@ def compute_formulaic_criteria(vars_dict, reproducibility_score):
     c4_raw = (1.0 / gamma_q) * vars_dict.get('Utility_vector', 0.5) * np.exp(-vars_dict.get('decay_rate', 0.5)) * 150
     scores["C4_Societal_Impact"] = min(100.0, max(0.0, c4_raw))
     
-    # Feature 1: Integrating Executable Reproducibility directly into C5 and C7
     c5_raw = (((0.5 * vars_dict.get('D_open', 0.1)) + (0.2 * vars_dict.get('J_code', 0.1)) + (0.3 * reproducibility_score)) * vars_dict.get('P_FAIR', 0.1)) * 190
     scores["C5_Open_Science_Potential"] = min(100.0, max(0.0, c5_raw))
     
@@ -413,7 +412,6 @@ def adaptive_chunking(text, max_tokens):
     return front_matter + "\n...[TRUNCATED FOR TOKEN LIMITS]...\n" + back_matter
 
 def evaluate_discriminator_and_divergence(text, model):
-    """Feature 3: AI Preprint Flood Defense & Semantic-Empirical Divergence Checking"""
     text_chunk = text[:5000]
     prompt = f"""Analyze this academic text for two adversarial threats:
 1. Synthetic Hallucination / AI-Generated Preprint Flood (unnatural keyword stuffing, stylistic filler, or high-flown prose masking weak statistical substance).
@@ -459,7 +457,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit):
     text = adaptive_chunking(text, text_limit)
     prompts = [
         f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and variables.
-CRITICAL EQUITY & NORMALIZATION INSTRUCTION (Feature 5):
+CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles, alternative structural layouts, or resource-constrained syntax. Normalize linguistic style and evaluate strictly on scientific substance and methodological merit.
 
 CRITICAL INSTRUCTION FOR AUTHORS:
@@ -484,25 +482,30 @@ Text: {text}"""
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None"):
     if file_bytes is None or len(file_bytes) == 0:
-        return None
+        empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
+        return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", 0.0, False
     
     file_hash = hashlib.sha256(file_bytes).hexdigest() 
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index FROM papers_assessment WHERE eval_hash=?", (file_hash,))
+    cursor.execute("SELECT final_score, logic_score, title, fields, subfields, author_name, c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof, h_index, i10_index, reproducibility_score FROM papers_assessment WHERE eval_hash=?", (file_hash,))
     cached_result = cursor.fetchone()
     
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
-    pdf_meta_author = doc.metadata.get("author", "").strip()
-    full_text = " ".join([page.get_text() for page in doc])
-    
+    try:
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        pdf_meta_author = doc.metadata.get("author", "").strip()
+        full_text = " ".join([page.get_text() for page in doc])
+    except Exception:
+        empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
+        return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", 0.0, False
+
     scope_alignment = evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS) if scope.strip() else 0.0
 
     if cached_result:
         score, logic_score, title, fields_str, subfields_str, author_name, *rest = cached_result
         c_scores = rest[:8]
-        piq_minted, tx_hash, zk_proof, h_index, i10_index = rest[8], rest[9], rest[10], rest[11], rest[12]
+        piq_minted, tx_hash, zk_proof, h_index, i10_index, repro_score = rest[8], rest[9], rest[10], rest[11], rest[12], rest[13]
         fields = json.loads(fields_str) if fields_str else ["Unspecified Domain"]
         subfields = json.loads(subfields_str) if subfields_str else ["Unspecified Sub-domain"]
         
@@ -517,7 +520,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         weight_res = cursor.fetchone()
         used_weights = weight_res if weight_res else [1.0] * 8
         
-        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, True
+        return title, author_name, score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
     gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(full_text, FALLBACK_MODEL)
 
@@ -532,12 +535,12 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             model_used = FALLBACK_MODEL
         except Exception:
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", False
+            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
          
     confidence = raw_data.get("Overall_Confidence", 1.0)
     if confidence < 0.50:
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-         return "Indeterminate Format (Upload JSON Manifest)", raw_data.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", False
+         return "Indeterminate Format (Upload JSON Manifest)", raw_data.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
 
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
     conn.commit()
@@ -785,7 +788,6 @@ with tab1:
         st.markdown(f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from {logic_integrity:.1f}% raw logic score)")
         st.markdown(f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}` &nbsp;|&nbsp; **h-index:** `{h_index}` &nbsp;|&nbsp; **i10-index:** `{i10_index}`")
 
-        # Feature 2: DORA-Aligned Research Integrity Dossier Export
         dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
 **Title:** {title}
 **Author:** {author_name}
@@ -845,7 +847,7 @@ with tab1:
                     )
                     render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, piq, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx, repro_score)
                 else:
-                    st.error("Failed to securely download PDF for selected OpenAlex paper.")
+                    st.error("Failed to securely download PDF for selected OpenAlex paper. The publisher or repository may be blocking direct binary access.")
 
             if doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
@@ -1082,7 +1084,6 @@ with tab3:
                 st.error("Error reading database schema. Try refreshing the app.")
 
         st.markdown("---")
-        # Feature 4: DeSci Peer Attestation & Staking Layer
         st.markdown("### DeSci Peer Attestation & Stake-Weighted Validation " + tooltip("High-reputation researchers can stake a fraction of their piQ to endorse or challenge peer assessments on-chain."), unsafe_allow_html=True)
         if st.session_state.is_authenticated:
             cursor.execute("SELECT eval_hash, title FROM papers_assessment ORDER BY timestamp DESC LIMIT 20")
@@ -1178,62 +1179,6 @@ with tab5:
     st.markdown("""
     #### 1. System Overview
     The Pi-Index Assessment Engine represents a paradigm shift in scientometrics, moving away from legacy bibliometrics (e.g., citation counts, Journal Impact Factors) toward a deterministic, multidimensional mathematical framework aligned with **DORA principles**.
-    
-    Rather than relying on human peer review—which scales poorly and is subject to systemic biases—or purely autonomous "LLM-as-a-judge" systems—which suffer from arbitrary grading—this system separates the extraction of data from the calculation of the score and integrates **executable reproducibility audits**, **DeSci attestation staking**, and **global equity normalization**.
-    """)
-
-    st.markdown("""
-    ```text
-    ┌────────────────────────────────────────────────────────┐
-    │             [ Input ] Manuscript PDF or DOI            │
-    └──────────────────────────┬─────────────────────────────┘
-                               │
-    ┌──────────────────────────▼─────────────────────────────┐
-    │ [ Engine ] Multi-Agent Consensus & Equity Parser       │
-    │  - Linguistic Normalization (Global Research Equity)   │
-    │  - Extracts 25 hidden proxy variables                  │
-    │  - Calculates Overall_Confidence score                 │
-    └──────────────────────────┬─────────────────────────────┘
-                               │
-       [Confidence < 50%] ─────┤
-       │                       │ [Confidence >= 50%]
-    ┌──▼─────────────────┐  ┌──▼─────────────────────────────┐
-    │ [ Alert ] Reject & │  │ [ Math ] Deterministic Eval.   │
-    │ Request JSON File  │  │  - Maps variables to C1-C8     │
-    └────────────────────┘  │  - Applies epoch block weights │
-                            └──┬─────────────────────────────┘
-                               │
-    ┌──────────────────────────▼─────────────────────────────┐
-    │ [ Filter ] Discriminator & Semantic Divergence Engine  │
-    │  - Scans for AI-generated preprint floods & noise      │
-    │  - Audits functional Executable Reproducibility (C5/C7)│
-    └──────────────────────────┬─────────────────────────────┘
-                               │
-    ┌──────────────────────────▼─────────────────────────────┐
-    │ [ Adjust ] Mathematical Penalization                   │
-    │  - Applies Exponential Logic Penalty ($\Delta_{Logic}$)│
-    │  - Calculates Final Pi-Index Score & DORA Dossier      │
-    └──────────────────────────┬─────────────────────────────┘
-                               │
-    ┌──────────────────────────▼─────────────────────────────┐
-    │ [ Verify ] ZK-Identity & DeSci Attestation Staking     │
-    │  - Verifies ZK-Email & W3C DID                         │
-    │  - Stake-weighted peer endorsement / challenge layer   │
-    └──────────────────────────┬─────────────────────────────┘
-                               │
-    ┌──────────────────────────▼─────────────────────────────┐
-    │ [ Reward ] Tokenomics & piQ Minting                    │
-    │  - Fetches historical baseline / Domain average        │
-    │  - Applies Logarithmic Vesting multiplier              │
-    │  - Mints Soulbound Pi Quotient (piQ)                   │
-    └──────────────────────────┬─────────────────────────────┘
-                               │
-    ┌──────────────────────────▼─────────────────────────────┐
-    │ [ Ledger ] Proof-of-Research (PoR) Blockchain          │
-    │  - Generates simulated zk-SNARK proof                  │
-    │  - Seals Eval Hash, Score, and zk-proof to Ledger      │
-    └────────────────────────────────────────────────────────┘
-    ```
     """)
 
 st.markdown("---")
