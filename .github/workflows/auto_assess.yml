@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # Required to allow GitHub Actions to commit and push changes back
+  contents: write
 
 jobs:
   background-assessment:
@@ -33,7 +33,7 @@ jobs:
         run: python background_assessor.py
 
       - name: Commit updated SQLite database back to repo
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "🤖 Autonomous background assessment update (5-min interval)"
           file_pattern: "pi_index_main.db"
