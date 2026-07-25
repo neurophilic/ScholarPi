@@ -37,7 +37,7 @@ st.set_page_config(page_title="Pi-Index Assessment Engine", layout="wide")
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
 MAX_TEXT_TOKENS = 12000
-EPOCH_BLOCK_SIZE = 1  # Updated: Every evaluation triggers an epoch update
+EPOCH_BLOCK_SIZE = 1  # Every evaluation triggers an epoch update
 
 WEB3_PROVIDER_URI = os.getenv("WEB3_PROVIDER_URI", "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID")
 ETH_ADMIN_PRIVATE_KEY = os.getenv("ETH_ADMIN_PRIVATE_KEY", "0x0000000000000000000000000000000000000000000000000000000000000000")
@@ -92,11 +92,15 @@ def search_openalex_topics(topic_query, limit=5):
             for item in results:
                 title = item.get('title', 'Untitled Paper')
                 doi = item.get('doi', '')
-                oa_info = item.get('open_access', {})
-                pdf_url = oa_info.get('oa_url', '')
+                
+                # Robust extraction for OpenAlex OA links
+                best_oa = item.get('best_oa_location') or {}
+                pdf_url = best_oa.get('pdf_url') or item.get('open_access', {}).get('oa_url', '')
+                
                 authorships = item.get('authorships', [])
                 authors_list = [a.get('author', {}).get('display_name', '') for a in authorships]
                 authors_str = ", ".join([a for a in authors_list if a]) if authors_list else "Unidentified"
+                
                 if pdf_url or doi:
                     extracted.append({
                         'title': title,
@@ -359,9 +363,13 @@ def fetch_doi_metadata(doi):
     except Exception: return None
 
 def download_pdf_from_url(pdf_url):
+    """Securely fetches PDF bytes with browser masquerading and sanity checks."""
     try:
-        res = requests.get(pdf_url, timeout=15)
-        if res.status_code == 200: return res.content
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+        res = requests.get(pdf_url, headers=headers, timeout=15, allow_redirects=True)
+        # Ensure we actually downloaded a PDF (magic number check) and not a publisher login HTML page
+        if res.status_code == 200 and b"%PDF" in res.content[:10]:
+            return res.content
         return None
     except Exception: return None
 
@@ -418,12 +426,11 @@ Text: {text}"""
     except Exception: return 0.0
 
 def extract_unpublished_authors_fallback(text):
-    """Heuristic fallback to extract authors from preprints/unpublished drafts."""
+    """Heuristic fallback to extract authors from preprints/unpublished drafts where metadata is stripped."""
     first_2k = text[:2500]
     lines = [line.strip() for line in first_2k.split('\n') if line.strip()]
     for line in lines[1:12]:
         clean_line = re.sub(r'[\d\*\†\‡\§\¶\(\)]', '', line).strip()
-        # Look for typical name formatting (e.g., "John Doe, Jane Smith" or "A. Vafadar")
         if re.match(r'^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+(\s*,\s*[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*$', clean_line):
             if len(clean_line) > 3 and not any(kw in clean_line.lower() for kw in ['abstract', 'introduction', 'university', 'department', 'contents', 'journal']):
                 return clean_line
@@ -531,7 +538,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = raw_data.get("Extracted_Author", "").strip()
     
-    # Enhanced extraction for preprints and unpublished manuscripts
     if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
         if pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"]:
             extracted_author = pdf_meta_author.strip()
@@ -618,17 +624,10 @@ if 'assessment_update_token' not in st.session_state: st.session_state['assessme
 if 'orcid_id' not in st.session_state:
     st.session_state.orcid_id = "0000-0000-0000-0000"
     st.session_state.orcid_name = ""
-    st.session_state.eth_book = ""
     st.session_state.is_authenticated = False
 
-st.sidebar.markdown("### Digital Book Address " + tooltip("Enter your Digital Book address to link and explore all your assessed manuscripts."), unsafe_allow_html=True)
-book_address_input = st.sidebar.text_input("Digital Book Address", value=st.session_state.get('eth_book', ''), placeholder="0x... or Book ID", help="Tracks and links all manuscripts submitted to this specific Digital Book.")
-
-if book_address_input.strip():
-    st.session_state.eth_book = book_address_input.strip()
-
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown(f"### Authenticate " + tooltip("Connect to your ORCID or DID to securely isolate your assessment history."), unsafe_allow_html=True)
+    st.sidebar.markdown(f"### Authenticate " + tooltip("Connect to your ORCID or DID to securely isolate your assessment history. Epistemic Capital (πEPC) is a Soulbound Token assigned strictly to this identity."), unsafe_allow_html=True)
     manual_orcid = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX")
     email_input = st.sidebar.text_input("Institutional Email", placeholder="author@university.edu", help="Generates a Zero-Knowledge Proof (ZK-Email) verifying institutional alignment without exposing data to the ledger.")
     
@@ -655,22 +654,8 @@ else:
         st.session_state.is_authenticated, st.session_state.orcid_name = False, ""
         st.rerun()
 
-# Dynamic Sidebar Section: View Papers Linked to Digital Book
-if st.session_state.get('eth_book', '').strip():
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"### 📚 Your Book Manuscripts " + tooltip("Manuscripts registered under this Digital Book address."), unsafe_allow_html=True)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT title, final_score, epc_minted, author_name FROM papers_assessment WHERE eth_book=? ORDER BY timestamp DESC", (st.session_state.eth_book,))
-    book_papers = cursor.fetchall()
-    if book_papers:
-        for p_title, p_score, p_epc, p_author in book_papers[:10]:
-            st.sidebar.markdown(f"• **{p_title[:28]}...**\n  *Author:* `{p_author}` | *Score:* `{p_score:.1f}` | *πEPC:* `{p_epc:.2f}`")
-    else:
-        st.sidebar.caption("No manuscripts currently recorded under this Book address.")
-
 current_user = st.session_state.orcid_id
-current_book = st.session_state.eth_book if st.session_state.eth_book else "None"
+current_book = "0x" + hashlib.sha256(current_user.encode()).hexdigest()[:40] if current_user else "None"
 current_email = st.session_state.get('inst_email', "None")
 
 st.title("Pi-Index Assessment Engine", help="Automated peer-review framework powered by neural networks and multidimensional blockchain consensus.")
@@ -789,14 +774,21 @@ with tab1:
             # Process OpenAlex Topic Selected Paper
             if selected_alex_paper:
                 status_text.text(f"Fetching OpenAlex paper: {selected_alex_paper['title']}...")
-                pdf_bytes = download_pdf_from_url(selected_alex_paper['pdf_url']) if selected_alex_paper['pdf_url'] else None
+                pdf_bytes = download_pdf_from_url(selected_alex_paper['pdf_url']) if selected_alex_paper.get('pdf_url') else None
+                
+                if not pdf_bytes and selected_alex_paper.get('doi'):
+                    status_text.text(f"Direct download failed. Routing OpenAlex DOI through Unpaywall...")
+                    metadata = fetch_doi_metadata(selected_alex_paper['doi'])
+                    if metadata and metadata.get('pdf_url'):
+                        pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+
                 if pdf_bytes:
                     title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, epc, tx_hash, zk_proof, used_weights, h_idx, i10_idx, is_cached = process_single_pdf(
                         pdf_bytes, f"OpenAlex_{selected_alex_paper['title'][:20]}.pdf", research_scope, current_user, current_book, current_email
                     )
                     render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights, eval_hash, epc, tx_hash, zk_proof, drift, rec, research_scope, h_idx, i10_idx)
                 else:
-                    st.error("Failed to download PDF for selected OpenAlex paper.")
+                    st.error("Failed to securely download PDF for selected OpenAlex paper. The publisher may be blocking automated access.")
 
             # Process DOI Input
             if doi_input.strip():
@@ -954,18 +946,40 @@ with tab2:
     st.markdown("---")
     st.markdown("### Epistemic Capital (πEPC) Explorer & Leaderboard " + tooltip("πEPC is a Soulbound Token (SBT). It cannot be transferred, bought, or sold. It permanently attaches to the author's identity."), unsafe_allow_html=True)
     
-    search_author = st.text_input("Search Epistemic Capital by Author Name:", placeholder="Enter author name...")
+    search_query = st.text_input("Search Explorer by Author Name or Digital Book Address:", placeholder="Enter author name or 0x...")
     
     if epc_dict:
         epc_df = pd.DataFrame(list(epc_dict.items()), columns=["Contributing Author", "Total πEPC Earned"])
         epc_df = epc_df.sort_values(by="Total πEPC Earned", ascending=False).reset_index(drop=True)
         
-        if search_author:
-            filtered_df = epc_df[epc_df["Contributing Author"].str.contains(search_author, case=False, na=False)]
-            if not filtered_df.empty:
-                st.dataframe(filtered_df, use_container_width=True)
+        if search_query:
+            query_clean = search_query.strip().lower()
+            
+            # Identify Digital Book Hex Address
+            if query_clean.startswith("0x"):
+                cursor.execute("SELECT title, author_name, final_score, epc_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
+                book_papers = cursor.fetchall()
+                if book_papers:
+                    st.success(f"Found {len(book_papers)} papers linked to Digital Book: `{search_query}`")
+                    df_book = pd.DataFrame(book_papers, columns=["Paper Title", "Author", "Pi-Index", "πEPC Earned", "Timestamp"])
+                    st.dataframe(df_book, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"No records found for Digital Book '{search_query}'.")
+            
+            # Author Name Search
             else:
-                st.warning(f"No πEPC records found for author '{search_author}'.")
+                filtered_df = epc_df[epc_df["Contributing Author"].str.contains(search_query, case=False, na=False)]
+                if not filtered_df.empty:
+                    st.dataframe(filtered_df, use_container_width=True)
+                    
+                    cursor.execute("SELECT title, author_name, eth_book, final_score, epc_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
+                    author_papers = cursor.fetchall()
+                    if author_papers:
+                        st.markdown("#### Papers Published Under Matched Author(s)")
+                        df_author = pd.DataFrame(author_papers, columns=["Paper Title", "Author", "Digital Book Vault", "Pi-Index", "πEPC Earned", "Timestamp"])
+                        st.dataframe(df_author, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"No πEPC records found for author '{search_query}'.")
         else:
             st.dataframe(epc_df, use_container_width=True)
     else:
