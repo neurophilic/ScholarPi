@@ -452,13 +452,97 @@ def main_ui():
         "Pi-Brain Neural Network", "System Overview and Limitations"
     ])
 
-    with tab1:
+   with tab1:
         st.markdown("### Unified Multi-Source Intake & Topic Discovery")
         research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", key=f"rs_{st.session_state['reset_token']}")
         
         uploaded_files = st.file_uploader("Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"up_{st.session_state['reset_token']}")
+        
         if uploaded_files and st.button("Run Assessment Pipeline", type="primary"):
-            st.info("Pipeline processing simulated in UI refactor. Check the backend integration limits.")
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for idx, uploaded_file in enumerate(uploaded_files):
+                status_text.text(f"Processing {uploaded_file.name} ({idx+1}/{len(uploaded_files)})...")
+                progress_bar.progress((idx + 1) / len(uploaded_files))
+                
+                try:
+                    # 1. Extract Text via PyMuPDF
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                        tmp_file.write(uploaded_file.read())
+                        tmp_path = tmp_file.name
+                        
+                    doc = fitz.open(tmp_path)
+                    full_text = "".join([page.get_text() for page in doc])
+                    doc.close()
+                    os.unlink(tmp_path)
+                    
+                    if not full_text.strip():
+                        st.warning(f"Could not extract text from {uploaded_file.name}. Ensure it contains a text layer.")
+                        continue
+                        
+                    # 2. Adversarial Discriminator Check
+                    gaming_penalty, reproducibility_score = AIExtractor.evaluate_discriminator(
+                        full_text, Config.PRIMARY_MODEL
+                    )
+                    
+                    # 3. AI Variable Extraction
+                    extracted_data = AIExtractor.evaluate_pdf_text_ensemble(
+                        full_text, Config.PRIMARY_MODEL, Config.MAX_TEXT_TOKENS
+                    )
+                    
+                    title = extracted_data.get("Extracted_Title", uploaded_file.name)
+                    author_name = extracted_data.get("Extracted_Author", "Unidentified")
+                    
+                    # 4. Compute Formulaic Criteria (C1 - C8)
+                    criteria_scores = BlockchainEngine.compute_formulaic_criteria(extracted_data, reproducibility_score)
+                    
+                    # 5. Compute Logical Integrity
+                    logic_score = BlockchainEngine.compute_logical_integrity(extracted_data, gaming_penalty)
+                    
+                    # 6. Aggregate Final Score
+                    c_values = list(criteria_scores.values())
+                    base_score = float(np.mean(c_values)) if c_values else 50.0
+                    final_score = round((base_score * 0.7) + (logic_score * 0.3), 2)
+                    
+                    # 7. Generate Hashes & Proofs
+                    eval_hash = hashlib.sha256(f"{title}{time.time()}{final_score}".encode()).hexdigest()
+                    zk_proof = BlockchainEngine.generate_zk_snark_proof(eval_hash, final_score, logic_score, st.session_state.get('inst_email', ''))
+                    
+                    # 8. Fetch Author Metrics & Mint Tokens
+                    h_idx, i10_idx = fetch_author_metrics(author_name)
+                    piq_to_mint = round(final_score * 0.1, 2)
+                    tx_hash = BlockchainEngine.mint_pi_quotient_token(
+                        st.session_state.get('orcid_id', 'None'), piq_to_mint, eval_hash, zk_proof
+                    )
+                    
+                    # 9. Persistence in SQLite
+                    cursor.execute('''INSERT OR REPLACE INTO papers_assessment 
+                                      (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, 
+                                       scope_alignment, logic_score, author_name, final_score, timestamp, 
+                                       piq_minted, tx_hash, zk_proof, did, gaming_penalty, h_index, i10_index, 
+                                       reproducibility_score) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                   (eval_hash, st.session_state['orcid_id'], title, uploaded_file.name, research_scope,
+                                    criteria_scores.get("C1_Originality", 0), criteria_scores.get("C2_Methodological_Rigor", 0),
+                                    criteria_scores.get("C3_Interdisciplinary", 0), criteria_scores.get("C4_Societal_Impact", 0),
+                                    criteria_scores.get("C5_Open_Science_Potential", 0), criteria_scores.get("C6_Literature_Integration", 0),
+                                    criteria_scores.get("C7_Empirical_Density", 0), criteria_scores.get("C8_Future_Actionability", 0),
+                                    85.0, logic_score, author_name, final_score, datetime.now().isoformat(),
+                                    piq_to_mint, tx_hash, zk_proof, st.session_state['orcid_id'], 
+                                    gaming_penalty, h_idx, i10_idx, reproducibility_score))
+                    conn.commit()
+                    
+                    st.success(f"Successfully processed: **{title}** | Final Score: **{final_score}** / 100")
+                    
+                except Exception as e:
+                    st.error(f"Error processing {uploaded_file.name}: {str(e)}")
+                    
+            status_text.text("Pipeline processing complete!")
+            st.session_state['assessment_update_token'] = time.time()
 
     with tab2:
         st.markdown("### Global Map of Science (Ledger-Driven Cartography)")
