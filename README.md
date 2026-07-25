@@ -4,6 +4,7 @@
 An automated, decentralized peer-review and research integrity framework powered by large language models (Groq Llama 3.3/3.1), SciScore reproducibility metrics, IPFS storage, and Ethereum Sepolia smart contract consensus. The engine evaluates academic preprints and published papers against an 8-criteria multidimensional rubric aligned with the Agreement on Reforming Research Assessment (CoARA) and DORA principles.
 
 ---
+https://scholarpi.streamlit.app/
 
 ## Key Features
 
