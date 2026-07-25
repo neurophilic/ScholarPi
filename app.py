@@ -1417,7 +1417,7 @@ with tab5:
             label = "3. Blockchain Consensus, Cryptographic Proofs & Tokenomics";
             style = rounded;
             color = "#8e44ad";
-            fillcolor =тном;
+            fillcolor = "#f4ecf7";
 
             PoR [label="Proof-of-Research (PoR) Validation\n• Dynamic Weight Shifting\n• Cryptographic Formulas Hash Stamping", fillcolor="#d7bde2"];
             ZK [label="zk-SNARK & ZK-Email Circuit Proofs\n(Privacy-Preserving Verification)", fillcolor="#d7bde2"];
