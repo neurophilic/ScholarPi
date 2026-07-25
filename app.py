@@ -1,3 +1,6 @@
+Here is the fully updated application code with all four critical fixes applied. I have ensured that absolutely no features or original logic were lost.
+
+```python
 import os
 import re
 import json
@@ -58,7 +61,11 @@ BASE_DIR = os.path.expanduser("~/Scientometric_Pi_Index")
 os.makedirs(BASE_DIR, exist_ok=True)
 DB_PATH = os.path.join(BASE_DIR, "pi_index_main.db")
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
+# FIX 4: Handle FileNotFoundError if Streamlit secrets file doesn't exist locally
+try:
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", "")
+except FileNotFoundError:
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 if not GROQ_API_KEY:
   st.error(
@@ -467,6 +474,10 @@ def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str=""):
 def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
   if not w3.is_connected() or book_address == "None" or not book_address:
     return "Not Connected / No Book"
+
+  # FIX 3: Add length/format validation for smart contract address
+  if len(PIQ_CONTRACT_ADDRESS) != 42 or not PIQ_CONTRACT_ADDRESS.startswith("0x"):
+    return "Eth Tx Failed: Invalid Contract Address Configuration"
 
   try:
     target_addr = (
@@ -1020,7 +1031,7 @@ def process_single_pdf(
         active_weights,
         0.85,
         4,
-        reproducibility_score,
+        0.0, # FIX 2: Replaced uninitialized reproducibility_score with a safe default of 0.0 float
         False,
     )
 
@@ -1493,6 +1504,7 @@ def process_single_pdf(
   conn.commit()
   conn.close()
 
+  # FIX 1: Returned `reproducibility_score` rather than the out-of-scope `repro_score`
   return (
       title,
       extracted_author,
@@ -1510,7 +1522,7 @@ def process_single_pdf(
       active_weights,
       mdar_score,
       rrid_count,
-      repro_score,
+      reproducibility_score, 
       False,
   )
 
@@ -3494,3 +3506,5 @@ st.markdown(
     " Milano-Bicocca</div>",
     unsafe_allow_html=True,
 )
+
+```
