@@ -151,11 +151,24 @@ def tooltip(text):
     svg_icon = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-left: 6px; cursor: help;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'''
     return f"<span title=\"{text}\">{svg_icon}</span>"
 
+def clean_author_name(author_str):
+    if not author_str: return "Unidentified"
+    try:
+        if author_str.startswith('[') and author_str.endswith(']'):
+            parsed = json.loads(author_str.replace("'", '"'))
+            if isinstance(parsed, list):
+                return ", ".join([str(a).strip() for a in parsed if str(a).strip()])
+    except:
+        pass
+    cleaned = author_str.replace("[", "").replace("]", "").replace("'", "").replace('"', "")
+    return cleaned.strip()
+
 def fetch_author_metrics(author_name):
     try:
-        if not author_name or author_name.lower() in ["unidentified", "unknown"]:
+        clean_name = clean_author_name(author_name)
+        if not clean_name or clean_name.lower() in ["unidentified", "unknown"]:
             return "N/A", "N/A"
-        first_author = author_name.split(',')[0].strip()
+        first_author = clean_name.split(',')[0].strip()
         url = f"https://api.openalex.org/authors?search={first_author}"
         res = requests.get(url, timeout=5)
         if res.status_code == 200:
@@ -204,9 +217,10 @@ def get_author_piq_dict():
     data = cursor.fetchall()
     author_piq = {}
     for authors_str, piq in data:
-        if not authors_str or authors_str.lower() in ["unidentified", "unknown", "research scholar"]: 
+        clean_authors = clean_author_name(authors_str)
+        if not clean_authors or clean_authors.lower() in ["unidentified", "unknown", "research scholar"]: 
             continue
-        alist = [a.strip() for a in authors_str.split(',') if a.strip()]
+        alist = [a.strip() for a in clean_authors.split(',') if a.strip()]
         if not alist: continue
         share = piq / len(alist)
         for a in alist:
@@ -559,7 +573,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
          return "Indeterminate Format (Upload JSON Manifest)", raw_data.get("Extracted_Author", "Unidentified"), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
 
     title = raw_data.get("Extracted_Title", filename)
-    extracted_author = str(raw_data.get("Extracted_Author", "")).strip()
+    extracted_author = clean_author_name(str(raw_data.get("Extracted_Author", "")))
     extracted_topics = str(raw_data.get("Extracted_Topics", "General Science")).strip()
     
     if not extracted_author or extracted_author.lower() in ["unknown", "unknown author", "none", "n/a", "research scholar", "unidentified"] or extracted_author == os.path.splitext(filename)[0]:
@@ -568,7 +582,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
 
-    # Process subfields and topics from extracted string/array
     if isinstance(extracted_topics, str):
         subfields = [s.strip() for s in extracted_topics.split(',') if s.strip()]
     elif isinstance(extracted_topics, list):
@@ -663,7 +676,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
     conn.commit()
     
     return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
@@ -818,7 +831,7 @@ with tab1:
 
     def render_breakdown_item(item):
         title = item['title']
-        author_name = item['author_name']
+        author_name = clean_author_name(item['author_name'])
         score = item['score']
         logic_integrity = item['logic_integrity']
         scores_dict = item['scores_dict']
@@ -1002,7 +1015,7 @@ with tab1:
     if not user_papers:
         st.info("You must assess at least one paper to unlock the AI Defense Strategy tool.")
     else:
-        paper_options = {f"{p[1][:50]}... ({p[2]})" if len(p[1]) > 50 else f"{p[1]} ({p[2]})": p for p in user_papers}
+        paper_options = {f"{p[1][:50]}... ({clean_author_name(p[2])})" if len(p[1]) > 50 else f"{p[1]} ({clean_author_name(p[2])})": p for p in user_papers}
         selected_super_paper = st.selectbox("Select an assessed paper to generate a strategic defense:", list(paper_options.keys()))
         
         if st.button("Generate Strategy"):
@@ -1022,7 +1035,11 @@ with tab1:
     if st.session_state.is_authenticated:
         cursor.execute("SELECT title, author_name, filename, scope, final_score, piq_minted, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
         history_data = cursor.fetchall()
-        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Contributing Authors", "File Name", "Scope", "Pi-Index Score", "piQ Earned", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
+        if history_data: 
+            cleaned_history = []
+            for row in history_data:
+                cleaned_history.append((row[0], clean_author_name(row[1]), row[2], row[3], row[4], row[5], row[6]))
+            st.dataframe(pd.DataFrame(cleaned_history, columns=["Paper Title", "Contributing Authors", "File Name", "Scope", "Pi-Index Score", "piQ Earned", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
         else: st.info("No assessment history found.")
     else: st.warning("Please connect your ORCID iD or DID in the sidebar.")
 
@@ -1037,7 +1054,9 @@ with tab2:
     all_global_authors = []
     for row in cursor.fetchall():
         if row[0]:
-            all_global_authors.extend([a.strip() for a in row[0].split(',') if a.strip()])
+            cleaned = clean_author_name(row[0])
+            for a in cleaned.split(','):
+                if a.strip(): all_global_authors.append(a.strip())
     all_global_authors = sorted(list(set(all_global_authors)))
     
     selected_author = None
@@ -1058,30 +1077,28 @@ with tab2:
         html_string, table_html = "", ""
         if not data: return html_string, table_html
         
-        all_topics = []
+        topic_aggregates = {}
         exclude_terms = {"general", "general science", "unspecified domain", "unspecified sub-domain", "core research topic"}
         
         for fields_json, subfields_json, final_score, author_str in data:
-            if target_author and target_author != "All Authors" and target_author not in author_str:
+            cleaned_author = clean_author_name(author_str)
+            if target_author and target_author != "All Authors" and target_author not in cleaned_author:
                 continue
             try:
-                fields = [f.title().strip() for f in json.loads(fields_json)]
                 subfields = [s.title().strip() for s in json.loads(subfields_json)]
                 score = float(final_score) if final_score else 50.0
-                for f in fields: 
-                    if f.lower() not in exclude_terms: all_topics.append({'topic': f, 'weight': score})
                 for s in subfields: 
-                    if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score})
+                    if s.lower() not in exclude_terms:
+                        if s not in topic_aggregates:
+                            topic_aggregates[s] = {'weight_sum': 0.0, 'frequency': 0}
+                        topic_aggregates[s]['weight_sum'] += score
+                        topic_aggregates[s]['frequency'] += 1
             except: continue
                 
-        if not all_topics: 
-            all_topics.append({'topic': 'Core Scientific Domain', 'weight': 50.0})
+        if not topic_aggregates: 
+            topic_aggregates['Core Scientific Domain'] = {'weight_sum': 50.0, 'frequency': 1}
         
-        df_topics = pd.DataFrame(all_topics)
-        topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
-        if topic_counts.empty: return html_string, table_html
-            
-        unique_topics = topic_counts['topic'].unique()
+        unique_topics = list(topic_aggregates.keys())
         def get_color(i, n):
             h, s, v = i/n if n > 0 else 0, 0.7, 0.9
             rgb = colorsys.hsv_to_rgb(h, s, v)
@@ -1092,10 +1109,12 @@ with tab2:
         physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
         net.set_options(physics_options)
         
-        for _, row in topic_counts.iterrows():
-            node_size = max(30, 20 + (row['weight'] * 2.5))
-            # Leave label blank to remove text from inside/beside the bubbles
-            net.add_node(n_id=row['topic'], label="", title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
+        for topic, metrics in topic_aggregates.items():
+            avg_weight = metrics['weight_sum'] / metrics['frequency']
+            freq = metrics['frequency']
+            node_size = max(30, 20 + (avg_weight * 2.5))
+            # Completely remove text label under/on the bubble
+            net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
@@ -1104,19 +1123,20 @@ with tab2:
         html_string = html_string.replace('mynetwork', f"pi_network_{int(time.time() * 1000)}")
 
         table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
-        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
-        for _, row in topic_counts.sort_values(by="weight", ascending=False).iterrows():
-            table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td>{row['topic']}</td></tr>"
+        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 20%; text-align: center;'>Color</th><th>Topic</th><th style='text-align: center;'>Frequency</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
+        for topic, metrics in sorted(topic_aggregates.items(), key=lambda x: x[1]['frequency'], reverse=True):
+            avg_w = metrics['weight_sum'] / metrics['frequency']
+            table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[topic]};'></div></td><td><b>{topic}</b></td><td style='text-align: center;'>{metrics['frequency']}</td><td style='text-align: center;'>{avg_w:.1f}</td></tr>"
         table_html += "</tbody></table></div>"
         
         return html_string, table_html
 
     interactive_html, table_html = render_bubble_chart_clean(selected_author)
     if interactive_html:
-        col1, col2 = st.columns([3, 1])
+        col1, col2 = st.columns([2, 1])
         with col1: components.html(interactive_html, height=620, scrolling=True)
         with col2: 
-            st.markdown("### Legend " + tooltip("Color density maps proportionally to Pi-Index scores achieved in the domain."), unsafe_allow_html=True)
+            st.markdown("### Legend & Frequency Metrics " + tooltip("Lists specific paper topics, assessed frequencies, and calculated score weights."), unsafe_allow_html=True)
             st.markdown(table_html, unsafe_allow_html=True)
     else: st.info("Awaiting sufficient data for this selection.")
 
@@ -1138,7 +1158,10 @@ with tab2:
                 book_papers = cursor.fetchall()
                 if book_papers:
                     st.success(f"Found {len(book_papers)} papers linked to Digital Book: `{search_query}`")
-                    df_book = pd.DataFrame(book_papers, columns=["Paper Title", "Author", "Digital Book Address", "File Name", "Pi-Index", "piQ Earned", "Timestamp"])
+                    formatted_book_rows = []
+                    for r in book_papers:
+                        formatted_book_rows.append((r[0], clean_author_name(r[1]), r[2], r[3], r[4], r[5], r[6]))
+                    df_book = pd.DataFrame(formatted_book_rows, columns=["Paper Title", "Author", "Digital Book Address", "File Name", "Pi-Index", "piQ Earned", "Timestamp"])
                     st.dataframe(df_book, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"No records found for Digital Book '{search_query}'.")
@@ -1148,8 +1171,11 @@ with tab2:
                 cursor.execute("SELECT author_name, title, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
                 author_papers = cursor.fetchall()
                 if author_papers:
-                    st.success(f"Found {len(author_papers)} paper records for author matching '{search_query}'.")
-                    df_author = pd.DataFrame(author_papers, columns=["Author", "Paper Title", "Digital Book Address", "File Name", "Pi-Index", "piQ Earned", "Timestamp"])
+                    st.success(f"Found {len(author_papers)} paper records for author matching '{search_query}' పాత్ర.")
+                    formatted_auth_rows = []
+                    for r in author_papers:
+                        formatted_auth_rows.append((clean_author_name(r[0]), r[1], r[2], r[3], r[4], r[5], r[6]))
+                    df_author = pd.DataFrame(formatted_auth_rows, columns=["Author", "Paper Title", "Digital Book Address", "File Name", "Pi-Index", "piQ Earned", "Timestamp"])
                     st.dataframe(df_author, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"No papers or piQ records found for author '{search_query}'.")
@@ -1360,7 +1386,7 @@ with tab5:
 
         Intake -> Parser [lhead=cluster_eval, label="Raw Manuscript Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Evaluated Score & Hashes"];
-        Mint -> Dossier [lhead=cluster_outputs, label="LedgerSeal & Tokens"];
+        Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
         Mint -> PiBrain;
     }
