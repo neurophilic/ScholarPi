@@ -1,8 +1,3 @@
-Here is the fully updated script. The document input methods—**Local PDF Uploads**, **Unpaywall DOI Imports**, and **OpenAlex Topic Searches**—have been **merged together** into a unified multi-source intake queue.
-
-All selected items from any combination of these sources are now consolidated into a single seamless batch-processing workflow. Additionally, all assessment results persist securely in the session state buffer, checkboxes clear automatically after each run, and the **Global Map of Science** updates instantly.
-
-```python
 import os
 import re
 import json
@@ -1298,5 +1293,3 @@ with tab5:
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
-
-```
