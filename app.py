@@ -195,18 +195,24 @@ def search_openalex_topics(topic_query, limit=5):
 def get_author_epc_dict():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT author_name, epc_minted FROM papers_assessment")
+    cursor.execute("SELECT author_name, epc_minted, eth_book, title FROM papers_assessment")
     data = cursor.fetchall()
-    author_epc = {}
-    for authors_str, epc in data:
+    author_details = {}
+    for authors_str, epc, eth_book, title in data:
         if not authors_str or authors_str.lower() in ["unidentified", "unknown", "research scholar"]: 
             continue
         alist = [a.strip() for a in authors_str.split(',') if a.strip()]
         if not alist: continue
         share = epc / len(alist)
         for a in alist:
-            author_epc[a] = author_epc.get(a, 0.0) + share
-    return author_epc
+            if a not in author_details:
+                author_details[a] = {"total_epc": 0.0, "books": set(), "papers": []}
+            author_details[a]["total_epc"] += share
+            if eth_book and eth_book != "None":
+                author_details[a]["books"].add(eth_book)
+            if title and title not in author_details[a]["papers"]:
+                author_details[a]["papers"].append(title)
+    return author_details
 
 # ==========================================
 # 4. BLOCKCHAIN & MATHEMATICAL ENGINE
@@ -529,7 +535,6 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", False
          
-    # Safeguard against string/malformed returns to prevent AttributeError on .get()
     if isinstance(raw_data, str):
         try:
             raw_data = json.loads(raw_data)
@@ -902,14 +907,14 @@ with tab2:
     all_global_authors = sorted(list(set(all_global_authors)))
     
     selected_author = None
-    epc_dict = get_author_epc_dict()
+    author_details_map = get_author_epc_dict()
     
     if all_global_authors:
         filter_choice = st.selectbox(
             "Filter Global Cartography by Author:", 
             ["All Authors"] + all_global_authors, 
             key=f"author_filter_dropdown_{st.session_state['assessment_update_token']}",
-            format_func=lambda x: f"{x} (πEPC: {epc_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
+            format_func=lambda x: f"{x} (πEPC: {author_details_map.get(x, {}).get('total_epc', 0.0):.2f})" if x != "All Authors" else x
         )
         if filter_choice != "All Authors": selected_author = filter_choice
 
@@ -984,8 +989,16 @@ with tab2:
     
     search_query = st.text_input("Search Explorer by Author Name or Digital Book Address:", placeholder="Enter author name or 0x...")
     
-    if epc_dict:
-        epc_df = pd.DataFrame(list(epc_dict.items()), columns=["Contributing Author", "Total πEPC Earned"])
+    if author_details_map:
+        rows_list = []
+        for author, details in author_details_map.items():
+            rows_list.append({
+                "Contributing Author": author,
+                "Total πEPC Earned": round(details["total_epc"], 2),
+                "Digital Book Address(es)": ", ".join(list(details["books"])) if details["books"] else "None",
+                "Authored Papers": "; ".join(details["papers"])
+            })
+        epc_df = pd.DataFrame(rows_list)
         epc_df = epc_df.sort_values(by="Total πEPC Earned", ascending=False).reset_index(drop=True)
         
         if search_query:
@@ -1003,7 +1016,7 @@ with tab2:
             else:
                 filtered_df = epc_df[epc_df["Contributing Author"].str.contains(search_query, case=False, na=False)]
                 if not filtered_df.empty:
-                    st.dataframe(filtered_df, use_container_width=True)
+                    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
                     
                     cursor.execute("SELECT title, author_name, eth_book, final_score, epc_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
                     author_papers = cursor.fetchall()
@@ -1014,9 +1027,30 @@ with tab2:
                 else:
                     st.warning(f"No πEPC records found for author '{search_query}'.")
         else:
-            st.dataframe(epc_df, use_container_width=True)
+            st.dataframe(epc_df, use_container_width=True, hide_index=True)
     else:
         st.info("No Epistemic Capital has been minted yet.")
+
+    st.markdown("---")
+    st.markdown("### Connect Paper to Your Digital Book Vault" + tooltip("Securely assign or connect unassigned papers to your author book address. Requires an active ORCID or Institutional Email connection."), unsafe_allow_html=True)
+    
+    if not st.session_state.is_authenticated:
+        st.warning("🔒 You must authenticate via your ORCID iD or W3C DID in the sidebar to connect papers to your book vault.")
+    else:
+        cursor.execute("SELECT eval_hash, title, author_name, eth_book FROM papers_assessment")
+        all_papers_db = cursor.fetchall()
+        if all_papers_db:
+            paper_map_options = {f"{p[1]} (Author: {p[2]} | Book: {p[3]})": p[0] for p in all_papers_db}
+            selected_paper_label = st.selectbox("Select Paper to Connect to Your Book Vault:", list(paper_map_options.keys()))
+            chosen_eval_hash = paper_map_options[selected_paper_label]
+            
+            if st.button("Connect Paper to My Book Address"):
+                cursor.execute("UPDATE papers_assessment SET eth_book = ? WHERE eval_hash = ?", (current_book, chosen_eval_hash))
+                conn.commit()
+                st.success(f"Successfully linked paper to your Digital Book Vault (`{current_book}`).")
+                st.rerun()
+        else:
+            st.info("No papers available in the database to link.")
 
 with tab3:
     conn = get_db_connection()
@@ -1182,8 +1216,7 @@ with tab5:
     │ [ Ledger ] Proof-of-Research (PoR) Blockchain          │
     │  - Generates simulated zk-SNARK proof                  │
     │  - Seals Eval Hash, Score, and zk-proof to Ledger      │
-    └────────────────────────────────────────────────────────┘
-    ```
+    └────────────────────────────────────────────────        ```
     """)
 
     st.markdown("""
