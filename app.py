@@ -72,7 +72,7 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 
 # ==========================================
-# 2. ROOT LEVEL DATABASE SCHEMA ENFORCEMENT (CoARA & UNIMIB WG TIER ALIGNED)
+# 2. ROOT LEVEL DATABASE SCHEMA ENFORCEMENT
 # ==========================================
 def enforce_database_schema():
   conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
@@ -337,9 +337,7 @@ def search_openalex_topics(topic_query, limit=100):
 def get_author_piq_dict():
   conn = get_db_connection()
   cursor = conn.cursor()
-  cursor.execute(
-      "SELECT author_name, piq_minted FROM papers_assessment"
-  )
+  cursor.execute("SELECT author_name, piq_minted FROM papers_assessment")
   data = cursor.fetchall()
   conn.close()
   author_piq = {}
@@ -359,7 +357,6 @@ def get_author_piq_dict():
     share = piq / len(alist)
     for a in alist:
       author_piq[a] = author_piq.get(a, 0.0) + share
-      # Uniquely and deterministically bind eth_book to each author's name
       author_book[a] = "0x" + hashlib.sha256(a.encode()).hexdigest()[:40]
   return author_piq, author_book
 
@@ -1368,13 +1365,14 @@ def process_single_pdf(
   zk_proof = generate_zk_snark_proof(
       file_hash, final_score, logic_integrity, zk_email_hash
   )
-  # Deterministically derive the unique author book address
   unique_author_book = (
       "0x" + hashlib.sha256(extracted_author.encode()).hexdigest()[:40]
       if extracted_author != "Unidentified"
       else book_address
   )
-  tx_hash = mint_pi_quotient_token(unique_author_book, piq_minted, file_hash, zk_proof)
+  tx_hash = mint_pi_quotient_token(
+      unique_author_book, piq_minted, file_hash, zk_proof
+  )
 
   drift = (
       calculate_complex_drift(scope_alignment, scores)
@@ -1594,8 +1592,10 @@ st.markdown(
     " Assessment (RRA).**"
 )
 
+# Details closed initially (expanded=False)
 with st.expander(
-    "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)"
+    "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)",
+    expanded=False,
 ):
   st.subheader(
       "Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine"
@@ -1666,7 +1666,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_4 = \text{vapri}_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+        r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
         r" U_v(\tau, \mathbf{x}) \right] $$"
     )
   with col2:
@@ -1692,7 +1692,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_6 = \text{vapri}_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+        r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
         r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
     )
 
@@ -1705,7 +1705,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_7 = \text{vapri}_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+        r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
         r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
     )
 
@@ -1718,7 +1718,7 @@ with st.expander(
         unsafe_allow_html=True,
     )
     st.markdown(
-        r"$$ C_8 = \text{vapri}_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+        r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
         r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
     )
 
@@ -1763,7 +1763,8 @@ with tab1:
   include_doi = False
 
   with st.expander(
-      "More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)"
+      "More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)",
+      expanded=False,
   ):
     research_scope = st.text_input(
         "Define your specific Research Topic / Scope (Optional)",
@@ -1826,7 +1827,6 @@ with tab1:
         del st.session_state["alex_search_results"]
         st.rerun()
 
-
     def toggle_all_alex():
       is_all = st.session_state.get(
           f"select_all_alex_{st.session_state['reset_token']}", False
@@ -1835,7 +1835,6 @@ with tab1:
         st.session_state[f"alex_chk_{i}_{st.session_state['reset_token']}"] = (
             is_all
         )
-
 
     select_all_alex = st.checkbox(
         "Select All Visible OpenAlex Results",
@@ -1891,7 +1890,6 @@ with tab1:
       st.session_state["cancel_requested"] = False
       st.rerun()
 
-
   def render_breakdown_item(item):
     title = item["title"]
     author_name = clean_author_name(item["author_name"])
@@ -1914,12 +1912,11 @@ with tab1:
     st.markdown("---")
     st.subheader(f"{title} by {author_name}")
 
-    with st.expander(f"Ledger Data & Dossier Details ({filename})"):
+    with st.expander(
+        f"Ledger Data & Dossier Details ({filename})", expanded=False
+    ):
       st.write(f"**File Name:** `{filename}`")
-      st.write(
-          f"**Evaluation Hash (Paper Address):**"
-          f" `{eval_hash}`"
-      )
+      st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
       st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
       st.write(f"**piQ Minted:** `{piq}`")
       st.write(f"**zk-SNARK:** `{zk_proof}`")
@@ -2026,7 +2023,6 @@ with tab1:
         mime="text/markdown",
         key=f"download_dossier_{eval_hash}_{time.time()}",
     )
-
 
   if st.session_state["is_running"]:
     if not stake_amount:
@@ -2142,7 +2138,11 @@ with tab1:
               if err_item not in st.session_state["download_errors"]:
                 st.session_state["download_errors"].append(err_item)
 
-        if include_doi and doi_input.strip() and not st.session_state["cancel_requested"]:
+        if (
+            include_doi
+            and doi_input.strip()
+            and not st.session_state["cancel_requested"]
+        ):
           status_text.text(f"Resolving DOI: {doi_input}...")
           metadata = fetch_doi_metadata(doi_input)
           fname = f"DOI_{doi_input.replace('/', '_')}.pdf"
@@ -2472,7 +2472,6 @@ with tab2:
     if filter_choice != "All Authors":
       selected_author = filter_choice
 
-
   def render_bubble_chart_clean(target_author):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -2524,12 +2523,10 @@ with tab2:
 
     unique_topics = list(topic_aggregates.keys())
 
-
     def get_color(i, n):
       h, s, v = i / n if n > 0 else 0, 0.7, 0.9
       rgb = colorsys.hsv_to_rgb(h, s, v)
       return "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
-
 
     color_map = {
         topic: get_color(i, len(unique_topics))
@@ -2611,7 +2608,6 @@ with tab2:
     table_html += "</tbody></table></div>"
 
     return html_string, table_html
-
 
   interactive_html, table_html = render_bubble_chart_clean(selected_author)
   if interactive_html:
@@ -2705,7 +2701,9 @@ with tab2:
           )
           st.dataframe(df_book, use_container_width=True, hide_index=True)
         else:
-          st.warning(f"No records found for Unique Book Address '{search_query}'.")
+          st.warning(
+              f"No records found for Unique Book Address '{search_query}'."
+          )
       else:
         cursor.execute(
             "SELECT author_name, title, eth_book, filename, eval_hash, final_score,"
@@ -2767,13 +2765,13 @@ with tab3:
 
   with st.expander(
       "📖 Detailed Guide: How Tab 3 Works (Blockchain Ledger & Staking)",
-      expanded=True,
+      expanded=False,
   ):
     st.markdown("""
     Tab 3 manages the immutable decentralization layer of the Pi-Index Assessment Engine. Here is how each component operates:
     1. **Active Epoch & Block Height**: The system tracks an incremental block counter (`block_height`). Every evaluation increments the global evaluation counter. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
     2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: 
-       - Combines the block index, criteria weights ($\text{vapri}_1$ to $\text{vapri}_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+       - Combines the block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
        - Guarantees complete auditability and cryptographic non-repudiation of every assessment round.
     3. **Dynamic Weight Adjustment**: Weights shift dynamically across epochs driven by model evaluation statistics and algorithmic pi ($\pi$) convergence precision.
     4. **DeSci Peer Attestation & Staking**: 
@@ -2829,14 +2827,14 @@ with tab3:
 
     cols = st.columns(4)
     labels = [
-        ("C1", r"$\text{vapri}_1$"),
-        ("C2", r"$\text{vapri}_2$"),
-        ("C3", r"$\text{vapri}_3$"),
-        ("C4", r"$\text{vapri}_4$"),
-        ("C5", r"$\text{vapri}_5$"),
-        ("C6", r"$\text{vapri}_6$"),
-        ("C7", r"$\text{vapri}_7$"),
-        ("C8", r"$\text{vapri}_8$"),
+        ("C1", r"$\varpi_1$"),
+        ("C2", r"$\varpi_2$"),
+        ("C3", r"$\varpi_3$"),
+        ("C4", r"$\varpi_4$"),
+        ("C5", r"$\varpi_5$"),
+        ("C6", r"$\varpi_6$"),
+        ("C7", r"$\varpi_7$"),
+        ("C8", r"$\varpi_8$"),
     ]
     for i, col in enumerate(cols * 2):
       if i < 8:
@@ -3037,7 +3035,7 @@ with tab4:
   )
 
   with st.expander(
-      "🧠 Detailed Guide: How Pi-Brain LSTM Meta-Learning Works", expanded=True
+      "🧠 Detailed Guide: How Pi-Brain LSTM Meta-Learning Works", expanded=False
   ):
     st.markdown("""
     Pi-Brain is an on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks:
@@ -3217,7 +3215,7 @@ with tab5:
             fillcolor = "#fef5e7";
 
             Dossier [label="CoARA & DORA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
-            Cartography [label="Global Map of Science\\n• Ledger PyPy Vis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
+            Cartography [label="Global Map of Science\\n• Ledger PyVis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
             PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
 
