@@ -53,7 +53,6 @@ if not GROQ_API_KEY:
     st.error("API Key not found! Please configure your environment variables or Streamlit Secrets.")
     st.stop()
 
-# Initialize Global Clients
 w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
 groq_client = Groq(api_key=GROQ_API_KEY)
 
@@ -61,8 +60,8 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 # 2. UI UTILITIES & TOOLTIPS
 # ==========================================
 def tooltip(text):
-    """Generates a small [i] hover tooltip for plain academic explanations."""
-    return f"<span title='{text}' style='cursor:help; color:#1f77b4; font-weight:bold; font-size:0.85em; margin-left:6px;'>[i]</span>"
+    """Generates a small ? hover tooltip for plain academic explanations."""
+    return f"<span title='{text}' style='cursor:help; color:#1f77b4; font-weight:bold; font-size:0.85em; margin-left:6px; border: 1px solid #1f77b4; border-radius: 50%; padding: 0 4px;'>?</span>"
 
 def get_author_epc_dict():
     """Aggregates all minted EPC across all extracted authors from the database."""
@@ -535,72 +534,6 @@ class PiBrainLSTM(nn.Module):
 # ==========================================
 # 7. STREAMLIT USER INTERFACE
 # ==========================================
-def generate_interactive_bubble_chart(target_author=None):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    if target_author and target_author != "All Authors":
-        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment WHERE author_name LIKE ?", (f"%{target_author}%",))
-    else:
-        cursor.execute("SELECT fields, subfields, final_score FROM papers_assessment")
-        
-    data = cursor.fetchall()
-    html_string, table_html = "", ""
-    if not data: return html_string, table_html
-    
-    all_topics = []
-    exclude_terms = {"general", "general science", "unspecified domain", "unspecified sub-domain"}
-    
-    for fields_json, subfields_json, final_score in data:
-        try:
-            fields = [f.title().strip() for f in json.loads(fields_json)]
-            subfields = [s.title().strip() for s in json.loads(subfields_json)]
-            score = float(final_score) if final_score else 50.0
-            for f in fields: 
-                if f.lower() not in exclude_terms: all_topics.append({'topic': f, 'weight': score})
-            for s in subfields: 
-                if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score})
-        except: continue
-            
-    if not all_topics: return html_string, table_html
-    
-    df_topics = pd.DataFrame(all_topics)
-    topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
-    if topic_counts.empty: return html_string, table_html
-        
-    unique_topics = topic_counts['topic'].unique()
-    
-    def get_color(i, n):
-        h, s, v = i/n if n > 0 else 0, 0.7, 0.9
-        rgb = colorsys.hsv_to_rgb(h, s, v)
-        return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb)
-    
-    color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
-    
-    net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
-    physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
-    net.set_options(physics_options)
-    
-    for _, row in topic_counts.iterrows():
-        node_size = 30 + (row['weight'] * 2.5) 
-        net.add_node(n_id=row['topic'], label=' ', title=f"Topic: {row['topic']} | Weight: {row['weight']}", size=node_size, physics=True, color=color_map[row['topic']])
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
-        net.save_graph(tmp_file.name)
-        with open(tmp_file.name, 'r', encoding='utf-8') as f: html_string = f.read()
-    os.remove(tmp_file.name)
-
-    unique_network_id = f"pi_network_{int(time.time() * 1000)}"
-    html_string = html_string.replace('mynetwork', unique_network_id)
-
-    table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
-    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
-    for _, row in topic_counts.sort_values(by="weight", ascending=False).iterrows():
-        table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td>{row['topic']}</td></tr>"
-    table_html += "</tbody></table></div>"
-    
-    return html_string, table_html
-
 st.sidebar.title("System Access")
 
 if 'assessment_update_token' not in st.session_state: st.session_state['assessment_update_token'] = time.time()
@@ -641,36 +574,40 @@ current_wallet = st.session_state.eth_wallet
 st.title("Pi-Index Assessment Engine")
 st.markdown(f"**Upload papers, define your scope of research, let Pi-Index filter noise and yield quantitative results.** {tooltip('Automated peer-review framework powered by neural networks and multidimensional blockchain consensus.')}", unsafe_allow_html=True)
 
-with st.expander("View Pi-Index Grading Criteria (Math to Plain English Translation)"):
+with st.expander("View Pi-Index Grading Criteria Formulations"):
     st.markdown("### Evaluation Metrics and Adversarial Logic Engine")
-    st.markdown(r"""
-    **Adversarial Logic Gap ($\Delta_{Logic}$):** 
-    *Plain English:* We map the paper's reasoning structure before giving a final score. If the authors make claims that aren't supported by their own evidence, the system exponentially penalizes the paper.
-    $$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \times \frac{1}{1 + e^{-\Delta Premise}} $$
-    """)
     st.markdown("---")
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**C1: Originality**\n*Plain English:* Does this paper disrupt existing knowledge (high score), or is it mostly derivative of older work (low score)?")
+        st.markdown(f"**Adversarial Logic Gap ($\Delta_{Logic}$)** {tooltip('We map the papers reasoning structure before giving a final score. If the authors make claims that aren\'t supported by their own evidence, the system exponentially penalizes the paper.')}")
+        st.markdown(r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \times \frac{1}{1 + e^{-\Delta Premise}} $$")
+        
+        st.markdown(f"**C1: Originality** {tooltip('Does this paper disrupt existing knowledge (high score), or is it mostly derivative of older work (low score)?')}")
         st.markdown(r"$$O = \varpi_1 \cdot \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^{N} |Z_i| \, dV} \cdot e^{-0.1 \zeta} $$")
-        st.markdown("**C2: Methodological Rigor**\n*Plain English:* Are the methods statistically sound, and is the risk of a fundamental flaw minimized?")
+        
+        st.markdown(f"**C2: Methodological Rigor** {tooltip('Are the methods statistically sound, and is the risk of a fundamental flaw minimized?')}")
         st.markdown(r"$$R = \varpi_2 \cdot \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \mathbb{E}[\rho_k] $$")
-        st.markdown("**C3: Interdisciplinary**\n*Plain English:* How well does the research bridge multiple disciplines together rather than staying in an isolated silo?")
+        
+        st.markdown(f"**C3: Interdisciplinary** {tooltip('How well does the research bridge multiple disciplines together rather than staying in an isolated silo?')}")
         st.markdown(r"$$I = \varpi_3 \cdot \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot bridge\_capacity $$")
-        st.markdown("**C4: Societal Impact**\n*Plain English:* What is the predicted long-term, real-world utility of the research findings?")
+        
+        st.markdown(f"**C4: Societal Impact** {tooltip('What is the predicted long-term, real-world utility of the research findings?')}")
         st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
     with col2:
-        st.markdown("**C5: Open Science Potential**\n*Plain English:* Rewards transparency, specifically the sharing of open-source datasets and verifiable code.")
+        st.markdown(f"**C5: Open Science Potential** {tooltip('Rewards transparency, specifically the sharing of open-source datasets and verifiable code.')}")
         st.markdown(r"$$O_s = \varpi_5 \cdot \frac{\sum_{\ell \in \mathcal{L}} \alpha_\ell \mathcal{D}_{open}^{(\ell)} + \beta \iint_{\mathcal{C}} \nabla \cdot \mathbf{J}_{code} \, dV}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} $$")
-        st.markdown("**C6: Literature Integration**\n*Plain English:* Assesses how firmly grounded the paper is in foundational literature without being completely reliant on it.")
+        
+        st.markdown(f"**C6: Literature Integration** {tooltip('Assesses how firmly grounded the paper is in foundational literature without being completely reliant on it.')}")
         st.markdown(r"$$L = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \int_{\mathcal{M}} e^{-\lambda d_g(x_i, x_{core})} R(x_i) \sqrt{g} \, dx_i \cdot \frac{\text{PR}(x_i)}{\sum PR} $$")
-        st.markdown("**C7: Empirical Density**\n*Plain English:* Measures the sheer depth and volume of the underlying data analyzed.")
+        
+        st.markdown(f"**C7: Empirical Density** {tooltip('Measures the sheer depth and volume of the underlying data analyzed.')}")
         st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right]}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right) $$")
-        st.markdown("**C8: Future Actionability**\n*Plain English:* Predicts whether the paper will trigger a cascade of actionable future research.")
+        
+        st.markdown(f"**C8: Future Actionability** {tooltip('Predicts whether the paper will trigger a cascade of actionable future research.')}")
         st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Assessment and Rebuttals", "Global Map of Science", "Active Epoch Constants", "Pi-Brain Neural Network"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Rebuttals", "Global Map of Science", "Active Epoch and Ledger", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
 with tab1:
     st.markdown(f"### Document Assessment and Import {tooltip('Upload local PDFs or fetch via DOI to assess papers. Results are logged to the Proof-of-Research blockchain.')}", unsafe_allow_html=True)
@@ -684,7 +621,25 @@ with tab1:
         st.markdown("#### Import via Unpaywall (DOI)")
         doi_input = st.text_input("Enter Document Object Identifier (DOI)", placeholder="10.1038/s41586-020-2649-2", help="Directly imports the paper if an Open Access copy is identified via the Unpaywall registry.")
     
-    if st.button("Run Assessment Pipeline and Mint Epistemic Capital", type="primary", use_container_width=True):
+    def render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights):
+        st.markdown("---")
+        st.markdown(f"### Pi-Index Score Mathematical Breakdown {tooltip('Transparent calculation of how the final score was derived from the C1-C8 extracted variables.')}", unsafe_allow_html=True)
+        st.markdown(f"**{title}** by {author_name}")
+        
+        breakdown_df = pd.DataFrame({
+            "Criterion": ["C1: Originality", "C2: Methodological Rigor", "C3: Interdisciplinary", "C4: Societal Impact", "C5: Open Science", "C6: Literature Integration", "C7: Empirical Density", "C8: Future Actionability"],
+            "Score Extracted (0-100)": [scores_dict.get("C1_Originality",0), scores_dict.get("C2_Methodological_Rigor",0), scores_dict.get("C3_Interdisciplinary",0), scores_dict.get("C4_Societal_Impact",0), scores_dict.get("C5_Open_Science_Potential",0), scores_dict.get("C6_Literature_Integration",0), scores_dict.get("C7_Empirical_Density",0), scores_dict.get("C8_Future_Actionability",0)],
+            "Epoch Weight": used_weights,
+            "Weighted Value": [scores_dict.get(k,0)*used_weights[i] for i, k in enumerate(["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"])]
+        })
+        st.dataframe(breakdown_df, hide_index=True)
+        raw_base = sum(breakdown_df["Weighted Value"]) / 8.0
+        logic_multiplier = 0.7 + (logic_integrity / 333.3)
+        st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
+        st.markdown(f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from {logic_integrity:.1f}% raw logic score)")
+        st.markdown(f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}`")
+
+    if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
         if not uploaded_files and not doi_input.strip():
             st.warning("Please upload a PDF or provide a valid DOI to proceed.")
         else:
@@ -702,12 +657,12 @@ with tab1:
                             pdf_bytes, f"DOI_{doi_input.replace('/', '_')}.pdf", research_scope, current_user, current_wallet
                         )
                         record = {
-                            "Source": "DOI", "Title": title, "Contributing Authors": author_name, 
-                            "Pi-Index": round(score, 1), "EPC Minted": epc, "zk-SNARK": f"{zk_proof[:10]}..."
+                            "Source": "DOI", "Title": title, "Contributing Authors": author_name, "Pi-Index": round(score, 1)
                         }
                         results_list.append(record)
                         if is_cached:
-                            st.info(f"Paper previously evaluated. Loaded historical data. Hash: {eval_hash}")
+                            st.info(f"Paper previously evaluated. Loaded historical data and details. Evaluation Hash: {eval_hash}")
+                        render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights)
                     else: st.error("Failed to securely download PDF from the Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
@@ -719,12 +674,12 @@ with tab1:
                     )
                     
                     record = {
-                        "Source": "File", "Title": title, "Contributing Authors": author_name, 
-                        "Pi-Index": round(score, 1), "EPC Minted": epc, "zk-SNARK": f"{zk_proof[:10]}..."
+                        "Source": "File", "Title": title, "Contributing Authors": author_name, "Pi-Index": round(score, 1)
                     }
                     results_list.append(record)
                     if is_cached:
-                        st.info(f"Paper previously evaluated. Loaded historical data. Hash: {eval_hash}")
+                        st.info(f"Paper previously evaluated. Loaded historical data and details. Evaluation Hash: {eval_hash}")
+                    render_breakdown(title, author_name, score, logic_integrity, scores_dict, used_weights)
                     progress_bar.progress((i + 1) / len(uploaded_files))
             
             status_text.success("Pipeline processing complete.")
@@ -734,21 +689,13 @@ with tab1:
                 st.session_state['last_trained_blocks'] = -1
             
     if 'latest_assessment_results' in st.session_state:
+        st.markdown("### Latest Assessment Results")
         st.dataframe(st.session_state['latest_assessment_results'], use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.markdown(f"### Your Assessment and Reward History {tooltip('Your permanently recorded academic evaluations mapped to your ORCID iD.')}", unsafe_allow_html=True)
+    st.markdown(f"### AI Peer Review Defense Strategy {tooltip('Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy.')}", unsafe_allow_html=True)
     conn = get_db_connection()
     cursor = conn.cursor()
-    if st.session_state.is_authenticated:
-        cursor.execute("SELECT title, author_name, scope, final_score, epc_minted, zk_proof, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
-        history_data = cursor.fetchall()
-        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Contributing Authors", "Scope", "Pi-Index Score", "EPC Minted", "zk-SNARK Proof", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
-        else: st.info("No assessment history found.")
-    else: st.warning("Please connect your ORCID iD in the sidebar.")
-
-    st.markdown("---")
-    st.markdown(f"### AI Peer Review Defense Strategy {tooltip('Synthesizes the mathematical assessment array to build a highly targeted adversarial rebuttal strategy.')}", unsafe_allow_html=True)
     cursor.execute("SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50", (current_user,))
     user_papers = cursor.fetchall()
     
@@ -770,6 +717,16 @@ with tab1:
             st.success("Defense Strategy Generated Successfully.")
             st.markdown(rebuttal)
 
+    st.markdown("---")
+    st.markdown(f"### Your Assessment and Reward History {tooltip('Your permanently recorded academic evaluations mapped to your ORCID iD.')}", unsafe_allow_html=True)
+    if st.session_state.is_authenticated:
+        cursor.execute("SELECT title, author_name, scope, final_score, epc_minted, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
+        history_data = cursor.fetchall()
+        if history_data: st.dataframe(pd.DataFrame(history_data, columns=["Paper Title", "Contributing Authors", "Scope", "Pi-Index Score", "EPC Minted", "Eth Tx Hash"]), use_container_width=True, hide_index=True)
+        else: st.info("No assessment history found.")
+    else: st.warning("Please connect your ORCID iD in the sidebar.")
+
+
 with tab2:
     st.markdown(f"### Global Map of Science (Ledger-Driven Cartography) {tooltip('Generates dynamic network topologies based on the aggregate metadata of all ledger-evaluated papers.')}", unsafe_allow_html=True)
     st.markdown("This map is permanently updated by every user assessing documents on the blockchain ledger, forming an unalterable topological view of current scientific trends.")
@@ -777,7 +734,11 @@ with tab2:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT author_name FROM papers_assessment")
-    all_global_authors = sorted(list(set([row[0].strip() for row in cursor.fetchall() if row[0] and row[0].strip()])))
+    all_global_authors = []
+    for row in cursor.fetchall():
+        if row[0]:
+            all_global_authors.extend([a.strip() for a in row[0].split(',') if a.strip()])
+    all_global_authors = sorted(list(set(all_global_authors)))
     
     selected_author = None
     epc_dict = get_author_epc_dict()
@@ -791,7 +752,64 @@ with tab2:
         )
         if filter_choice != "All Authors": selected_author = filter_choice
 
-    interactive_html, table_html = generate_interactive_bubble_chart(target_author=selected_author)
+    def render_bubble_chart_clean(target_author):
+        cursor.execute("SELECT fields, subfields, final_score, author_name FROM papers_assessment")
+        data = cursor.fetchall()
+        html_string, table_html = "", ""
+        if not data: return html_string, table_html
+        
+        all_topics = []
+        exclude_terms = {"general", "general science", "unspecified domain", "unspecified sub-domain"}
+        
+        for fields_json, subfields_json, final_score, author_str in data:
+            if target_author and target_author != "All Authors" and target_author not in author_str:
+                continue
+            try:
+                fields = [f.title().strip() for f in json.loads(fields_json)]
+                subfields = [s.title().strip() for s in json.loads(subfields_json)]
+                score = float(final_score) if final_score else 50.0
+                for f in fields: 
+                    if f.lower() not in exclude_terms: all_topics.append({'topic': f, 'weight': score})
+                for s in subfields: 
+                    if s.lower() not in exclude_terms: all_topics.append({'topic': s, 'weight': score})
+            except: continue
+                
+        if not all_topics: return html_string, table_html
+        
+        df_topics = pd.DataFrame(all_topics)
+        topic_counts = df_topics.groupby(['topic'])['weight'].sum().reset_index(name='weight')
+        if topic_counts.empty: return html_string, table_html
+            
+        unique_topics = topic_counts['topic'].unique()
+        def get_color(i, n):
+            h, s, v = i/n if n > 0 else 0, 0.7, 0.9
+            rgb = colorsys.hsv_to_rgb(h, s, v)
+            return '#%02x%02x%02x' % tuple(int(x * 255) for x in rgb)
+        
+        color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
+        net = Network(height='600px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
+        physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
+        net.set_options(physics_options)
+        
+        for _, row in topic_counts.iterrows():
+            node_size = 30 + (row['weight'] * 2.5) 
+            net.add_node(n_id=row['topic'], label=' ', title=f"Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, physics=True, color=color_map[row['topic']])
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
+            net.save_graph(tmp_file.name)
+            with open(tmp_file.name, 'r', encoding='utf-8') as f: html_string = f.read()
+        os.remove(tmp_file.name)
+        html_string = html_string.replace('mynetwork', f"pi_network_{int(time.time() * 1000)}")
+
+        table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
+        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 25%; text-align: center;'>Color</th><th>Topic</th></tr></thead><tbody>"
+        for _, row in topic_counts.sort_values(by="weight", ascending=False).iterrows():
+            table_html += f"<tr><td style='text-align: center;'><div class='color-box' style='background-color:{color_map[row['topic']]};'></div></td><td>{row['topic']}</td></tr>"
+        table_html += "</tbody></table></div>"
+        
+        return html_string, table_html
+
+    interactive_html, table_html = render_bubble_chart_clean(selected_author)
     if interactive_html:
         col1, col2 = st.columns([3, 1])
         with col1: components.html(interactive_html, height=620, scrolling=True)
@@ -913,6 +931,30 @@ with tab4:
         df_compare = pd.DataFrame({"Current Active Weights": st.session_state.current_weights, "Predicted Next Epoch": st.session_state.predicted_next_weights}, index=["C1: Originality", "C2: Methodological Rigor", "C3: Interdisciplinary", "C4: Societal Impact", "C5: Open Science", "C6: Literature Integration", "C7: Empirical Density", "C8: Future Actionability"])
         st.bar_chart(df_compare, height=400)
         st.markdown(f"**Mathematical Constraint Check:** Predicted Sum = `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`")
+
+with tab5:
+    st.markdown("### The Pi-Index Framework: System Overview and Theoretical Limitations")
+    st.markdown("""
+    #### 1. System Overview
+    The Pi-Index Assessment Engine represents a paradigm shift in scientometrics, moving away from legacy bibliometrics (e.g., citation counts, h-index) toward a deterministic, multidimensional mathematical framework. 
+    
+    Rather than relying on human peer review—which scales poorly and is subject to systemic biases—or purely autonomous "LLM-as-a-judge" systems—which suffer from arbitrary grading and hallucinatory critique—this system separates the extraction of data from the calculation of the score.
+    
+    *   **LLM as Semantic Parser:** A high-parameter neural network (Llama 3.3) reads the manuscript exclusively to extract 25 hidden proxy variables (e.g., probability of methodological flaw, paradigm shift potential, density of empirical testing).
+    *   **Deterministic Evaluation (C1-C8):** These proxy variables are then passed through eight rigid, cryptographically locked mathematical functions.
+    *   **Adversarial Logic Mapping:** The system measures the mathematical gap between the *strength of the evidence* presented and the *reach of the conclusions* drawn. Logical leaps trigger exponential penalties.
+    *   **Tokenomics:** Evaluated scores are bound to a Proof-of-Research (PoR) ledger. An Ethereum Smart Contract mints **Epistemic Capital ($EPC)** via a simulated zk-SNARK proof, rewarding authors exponentially when their current Pi-Index surpasses their historical baseline average.
+
+    ---
+
+    #### 2. Theoretical Vulnerabilities and Known System Flaws
+    While the Pi-Index Framework structurally prevents "citation cartels" and traditional system gaming, it introduces novel vulnerabilities:
+
+    *   **The Parsability Gap (LLM Extraction Bias):** The entire framework hinges on the LLM's capacity to accurately parse the initial 25 variables. Highly mathematical, niche, or non-traditional paper formats may confuse the LLM, leading to inaccurate proxy extraction, which cascades through the deterministic equations.
+    *   **The Oracle Problem:** The system pulls Open Access PDFs via DOI or user uploads. The blockchain can verify that a *PDF* was graded accurately, but it cannot intrinsically verify that the user uploading the PDF is the true author of that document outside of third-party ORCID API reliance.
+    *   **The Cold Start Problem for Tokenomics:** The Epistemic Capital ($EPC) reward system requires a historical baseline to calculate the improvement multiplier. First-time authors have no baseline, leading to highly variable initial reward outcomes until a critical mass of their portfolio is evaluated.
+    *   **Adversarial Formatting and "Prompt Engineering":** Because the rules of extraction are algorithmic, savvy researchers may eventually learn to format their papers (e.g., over-indexing specific keywords or artificially structuring empirical data sections) specifically to trigger high values in the LLM's extraction prompt, effectively "gaming" the parser despite the logic gap penalties.
+    """)
 
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
