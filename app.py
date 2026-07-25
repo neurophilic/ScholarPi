@@ -183,10 +183,10 @@ def fetch_author_metrics(author_name):
         pass
     return "N/A", "N/A"
 
-def search_openalex_topics(topic_query, limit=5):
+def search_openalex_topics(topic_query, limit=100):
     try:
         url = f"https://api.openalex.org/works?search={requests.utils.quote(topic_query)}&filter=is_oa:true&per_page={limit}"
-        res = requests.get(url, timeout=8)
+        res = requests.get(url, timeout=10)
         if res.status_code == 200:
             results = res.json().get('results', [])
             extracted = []
@@ -823,9 +823,13 @@ with tab1:
     alex_topic_input = st.text_input("3. Discover via OpenAlex Topic Search", placeholder="e.g., structural integrity, neural networks, oncology", key=f"alex_topic_{st.session_state['reset_token']}")
     search_alex_btn = st.button("Search OpenAlex Papers")
 
+    if 'alex_visible_count' not in st.session_state:
+        st.session_state.alex_visible_count = 10
+
     if search_alex_btn and alex_topic_input.strip():
+        st.session_state.alex_visible_count = 10
         with st.spinner(f"Querying OpenAlex for papers on '{alex_topic_input}'..."):
-            alex_results = search_openalex_topics(alex_topic_input.strip(), limit=5)
+            alex_results = search_openalex_topics(alex_topic_input.strip(), limit=100)
             if alex_results:
                 st.session_state['alex_search_results'] = alex_results
                 st.success(f"Found {len(alex_results)} Open Access papers.")
@@ -835,9 +839,16 @@ with tab1:
     selected_alex_papers = []
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
         st.markdown("**Tick OpenAlex papers to include:**")
-        for idx, p in enumerate(st.session_state['alex_search_results']):
+        
+        visible_results = st.session_state['alex_search_results'][:st.session_state.alex_visible_count]
+        for idx, p in enumerate(visible_results):
             if st.checkbox(f"🌐 OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*", key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
                 selected_alex_papers.append(p)
+                
+        if st.session_state.alex_visible_count < len(st.session_state['alex_search_results']):
+            if st.button("Show More OpenAlex Results"):
+                st.session_state.alex_visible_count += 10
+                st.rerun()
 
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
@@ -1136,7 +1147,6 @@ with tab2:
             avg_weight = metrics['weight_sum'] / metrics['frequency']
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
-            # Completely remove text label under/on the bubble while preserving hover tooltips
             net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
