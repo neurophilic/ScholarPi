@@ -899,8 +899,8 @@ def process_single_pdf(
         "None",
         "None",
         active_weights,
-        works_count,
-        cited_by_count,
+        0.85,
+        4,
         0.0,
         False,
     )
@@ -952,8 +952,8 @@ def process_single_pdf(
         "None",
         "None",
         active_weights,
-        works_count,
-        cited_by_count,
+        0.85,
+        4,
         0.0,
         False,
     )
@@ -1080,8 +1080,8 @@ def process_single_pdf(
           "None",
           "None",
           active_weights,
-          works_count,
-          cited_by_count,
+          0.85,
+          4,
           reproducibility_score,
           False,
       )
@@ -1125,8 +1125,8 @@ def process_single_pdf(
         "None",
         "None",
         active_weights,
-        works_count,
-        cited_by_count,
+        0.85,
+        4,
         reproducibility_score,
         False,
     )
@@ -1488,12 +1488,10 @@ class PiBrainLSTM(nn.Module):
 # ==========================================
 st.sidebar.title("System Access")
 
-# Initialize state to guarantee initial rendering
 if "initialized" not in st.session_state:
   st.session_state["initialized"] = True
   st.toast("Application initialized successfully.", icon="🚀")
 
-# Notification instruction block
 st.info(
     "📬 **Notice:** If you are using this application, please send a notification"
     " email to the author at **a.vafadaryengejeh@campus.unimib.it**.",
@@ -1609,7 +1607,6 @@ st.markdown(
     " Assessment (RRA).**"
 )
 
-# Details closed initially (expanded=False)
 with st.expander(
     "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)",
     expanded=False,
