@@ -508,9 +508,11 @@ Text: {text}"""
     return {"Extracted_Title": "Parsing Failed", "Extracted_Author": "Unidentified", "Extracted_Topics": "Core Research Domain", "Overall_Confidence": 0.0}
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None"):
+    active_weights = [1.0] * 8
+
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-        return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", [1.0]*8, "N/A", "N/A", 0.0, False
+        return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, "N/A", "N/A", 0.0, False
     
     file_hash = hashlib.sha256(file_bytes).hexdigest() 
     conn = get_db_connection()
@@ -525,7 +527,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         full_text = " ".join([page.get_text() for page in doc])
     except Exception:
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-        return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", 0.0, False
+        return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", 0.0, False
 
     scope_alignment = evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS) if scope.strip() else 0.0
 
@@ -545,7 +547,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         
         cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights WHERE eval_hash=?", (file_hash,))
         weight_res = cursor.fetchone()
-        used_weights = weight_res if weight_res else [1.0] * 8
+        used_weights = weight_res if weight_res else active_weights
         
         return title, clean_author_name(author_name), score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
@@ -562,7 +564,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             model_used = FALLBACK_MODEL
         except Exception:
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
+            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", reproducibility_score, False
          
     if not isinstance(raw_data, dict):
         raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Extracted_Topics": "Core Research Domain", "Overall_Confidence": 0.0}
@@ -570,7 +572,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     confidence = raw_data.get("Overall_Confidence", 1.0)
     if confidence < 0.50:
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-         return "Indeterminate Format (Upload JSON Manifest)", clean_author_name(raw_data.get("Extracted_Author", "Unidentified")), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", [1.0]*8, "N/A", "N/A", reproducibility_score, False
+         return "Indeterminate Format (Upload JSON Manifest)", clean_author_name(raw_data.get("Extracted_Author", "Unidentified")), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", reproducibility_score, False
 
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = clean_author_name(str(raw_data.get("Extracted_Author", "")))
@@ -613,7 +615,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
                 }
                 cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights WHERE eval_hash=?", (ex_hash,))
                 weight_res = cursor.fetchone()
-                used_weights = weight_res if weight_res else [1.0] * 8
+                used_weights = weight_res if weight_res else active_weights
                 return title, extracted_author, ex_score, ex_logic, drift, rec_spec, fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
