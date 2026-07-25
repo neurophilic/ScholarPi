@@ -126,6 +126,7 @@ def enforce_database_schema():
 enforce_database_schema()
 
 def get_db_connection():
+    enforce_database_schema() # Ensures schema is up to date on every connection
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
