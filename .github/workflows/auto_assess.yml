@@ -12,18 +12,15 @@ jobs:
   background-assessment:
     runs-on: ubuntu-latest
     steps:
-      - name: Configure Git & Install Python
+      - name: Checkout Code and Set Git Identity
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv
-
-      - name: Checkout repository manually
-        run: |
           git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
 
-      - name: Install dependencies
+      - name: Install Python and Dependencies
         run: |
+          sudo apt-get update && sudo apt-get install -y python3 python3-pip
           python3 -m pip install --upgrade pip --break-system-packages
           pip3 install requests groq pandas --break-system-packages
 
