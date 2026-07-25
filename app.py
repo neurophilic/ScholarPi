@@ -434,25 +434,25 @@ def main_ui():
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(r"**Adversarial Logic Gap ($\Delta_{Logic}$)**")
-            st.markdown(r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \times \frac{1}{1 + e^{-\Delta Premise}} $$")
+            st.markdown(r"$$L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \times \frac{1}{1 + e^{-\Delta Premise}}$$")
             st.markdown("**C1: Originality**")
-            st.markdown(r"$$O = \varpi_1 \cdot \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^{N} |Z_i| \, dV} \cdot e^{-0.1 \zeta} $$")
+            st.markdown(r"$$O = \varpi_1 \cdot \lim_{\Delta t \to 0} \oint_{\partial \Omega} \frac{\nabla \times (\mathcal{H}_{novel} \otimes \mathcal{K}_{epistemic})}{\iint_{\mathcal{M}} \sum_{i=1}^{N} |Z_i| \, dV} \cdot e^{-0.1 \zeta}$$")
             st.markdown("**C2: Methodological Rigor**")
-            st.markdown(r"$$R = \varpi_2 \cdot \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \mathbb{E}[\rho_k] $$")
+            st.markdown(r"$$R = \varpi_2 \cdot \left( 1 - \frac{\mathrm{tr}(\boldsymbol{\Sigma}_{error} \boldsymbol{\Lambda}^{-1})}{\det(\boldsymbol{\mu}_{signal} \otimes \mathbf{W})} \right) \cdot \mathbb{E}[\rho_k]$$")
         with col2:
             st.markdown("**C5: Open Science & Executable Reproducibility**")
-            st.markdown(r"$$O_s = \varpi_5 \cdot \frac{0.5 \mathcal{D}_{open} + 0.2 \mathbf{J}_{code} + 0.3 \mathcal{R}_{exec}}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} \cdot \mathcal{P}_{FAIR} $$")
+            st.markdown(r"$$O_s = \varpi_5 \cdot \frac{0.5 \mathcal{D}_{open} + 0.2 \mathbf{J}_{code} + 0.3 \mathcal{R}_{exec}}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} \cdot \mathcal{P}_{FAIR}$$")
             st.markdown("**C7: Empirical Density & Validation**")
-            st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right] \cdot (0.8 + 0.2 \mathcal{R}_{exec})}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right) $$")
+            st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right] \cdot (0.8 + 0.2 \mathcal{R}_{exec})}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right)$$")
             st.markdown("**C8: Future Actionability**")
-            st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
+            st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x})$$")
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Assessment and Dossier", "Global Map of Science", "Active Epoch & DeSci Staking", 
         "Pi-Brain Neural Network", "System Overview and Limitations"
     ])
 
-   with tab1:
+    with tab1:
         st.markdown("### Unified Multi-Source Intake & Topic Discovery")
         research_scope = st.text_input("Define your specific Research Topic / Scope (Optional)", key=f"rs_{st.session_state['reset_token']}")
         
