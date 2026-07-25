@@ -659,7 +659,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
                    (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
     conn.commit()
     
-    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
+    return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_to_mint, tx_hash, zk_proof, active_weights, h_idx, i10_idx, reproducibility_score, False
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -748,7 +748,7 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
         st.markdown(r"$$I = \varpi_3 \cdot \left( \frac{1}{1-\alpha} \ln \left( \sum_{j=1}^{K} p_j^\alpha \right) + \sum_{i,j} \frac{A_{ij} \phi_i \phi_j}{\sqrt{d_i d_j}} \right) \cdot bridge\_capacity $$")
         
         st.markdown("**C4: Societal Impact** " + tooltip("What is the predicted long-term, real-world utility of the research findings?"), unsafe_allow_html=True)
-        st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \ int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
+        st.markdown(r"$$S = \varpi_4 \cdot \frac{1}{\Gamma(q)} \int_{t_0}^{t_\infty} (t_\infty - \tau)^{q-1} e^{-\gamma(\tau) \tau} \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] d\tau $$")
     with col2:
         st.markdown("**C5: Open Science & Executable Reproducibility** " + tooltip("Rewards transparency and containerized/functional code execution verification."), unsafe_allow_html=True)
         st.markdown(r"$$O_s = \varpi_5 \cdot \frac{0.5 \mathcal{D}_{open} + 0.2 \mathbf{J}_{code} + 0.3 \mathcal{R}_{exec}}{\max \left[ \mathcal{N}_{\text{datasets}}, 1 \right]} \cdot \mathcal{P}_{FAIR} $$")
@@ -760,7 +760,7 @@ with st.expander("View Pi-Index Grading Criteria Formulations"):
         st.markdown(r"$$E_d = \varpi_7 \cdot \tanh \left( \frac{\det \mathcal{I}_{Fisher}(\hat{\theta}) \cdot \mathbb{E}_{P}\left[\log\frac{P}{Q}\right] \cdot (0.8 + 0.2 \mathcal{R}_{exec})}{\mathcal{V}_{baseline} \cdot \oint_\Gamma K(\mathbf{x}) \, d\ell} \right) $$")
         
         st.markdown("**C8: Future Actionability** " + tooltip("Predicts whether the paper will trigger a cascade of actionable future research."), unsafe_allow_html=True)
-        st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \ int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
+        st.markdown(r"$$F_a = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \frac{1}{1 + \exp\left(-\sum_{k=1}^K w_k(\eta_k(\mathbf{x}) - \eta_{0,k}) + \Lambda_{Lyapunov}\right)} d\mu(\mathbf{x}) $$")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of Science", "Active Epoch & DeSci Staking", "Pi-Brain Neural Network", "System Overview and Limitations"])
 
@@ -799,10 +799,8 @@ with tab1:
             else:
                 st.warning("No Open Access papers found matching this topic.")
 
-    # Replicated OpenAlex Card/Expander Section matching user image layout
     if 'alex_search_results' in st.session_state and st.session_state['alex_search_results']:
         st.markdown("#### Discovered OpenAlex Papers")
-        selected_alex_papers = []
         for idx, p in enumerate(st.session_state['alex_search_results']):
             expander_title = f"{p['title']} (Authors: {p['authors']})"
             with st.expander(expander_title):
@@ -816,9 +814,36 @@ with tab1:
                 else:
                     st.markdown("**PDF URL:** Direct binary link restricted by publisher")
                 
-                # Selection checkbox matching user card requirements
-                if st.checkbox(f"Include OpenAlex Paper {idx+1} in batch execution", value=True, key=f"alex_chk_{idx}_{st.session_state['reset_token']}"):
-                    selected_alex_papers.append(p)
+                if st.button(f"Evaluate Paper {idx + 1}", key=f"eval_alex_{idx}_{st.session_state['reset_token']}"):
+                    with st.spinner(f"Evaluating OpenAlex paper: {p['title']}..."):
+                        pdf_bytes = None
+                        fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                        p_doi = p.get('doi', 'None')
+                        
+                        if p.get('pdf_url'):
+                            pdf_bytes = download_pdf_from_url(p['pdf_url'])
+                        if not pdf_bytes and p.get('doi'):
+                            metadata = fetch_doi_metadata(p['doi'])
+                            if metadata and metadata.get('pdf_url'):
+                                pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
+
+                        if pdf_bytes:
+                            title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
+                                pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
+                            )
+                            eval_record = {
+                                'title': title, 'author_name': author_name, 'score': score, 
+                                'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
+                                'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
+                                'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
+                                'zk_proof': zk_proof, 'used_weights': used_weights, 
+                                'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
+                            }
+                            st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
+                            st.success("Evaluation complete!")
+                            st.rerun()
+                        else:
+                            st.error("Could not directly download PDF. Try importing via DOI or uploading the PDF manually.")
 
     st.markdown("---")
     stake_amount = st.checkbox("Stake 0.01 piQ to Process (Returned on Valid Assessment)", value=True, help="Staking mechanisms actively filter low-effort, adversarial, or spam submissions.")
@@ -904,44 +929,11 @@ with tab1:
     if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
         if not stake_amount:
             st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
-        elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not ('selected_alex_papers' in locals() and selected_alex_papers):
-            st.warning("Please select or tick at least one paper or input source to assess.")
+        elif not selected_uploaded_files and not (include_doi and doi_input.strip()):
+            st.warning("Please tick at least one local file or input a DOI to assess.")
         else:
             progress_bar, status_text = st.progress(0), st.empty()
             
-            # 1. Process OpenAlex Papers
-            if 'selected_alex_papers' in locals() and selected_alex_papers:
-                for p in selected_alex_papers:
-                    status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
-                    pdf_bytes = None
-                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
-                    p_doi = p.get('doi', 'None')
-                    
-                    if p.get('pdf_url'):
-                        pdf_bytes = download_pdf_from_url(p['pdf_url'])
-                    
-                    if not pdf_bytes and p.get('doi'):
-                        metadata = fetch_doi_metadata(p['doi'])
-                        if metadata and metadata.get('pdf_url'):
-                            pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
-
-                    if pdf_bytes:
-                        title, author_name, score, logic_integrity, drift, rec, fields, subfields, scores_dict, eval_hash, piq, tx_hash, zk_proof, used_weights, h_idx, i10_idx, repro_score, is_cached = process_single_pdf(
-                            pdf_bytes, fname, research_scope, current_user, current_book, current_email, p_doi
-                        )
-                        eval_record = {
-                            'title': title, 'author_name': author_name, 'score': score, 
-                            'logic_integrity': logic_integrity, 'drift': drift, 'rec': rec, 
-                            'fields': fields, 'subfields': subfields, 'scores_dict': scores_dict, 
-                            'eval_hash': eval_hash, 'piq': piq, 'tx_hash': tx_hash, 
-                            'zk_proof': zk_proof, 'used_weights': used_weights, 
-                            'h_idx': h_idx, 'i10_idx': i10_idx, 'repro_score': repro_score, 'filename': fname
-                        }
-                        st.session_state['evaluated_papers_buffer'].insert(0, eval_record)
-                    else:
-                        st.error(f"Could not directly download PDF for '{p['title'][:40]}...'. Publishers often restrict direct binary access on open-access landing pages. Try importing via DOI or uploading the PDF manually.")
-
-            # 2. Process DOI Input
             if include_doi and doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
                 metadata = fetch_doi_metadata(doi_input)
@@ -965,7 +957,6 @@ with tab1:
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
-            # 3. Process Ticked Local Files
             if selected_uploaded_files:
                 for i, file in enumerate(selected_uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(selected_uploaded_files)}: {file.name}...")
@@ -1094,7 +1085,6 @@ with tab2:
         
         color_map = {topic: get_color(i, len(unique_topics)) for i, topic in enumerate(unique_topics)}
         
-        # Enhanced PyVis Network with robust physics separation
         net = Network(height='650px', width='100%', bgcolor='#ffffff', font_color='#2c3e50', notebook=False)
         physics_options = """{
             "physics": {
@@ -1116,7 +1106,6 @@ with tab2:
             shape = "dot" if row['category'] == 'Subfield' else "box"
             net.add_node(n_id=row['topic'], label=row['topic'], title=f"Category: {row['category']} | Topic: {row['topic']} | Weight: {row['weight']:.1f}", size=node_size, shape=shape, physics=True, color=color_map[row['topic']])
         
-        # Add connecting edges between related nodes for clean cluster separation
         topics_list = topic_counts['topic'].tolist()
         for i in range(len(topics_list) - 1):
             net.add_edge(topics_list[i], topics_list[i+1], width=1, color="#dcdde1")
@@ -1317,7 +1306,6 @@ with tab5:
     st.markdown("### Pi-Index Program Architecture & End-to-End Pipeline")
     st.write("The end-to-end flowchart of the decentralized assessment engine, detailing multi-source intake, AI extraction, adversarial discrimination, cryptographic zero-knowledge proofs, and Web3 smart contract minting.")
     
-    # Thorough, detailed Graphviz architecture flowchart
     arch_graph = graphviz.Digraph(node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': '#E8F4F8', 'fontname': 'Helvetica', 'color': '#2c3e50'})
     arch_graph.attr(rankdir='TB', size='12,12')
 
