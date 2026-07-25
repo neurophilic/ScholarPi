@@ -3016,9 +3016,13 @@ with tab4:
         or st.session_state.last_trained_blocks != current_block_count
     ):
       weight_data = np.array(historical_rows, dtype=np.float32)
-      dataset = PiBlockchainDataset(weight_data, lookback_window)
+      
+      # FIX: Ensure we do not slice more than available rows to prevent empty tensor/shape error
+      actual_lookback = min(lookback_window, len(weight_data))
+      
+      dataset = PiBlockchainDataset(weight_data, actual_lookback)
       dataloader = DataLoader(
-          dataset, batch_size=min(4, len(dataset)), shuffle=False
+          dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
       )
 
       model, loss_function, optimizer = (
@@ -3050,7 +3054,7 @@ with tab4:
         st.session_state.predicted_next_weights = (
             model(
                 torch.tensor(
-                    weight_data[-lookback_window:], dtype=torch.float32
+                    weight_data[-actual_lookback:], dtype=torch.float32
                 ).unsqueeze(0)
             )
             .squeeze()
@@ -3158,7 +3162,7 @@ with tab5:
             PiBrain [label="Pi-Brain LSTM Meta-Learning\\n(Calibration Drift & Epoch Prediction)", fillcolor="#f8c471"];
         }
 
-        Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Text"];
+        Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Text");
         Logic -> PoR [lhead=cluster_blockchain, label="Audited Score & Hashes"];
         Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
