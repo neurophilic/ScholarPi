@@ -1,42 +1,10 @@
-name: Background Hot Topics Assessment
-
-on:
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
-
-jobs:
-  assess-papers:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        # Bumping to the latest node-24 compatible checkout
-        uses: actions/checkout@v4 
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11' 
-
-      - name: Debug - Verify Files Exist
-        # This will print the files in your repo to the GitHub Actions log
-        run: ls -la 
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests cloudscraper PyMuPDF pandas numpy web3 groq torch
-
-      - name: Run Background Assessment
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          PINATA_API_KEY: ${{ secrets.PINATA_API_KEY }}
-          PINATA_SECRET_API_KEY: ${{ secrets.PINATA_SECRET_API_KEY }}
-          ETH_ADMIN_PRIVATE_KEY: ${{ secrets.ETH_ADMIN_PRIVATE_KEY }}
-          REGISTRY_CONTRACT_ADDRESS: ${{ secrets.REGISTRY_CONTRACT_ADDRESS }}
-          PIQ_CONTRACT_ADDRESS: ${{ secrets.PIQ_CONTRACT_ADDRESS }}
-          WEB3_PROVIDER_URI: "https://ethereum-sepolia-rpc.publicnode.com"
-        run: |
-          # If this step still fails, check the "Debug" step above to ensure auto_assessment.py is listed!
-          python auto_assessment.py
+- name: Run Background Assessment
+  run: python app.py --cron
+  env:
+    GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    PINATA_API_KEY: ${{ secrets.PINATA_API_KEY }}
+    PINATA_SECRET_API_KEY: ${{ secrets.PINATA_SECRET_API_KEY }}
+    ETH_ADMIN_PRIVATE_KEY: ${{ secrets.ETH_ADMIN_PRIVATE_KEY }}
+    REGISTRY_CONTRACT_ADDRESS: ${{ secrets.REGISTRY_CONTRACT_ADDRESS }}
+    PIQ_CONTRACT_ADDRESS: ${{ secrets.PIQ_CONTRACT_ADDRESS }}
+    WEB3_PROVIDER_URI: ${{ secrets.WEB3_PROVIDER_URI }}
