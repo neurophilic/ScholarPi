@@ -43,9 +43,9 @@ FALLBACK_MODEL = "llama-3.1-8b-instant"
 MAX_TEXT_TOKENS = 12000
 EPOCH_BLOCK_SIZE = 1
 
-# FIXED: Pointing to Sepolia testnet instead of Mainnet
+# FIXED: Pointing to the public Sepolia RPC endpoint
 WEB3_PROVIDER_URI = os.getenv(
-    "WEB3_PROVIDER_URI", "https://sepolia.infura.io/v3/330b2fcc6352474ba4b2f60aa4e9ec7a"
+    "WEB3_PROVIDER_URI", "https://ethereum-sepolia-rpc.publicnode.com"
 )
 ETH_ADMIN_PRIVATE_KEY = os.getenv(
     "ETH_ADMIN_PRIVATE_KEY",
@@ -103,7 +103,7 @@ GENESIS_BLOCK_CONFIG = {
 def restore_state_from_web3():
     """Fetches the latest IPFS CID from Sepolia Ethereum and restores the DB and Neural Net."""
     if not w3.is_connected():
-        print("Restore Error: Web3 is not connected. Check Infura URI.")
+        print("Restore Error: Web3 is not connected. Check RPC URI.")
         return
     if not REGISTRY_CONTRACT_ADDRESS:
         print("Restore Error: Registry Contract Address is missing.")
@@ -138,7 +138,7 @@ def restore_state_from_web3():
 def backup_state_to_web3():
     """Zips the local state, pins to IPFS via Pinata, and updates the Sepolia Ethereum registry."""
     if not w3.is_connected():
-        print("Backup Error: Web3 is not connected. Check Infura URI.")
+        print("Backup Error: Web3 is not connected. Check RPC URI.")
         return
     if not PINATA_API_KEY:
         print("Backup Error: Pinata API key missing.")
