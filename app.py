@@ -1127,7 +1127,7 @@ def process_single_pdf(
         if ex_title_row:
             ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
             if (provided_doi != "None" and provided_doi) or (
-                ex_norm_title == normalized_title && normalized_title != ""
+                ex_norm_title == normalized_title and normalized_title != ""
             ):
                 c_scores = ex_rest[:8]
                 piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
