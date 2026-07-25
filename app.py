@@ -990,4 +990,25 @@ with tab5:
     │ [ Reward ] Tokenomics & Reward Calculation             │
     │  - Fetches historical baseline / Domain average        │
     │  - Applies Logarithmic Vesting multiplier              │
-    │  - Mints Epistemic Capital (
+    │  - Mints Epistemic Capital (πEPC)                      │
+    └──────────────────────────┬─────────────────────────────┘
+                               │
+    ┌──────────────────────────▼─────────────────────────────┐
+    │ [ Ledger ] Proof-of-Research (PoR) Blockchain          │
+    │  - Generates simulated zk-SNARK proof                  │
+    │  - Seals Eval Hash, Score, and zk-proof to Ledger      │
+    └────────────────────────────────────────────────────────┘
+    ```
+    """)
+
+    st.markdown("""
+    #### 2. Architecture and Active Vulnerability Defenses
+
+    *   **The Parsability Gap (LLM Extraction Bias):** Highly mathematical or non-traditional paper formats can confuse parsers. **Defense:** The system utilizes *Adaptive Chunking* to preserve math blocks and *Algorithmic Confidence Thresholds*. If parsing confidence drops below 50%, the smart contract rejects the extraction, forcing the author to upload a standardized JSON manifest.
+    *   **The Oracle Problem:** Generating scores for an uploaded PDF does not prove the user is the author. **Defense:** *Zero-Knowledge Email Proofs (ZK-Email)* cryptographically prove the uploader controls the institutional email listed on the manuscript. Additionally, users must sign the manuscript hash using the private keys linked to their Decentralized Identifiers (DIDs).
+    *   **The Cold Start Problem for Tokenomics:** The πEPC reward multiplier relies on a historical baseline. First-time authors lack this. **Defense:** The system calculates the *Global Domain Baseline* for the paper's specific subfield. First-time authors must beat this global average. Furthermore, a *Logarithmic Vesting* factor prevents single-paper anomalies from draining the token pool, requiring sustained effort to max out multipliers.
+    *   **Adversarial Formatting ("Prompt Engineering"):** If researchers reverse-engineer the prompt, they will keyword-stuff papers to maximize proxy variables. **Defense:** A secondary *Discriminator Network* explicitly scans for unnatural formatting, while the extraction engine utilizes *Stochastic Prompt Rotation*. Any detection of "gaming" dramatically inflates the Adversarial Logic Penalty ($\Delta_{Logic}$).
+    """)
+
+st.markdown("---")
+st.markdown("<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>", unsafe_allow_html=True)
