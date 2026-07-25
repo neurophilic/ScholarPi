@@ -103,36 +103,54 @@ GENESIS_BLOCK_CONFIG = {
 def restore_state_from_web3():
     """Fetches the latest IPFS CID from Sepolia Ethereum and restores the DB and Neural Net."""
     if not w3.is_connected():
-        print("Restore Error: Web3 is not connected. Check RPC URI.")
+        st.sidebar.error("Restore Error: Web3 is not connected. Check RPC URI.")
         return
     if not REGISTRY_CONTRACT_ADDRESS:
-        print("Restore Error: Registry Contract Address is missing.")
+        st.sidebar.warning("Restore Notice: Registry Contract Address is missing. Starting fresh.")
         return
     
     try:
         abi = '[{"inputs":[],"name":"getCID","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
         
         if len(REGISTRY_CONTRACT_ADDRESS) != 42 or not REGISTRY_CONTRACT_ADDRESS.startswith("0x"):
-            print("Restore Error: Invalid Registry Contract Address format.")
+            st.sidebar.error("Restore Error: Invalid Registry Contract Address format.")
             return
             
         contract = w3.eth.contract(address=w3.to_checksum_address(REGISTRY_CONTRACT_ADDRESS), abi=json.loads(abi))
         cid = contract.functions.getCID().call()
         
         if cid:
-            res = requests.get(f"https://ivory-worrying-boa-917.mypinata.cloud/ipfs/files/{cid}", timeout=30)
-            if res.status_code == 200:
-                zip_path = BASE_DIR + ".zip"
+            # Multi-gateway fallback routing without the /files/ path component
+            gateways = [
+                f"https://ivory-worrying-boa-917.mypinata.cloud/ipfs/{cid}",
+                f"https://gateway.pinata.cloud/ipfs/{cid}",
+                f"https://ipfs.io/ipfs/{cid}"
+            ]
+            
+            res = None
+            for gw in gateways:
+                try:
+                    r = requests.get(gw, timeout=15)
+                    if r.status_code == 200:
+                        res = r
+                        break
+                except requests.RequestException:
+                    continue
+            
+            if res and res.status_code == 200:
+                zip_path = BASE_DIR + "_restore.zip"
                 with open(zip_path, 'wb') as fp:
                     fp.write(res.content)
+                
+                # Unpack and cleanup
                 shutil.unpack_archive(zip_path, BASE_DIR)
                 if os.path.exists(zip_path):
                     os.remove(zip_path)
-                print("State successfully restored from Web3/IPFS.")
+                st.sidebar.success(f"Ledger synced from Web3 (CID: {cid[:8]}...)")
             else:
-                print(f"Restore Error: Pinata returned status code {res.status_code}")
+                st.sidebar.error(f"Restore Error: Could not download CID '{cid}' from any IPFS gateway.")
     except Exception as e:
-        print(f"Failed to restore state from Web3: {e}")
+        st.sidebar.error(f"Failed to restore state from Web3: {e}")
 
 def backup_state_to_web3():
     """Zips the local state, pins to IPFS via Pinata, and updates the Sepolia Ethereum registry automatically."""
