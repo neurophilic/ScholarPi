@@ -59,12 +59,10 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 # ==========================================
 # 2. ROOT LEVEL DATABASE SCHEMA ENFORCEMENT
 # ==========================================
-# This runs unconditionally on app load, preventing Streamlit cache desyncs.
 def enforce_database_schema():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
     cursor = conn.cursor()
     
-    # Ensure Base Table Exists
     cursor.execute('''CREATE TABLE IF NOT EXISTS papers_assessment 
                       (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
                        c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
@@ -72,7 +70,6 @@ def enforce_database_schema():
                        scope_alignment REAL, logic_score REAL,
                        subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)''')
 
-    # Ensure Blockchain Weights Table Exists
     cursor.execute('''CREATE TABLE IF NOT EXISTS blockchain_por_weights 
                       (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
                        w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
@@ -82,10 +79,9 @@ def enforce_database_schema():
                        
     cursor.execute('''CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)''')
     
-    # Aggressive Column Injection
     target_columns_assessment = {
         "eth_book": "TEXT DEFAULT 'None'",
-        "eth_wallet": "TEXT DEFAULT 'None'",  # Preserved to avoid breaking old inserts
+        "eth_wallet": "TEXT DEFAULT 'None'",
         "epc_minted": "REAL DEFAULT 0.0",
         "tx_hash": "TEXT DEFAULT 'Pending'",
         "zk_proof": "TEXT DEFAULT 'None'",
@@ -118,12 +114,10 @@ def enforce_database_schema():
     conn.commit()
     conn.close()
 
-# Enforce Schema immediately before any other execution
 enforce_database_schema()
 
 @st.cache_resource
 def get_db_connection():
-    # Because schema is enforced above, we can safely cache the connection object.
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
@@ -383,7 +377,6 @@ def download_pdf_from_url(pdf_url):
             "Accept": "application/pdf,application/xhtml+xml,text/html;q=0.9,image/webp,*/*;q=0.8"
         }
         res = requests.get(pdf_url, headers=headers, timeout=15, allow_redirects=True)
-        # Verify magic number for PDF
         if res.status_code == 200 and b"%PDF" in res.content[:10]:
             return res.content
         return None
@@ -789,19 +782,16 @@ with tab1:
             results_list = []
             progress_bar, status_text = st.progress(0), st.empty()
             
-            # Process OpenAlex Topic Selected Paper
             if selected_alex_paper:
                 status_text.text(f"Fetching OpenAlex paper: {selected_alex_paper['title']}...")
                 pdf_bytes = None
                 
-                # Try Unpaywall direct proxy first if DOI exists (Bypasses many OpenAlex HTML redirect issues)
                 if selected_alex_paper.get('doi'):
                     status_text.text(f"Routing OpenAlex DOI through Unpaywall for robust direct PDF extraction...")
                     metadata = fetch_doi_metadata(selected_alex_paper['doi'])
                     if metadata and metadata.get('pdf_url'):
                         pdf_bytes = download_pdf_from_url(metadata['pdf_url'])
                 
-                # Fallback to OpenAlex URL if Unpaywall failed or DOI was absent
                 if not pdf_bytes and selected_alex_paper.get('pdf_url'):
                     status_text.text(f"Falling back to OpenAlex repository link...")
                     pdf_bytes = download_pdf_from_url(selected_alex_paper['pdf_url'])
@@ -814,7 +804,6 @@ with tab1:
                 else:
                     st.error("Failed to securely download PDF for selected OpenAlex paper. The publisher may be blocking automated access or providing an HTML splash page instead of raw PDF data.")
 
-            # Process DOI Input
             if doi_input.strip():
                 status_text.text(f"Resolving DOI: {doi_input}...")
                 metadata = fetch_doi_metadata(doi_input)
@@ -829,7 +818,6 @@ with tab1:
                     else: st.error("Failed to download PDF from Open Access source.")
                 else: st.error("Failed to resolve DOI or no Open Access PDF is publicly available.")
             
-            # Process Uploaded Local Files
             if uploaded_files:
                 for i, file in enumerate(uploaded_files):
                     status_text.text(f"Analyzing uploaded file {i+1} of {len(uploaded_files)}: {file.name}...")
@@ -979,7 +967,6 @@ with tab2:
         if search_query:
             query_clean = search_query.strip().lower()
             
-            # Identify Digital Book Hex Address Search
             if query_clean.startswith("0x"):
                 cursor.execute("SELECT title, author_name, final_score, epc_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
                 book_papers = cursor.fetchall()
@@ -989,8 +976,6 @@ with tab2:
                     st.dataframe(df_book, use_container_width=True, hide_index=True)
                 else:
                     st.warning(f"No records found for Digital Book '{search_query}'.")
-            
-            # Author Name Search
             else:
                 filtered_df = epc_df[epc_df["Contributing Author"].str.contains(search_query, case=False, na=False)]
                 if not filtered_df.empty:
