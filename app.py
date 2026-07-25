@@ -2594,6 +2594,101 @@ with tab1:
   else:
     st.warning("Please connect your ORCID iD or DID in the sidebar.")
 
+  # ==========================================
+  # NEW ADDITION: LAST 5 ASSESSED PAPERS SECTION
+  # ==========================================
+  st.markdown("---")
+  st.markdown(
+      "### 📋 Last 5 Assessed Papers across the Ledger"
+      + tooltip(
+          "Displays the 5 most recently evaluated papers globally from the database"
+          " with full breakdown details."
+      ),
+      unsafe_allow_html=True,
+  )
+
+  conn_last = get_db_connection()
+  cur_last = conn_last.cursor()
+  cur_last.execute(
+      """SELECT title, author_name, filename, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, 
+                piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count, reproducibility_score, eval_hash, timestamp 
+         FROM papers_assessment ORDER BY timestamp DESC LIMIT 5"""
+  )
+  recent_papers = cur_last.fetchall()
+  conn_last.close()
+
+  if not recent_papers:
+    st.info("No papers have been assessed in the database yet.")
+  else:
+    for idx, rp in enumerate(recent_papers):
+      (
+          r_title,
+          r_author,
+          r_filename,
+          r_score,
+          r_logic,
+          r_c1,
+          r_c2,
+          r_c3,
+          r_c4,
+          r_c5,
+          r_c6,
+          r_c7,
+          r_c8,
+          r_piq,
+          r_tx,
+          r_zk,
+          r_mdar,
+          r_rrid,
+          r_repro,
+          r_hash,
+          r_time,
+      ) = rp
+
+      r_author_clean = clean_author_name(r_author)
+      r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
+
+      with st.expander(
+          f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
+          f" **{r_score:.2f}** | {r_time[:16]})",
+          expanded=False,
+      ):
+        st.write(f"**Title:** {r_title}")
+        st.write(f"**Author(s):** {r_author_clean}")
+        st.write(f"**Timestamp:** `{r_time}`")
+        st.write(f"**Evaluation Hash:** `{r_hash}`")
+        st.write(f"**Unique Author Book Address:** `{r_book}`")
+        st.write(f"**piQ Minted:** `{r_piq}` | **Tx Hash:** `{r_tx}`")
+        st.write(
+            f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
+            f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
+            f" `{r_mdar * 100:.1f}%`"
+        )
+
+        r_df = pd.DataFrame({
+            "Criterion": [
+                "C1: Semantic Originality",
+                "C2: Methodological Rigor (SciScore)",
+                "C3: Interdisciplinary Entropy",
+                "C4: Societal Impact",
+                "C5: Open Science & Repro",
+                "C6: Literature Integration",
+                "C7: Empirical Density",
+                "C8: Future Actionability & FAIR",
+            ],
+            "Score (0-100)": [
+                r_c1,
+                r_c2,
+                r_c3,
+                r_c4,
+                r_c5,
+                r_c6,
+                r_c7,
+                r_c8,
+            ],
+        })
+        st.dataframe(r_df, hide_index=True, use_container_width=True)
+
 with tab2:
   st.markdown(
       "### Global Map of Science (Ledger-Driven Cartography) "
