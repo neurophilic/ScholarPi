@@ -121,8 +121,8 @@ def enforce_database_schema():
 
 enforce_database_schema()
 
-@st.cache_resource
 def get_db_connection():
+    """Returns a fresh thread-safe SQLite connection with an extended timeout."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
@@ -215,6 +215,7 @@ def get_author_piq_dict():
     cursor = conn.cursor()
     cursor.execute("SELECT author_name, piq_minted FROM papers_assessment")
     data = cursor.fetchall()
+    conn.close()
     author_piq = {}
     for authors_str, piq in data:
         clean_authors = clean_author_name(authors_str)
@@ -526,6 +527,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         pdf_meta_author = doc.metadata.get("author", "").strip()
         full_text = " ".join([page.get_text() for page in doc])
     except Exception:
+        conn.close()
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
         return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", 0.0, False
 
@@ -548,6 +550,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights WHERE eval_hash=?", (file_hash,))
         weight_res = cursor.fetchone()
         used_weights = weight_res if weight_res else active_weights
+        conn.close()
         
         return title, clean_author_name(author_name), score, logic_score, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
@@ -563,6 +566,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
             raw_data = evaluate_pdf_text_ensemble(full_text, FALLBACK_MODEL, reduced_limit)
             model_used = FALLBACK_MODEL
         except Exception:
+            conn.close()
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
             return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", reproducibility_score, False
          
@@ -571,6 +575,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
 
     confidence = raw_data.get("Overall_Confidence", 1.0)
     if confidence < 0.50:
+         conn.close()
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
          return "Indeterminate Format (Upload JSON Manifest)", clean_author_name(raw_data.get("Extracted_Author", "Unidentified")), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", reproducibility_score, False
 
@@ -616,6 +621,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
                 cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights WHERE eval_hash=?", (ex_hash,))
                 weight_res = cursor.fetchone()
                 used_weights = weight_res if weight_res else active_weights
+                conn.close()
                 return title, extracted_author, ex_score, ex_logic, drift, rec_spec, fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof, used_weights, h_index, i10_index, repro_score, True
 
     cursor.execute("UPDATE global_eval_counter SET count = count + 1")
@@ -678,8 +684,9 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
     
     cursor.execute('''INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, h_index, i10_index, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_idx, reproducibility_score, provided_doi))
+                   (file_hash, user_id, title, filename, scope, *scores, logic_integrity, scope_alignment, json.dumps(subfields), json.dumps(fields), extracted_author, final_score, datetime.now().isoformat(), book_address, piq_to_mint, tx_hash, zk_proof, user_id, zk_email_hash, gaming_penalty, h_idx, i10_index, reproducibility_score, provided_doi))
     conn.commit()
+    conn.close()
     
     return title, extracted_author, final_score, logic_integrity, drift, rec, fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, h_idx, i10_index, reproducibility_score, False
 
@@ -1013,6 +1020,7 @@ with tab1:
     cursor = conn.cursor()
     cursor.execute("SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50", (current_user,))
     user_papers = cursor.fetchall()
+    conn.close()
     
     if not user_papers:
         st.info("You must assess at least one paper to unlock the AI Defense Strategy tool.")
@@ -1035,8 +1043,11 @@ with tab1:
     st.markdown("---")
     st.markdown("### Your Assessment and Reward History " + tooltip("Your permanently recorded academic evaluations mapped to your ORCID iD/DID."), unsafe_allow_html=True)
     if st.session_state.is_authenticated:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT title, author_name, filename, scope, final_score, piq_minted, tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 20", (current_user,))
         history_data = cursor.fetchall()
+        conn.close()
         if history_data: 
             cleaned_history = []
             for row in history_data:
@@ -1059,6 +1070,7 @@ with tab2:
             cleaned = clean_author_name(row[0])
             for a in cleaned.split(','):
                 if a.strip(): all_global_authors.append(a.strip())
+    conn.close()
     all_global_authors = sorted(list(set(all_global_authors)))
     
     selected_author = None
@@ -1074,8 +1086,12 @@ with tab2:
         if filter_choice != "All Authors": selected_author = filter_choice
 
     def render_bubble_chart_clean(target_author):
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT fields, subfields, final_score, author_name FROM papers_assessment")
         data = cursor.fetchall()
+        conn.close()
+        
         html_string, table_html = "", ""
         if not data: return html_string, table_html
         
@@ -1115,8 +1131,8 @@ with tab2:
             avg_weight = metrics['weight_sum'] / metrics['frequency']
             freq = metrics['frequency']
             node_size = max(30, 20 + (avg_weight * 2.5))
-            # Set label to empty space " " to explicitly override default node text rendering underneath bubbles
-            net.add_node(n_id=topic, label=" ", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
+            # Set label to empty string so no text displays under or on the bubbles
+            net.add_node(n_id=topic, label="", title=f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score: {avg_weight:.1f}", size=node_size, physics=True, color=color_map[topic])
         
         with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
             net.save_graph(tmp_file.name)
@@ -1153,11 +1169,14 @@ with tab2:
         
         if search_query:
             query_clean = search_query.strip().lower()
+            conn = get_db_connection()
+            cursor = conn.cursor()
             
             # Search by Digital Book Address (0x...)
             if query_clean.startswith("0x"):
                 cursor.execute("SELECT title, author_name, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(eth_book)=? ORDER BY timestamp DESC", (query_clean,))
                 book_papers = cursor.fetchall()
+                conn.close()
                 if book_papers:
                     st.success(f"Found {len(book_papers)} papers linked to Digital Book: `{search_query}`")
                     formatted_book_rows = []
@@ -1172,6 +1191,7 @@ with tab2:
             else:
                 cursor.execute("SELECT author_name, title, eth_book, filename, final_score, piq_minted, timestamp FROM papers_assessment WHERE LOWER(author_name) LIKE ? ORDER BY timestamp DESC", (f"%{query_clean}%",))
                 author_papers = cursor.fetchall()
+                conn.close()
                 if author_papers:
                     st.success(f"Found {len(author_papers)} paper records for author matching '{search_query}'.")
                     formatted_auth_rows = []
@@ -1274,6 +1294,7 @@ with tab3:
             st.dataframe(df_hashes, use_container_width=True, hide_index=True)
         else:
             st.info("No hashes to display yet.")
+    conn.close()
 
 with tab4:
     st.markdown("### Pi-Brain: Meta-Learning on the PoR Blockchain " + tooltip("An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards."), unsafe_allow_html=True)
@@ -1281,13 +1302,13 @@ with tab4:
     cursor = conn.cursor()
     cursor.execute("SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER BY block_height ASC")
     historical_rows = cursor.fetchall()
+    conn.close()
     
     min_blocks_required = 2
     if len(historical_rows) < min_blocks_required:
         st.warning(f"Not enough blockchain data to train the meta-model. You need at least {min_blocks_required} blocks (Currently on ledger: {len(historical_rows)}). Assess at least 1 manuscript to generate block 2.")
     else:
         current_block_count = len(historical_rows)
-        # Dynamically scale lookback window based on available block count (down to 1 lookback step for 2 blocks)
         lookback_window = max(1, min(5, current_block_count - 1))
         
         if 'last_trained_blocks' not in st.session_state or st.session_state.last_trained_blocks != current_block_count:
