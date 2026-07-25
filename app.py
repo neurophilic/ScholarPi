@@ -870,20 +870,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["Assessment and Dossier", "Global Map of
 with tab1:
     st.markdown("### Unified Multi-Source Intake & Topic Discovery" + tooltip("Define your research scope, upload local PDFs, import via DOI, or discover and tick OpenAlex papers all in one place."), unsafe_allow_html=True)
     
-    # Persistent Download Errors Container
-    if st.session_state.get('download_errors'):
-        st.markdown("---")
-        st.markdown("### ⚠️ Publisher Access & Download Restrictions")
-        for err_idx, err_data in enumerate(st.session_state['download_errors']):
-            err_col1, err_col2 = st.columns([6, 1])
-            with err_col1:
-                st.warning(f"**Could not directly download PDF for '{err_data['title']}':** Publishers restrict direct binary access.\n\n- **DOI:** `{err_data['doi']}`\n- **PDF URL Link:** [{err_data['url']}]({err_data['url']})")
-            with err_col2:
-                if st.button("❌ Close", key=f"close_err_{err_idx}_{st.session_state['reset_token']}"):
-                    st.session_state['download_errors'].pop(err_idx)
-                    st.rerun()
-        st.markdown("---")
-
     selected_uploaded_files = []
     uploaded_files = st.file_uploader("1. Upload Local PDF(s)", type=["pdf"], accept_multiple_files=True, key=f"file_uploader_{st.session_state['reset_token']}")
     if uploaded_files:
@@ -1185,9 +1171,23 @@ with tab1:
                 st.session_state['assessment_update_token'] = time.time()
                 st.rerun()
 
-    if st.session_state['evaluated_papers_buffer']:
+    # Active Session Assessment Results & Publisher Access Restrictions Container
+    if st.session_state['evaluated_papers_buffer'] or st.session_state.get('download_errors'):
         st.markdown("---")
         st.markdown("### Active Session Assessment Results")
+        
+        if st.session_state.get('download_errors'):
+            st.markdown("#### ⚠️ Publisher Access & Download Restrictions")
+            for err_idx, err_data in enumerate(st.session_state['download_errors']):
+                err_col1, err_col2 = st.columns([6, 1])
+                with err_col1:
+                    st.warning(f"**Could not directly download PDF for '{err_data['title']}':** Publishers restrict direct binary access.\n\n- **DOI:** `{err_data['doi']}`\n- **PDF URL Link:** [{err_data['url']}]({err_data['url']})")
+                with err_col2:
+                    if st.button("❌ Close", key=f"close_err_{err_idx}_{st.session_state['reset_token']}"):
+                        st.session_state['download_errors'].pop(err_idx)
+                        st.rerun()
+            st.markdown("")
+
         for item in st.session_state['evaluated_papers_buffer']:
             render_breakdown_item(item)
             
