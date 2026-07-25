@@ -81,7 +81,6 @@ def enforce_database_schema():
     cursor.execute('''CREATE TABLE IF NOT EXISTS desci_attestations 
                       (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)''')
     
-    # Ensure initial counter row exists
     cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
@@ -127,7 +126,6 @@ def enforce_database_schema():
 enforce_database_schema()
 
 def get_db_connection():
-    """Returns a fresh thread-safe SQLite connection with an extended timeout."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
@@ -515,10 +513,11 @@ Text: {text}"""
 
 def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None"):
     active_weights = [1.0] * 8
+    h_idx, i10_idx = "N/A", "N/A"
 
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-        return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, "N/A", "N/A", 0.0, False
+        return "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, h_idx, i10_idx, 0.0, False
     
     file_hash = hashlib.sha256(file_bytes).hexdigest() 
     conn = get_db_connection()
@@ -534,7 +533,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     except Exception:
         conn.close()
         empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-        return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", 0.0, False
+        return "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, h_idx, i10_idx, 0.0, False
 
     scope_alignment = evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS) if scope.strip() else 0.0
 
@@ -573,7 +572,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
         except Exception:
             conn.close()
             empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", reproducibility_score, False
+            return "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, h_idx, i10_idx, reproducibility_score, False
          
     if not isinstance(raw_data, dict):
         raw_data = {"Extracted_Title": filename, "Extracted_Author": "Unidentified", "Extracted_Topics": "Core Research Domain", "Overall_Confidence": 0.0}
@@ -582,7 +581,7 @@ def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None"
     if confidence < 0.50:
          conn.close()
          empty_scores = {k: 0.0 for k in ["C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary", "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability"]}
-         return "Indeterminate Format (Upload JSON Manifest)", clean_author_name(raw_data.get("Extracted_Author", "Unidentified")), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, "N/A", "N/A", reproducibility_score, False
+         return "Indeterminate Format (Upload JSON Manifest)", clean_author_name(raw_data.get("Extracted_Author", "Unidentified")), 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, file_hash, 0.0, "None", "None", active_weights, h_idx, i10_idx, reproducibility_score, False
 
     title = raw_data.get("Extracted_Title", filename)
     extracted_author = clean_author_name(str(raw_data.get("Extracted_Author", "")))
