@@ -4,10 +4,7 @@ import hashlib
 from blockchain import generate_blockchain_pi
 
 def get_formulas_hash():
-    """
-    Creates a cryptographic lock of the 8 criteria equations to ensure they are never altered on the ledger.
-    This represents the fixed algorithmic state of the C1-C8 multidimensional functions.
-    """
+    """Cryptographic lock of the 8 criteria equations to ensure they are never altered on the ledger."""
     criteria_state = "C1:Originality|C2:Rigor|C3:Interdisciplinary|C4:Impact|C5:OpenScience|C6:Integration|C7:Density|C8:Actionability_v2.0"
     return hashlib.sha256(criteria_state.encode('utf-8')).hexdigest()
 
@@ -91,8 +88,7 @@ def calculate_complex_drift(alignment, scores):
     return float(max(0.0, min(100.0, drift_metric)))
 
 def get_recommendation_spectrum(score, drift):
-    if drift == "N/A":
-        return "N/A"
+    if drift == "N/A": return "N/A"
     synergy = score * (1.0 - (drift / 100.0)**1.5)
     if synergy >= 85: return "Tier I: Core Paradigm (Optimal Synergy)"
     elif synergy >= 70: return "Tier II: Highly Aligned Framework"
