@@ -94,24 +94,24 @@ def enforce_database_schema():
   cursor = conn.cursor()
 
   cursor.execute("""CREATE TABLE IF NOT EXISTS papers_assessment 
-                      (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
-                       c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
-                       c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
-                       scope_alignment REAL, logic_score REAL,
-                       subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)""")
+                    (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
+                     c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
+                     c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
+                     scope_alignment REAL, logic_score REAL,
+                     subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)""")
 
   cursor.execute("""CREATE TABLE IF NOT EXISTS blockchain_por_weights 
-                      (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
-                       w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
-                       timestamp DATETIME, previous_hash TEXT, 
-                       validator_node TEXT, block_hash TEXT, eval_hash TEXT, model_used TEXT)""")
+                    (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
+                     w1 REAL, w2 REAL, w3 REAL, w4 REAL, 
+                     w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
+                     timestamp DATETIME, previous_hash TEXT, 
+                     validator_node TEXT, block_hash TEXT, eval_hash TEXT, model_used TEXT)""")
 
   cursor.execute(
       "CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)"
   )
   cursor.execute("""CREATE TABLE IF NOT EXISTS desci_attestations 
-                      (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)""")
+                    (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)""")
 
   cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
   if cursor.fetchone()[0] == 0:
@@ -177,8 +177,8 @@ def get_db_connection():
     block_hash = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
     cursor.execute(
         """INSERT INTO blockchain_por_weights 
-                          (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) 
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             g["block_height"],
             *g["weights"],
@@ -410,10 +410,12 @@ def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
     )
 
     abi = (
-        '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
+        'لل[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
+        if False
+        else '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
     )
     contract = w3.eth.contract(
-        address=w3.to_checksum_address(PIQ_CONTRACT_ADDRESS), abi=abi
+        address=w3.to_checksum_address(PIQ_CONTRACT_ADDRESS), abi=json.loads(abi)
     )
     account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
 
@@ -1315,8 +1317,9 @@ def process_single_pdf(
         formulas_hash,
     )
     cursor.execute(
-        """INSERT INTO blockchain_por_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO blockchain_por_weights (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
+            block_height + 1,
             *active_weights,
             timestamp,
             previous_hash,
