@@ -180,3 +180,23 @@ def generate_blockchain_pi(block_height):
         pi_approx += sign * (4.0 / (n * (n + 1) * (n + 2)))
         sign *= -1.0
     return pi_approx
+
+def get_ethereum_node_stats():
+    """Fetches connected peer count, client version, and synchronization status from the active Web3 RPC node."""
+    if not w3.is_connected():
+        return {"connected": False, "peer_count": 0, "client_version": "Disconnected", "sync_status": "N/A"}
+    try:
+        res = w3.provider.make_request("net_peerCount", [])
+        peer_count = int(res.get("result", "0x0"), 16) if isinstance(res, dict) and "result" in res else 0
+        
+        client_version = getattr(w3, 'client_version', "Unknown")
+        sync_status = w3.eth.syncing
+        
+        return {
+            "connected": True,
+            "peer_count": peer_count,
+            "client_version": client_version,
+            "sync_status": "Syncing..." if sync_status else "Fully Synced (Block Head Reached)"
+        }
+    except Exception as e:
+        return {"connected": True, "peer_count": 0, "client_version": "Error", "sync_status": str(e)}
