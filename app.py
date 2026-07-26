@@ -543,7 +543,7 @@ def refine_science_field(s):
     else:
         return f"Engineering & Technology > Applied Technical Research ({s.title()})"
 
-def render_bubble_chart_clean(target_author):
+def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, size_scale=1.5, central_grav=0.15):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -626,31 +626,29 @@ def render_bubble_chart_clean(target_author):
         font_color="#2c3e50",
         notebook=False,
     )
-    # Optimized physics parameters for stability (reduced jiggling)
-    physics_options = """{ 
-        "physics": { 
-            "barnesHut": { 
-                "gravitationalConstant": -3000, 
-                "centralGravity": 0.1, 
-                "springLength": 180, 
+    physics_options = f"""{{ 
+        "physics": {{ 
+            "barnesHut": {{ 
+                "gravitationalConstant": {repulsion}, 
+                "centralGravity": {central_grav}, 
+                "springLength": {spring_len}, 
                 "springConstant": 0.02,
-                "damping": 0.98,
-                "avoidOverlap": 2.0 
-            }, 
-            "stabilization": { 
+                "damping": 0.95,
+                "avoidOverlap": 2.5 
+            }}, 
+            "stabilization": {{ 
                 "enabled": true, 
-                "iterations": 1500,
+                "iterations": 1000,
                 "fit": true
-            } 
-        } 
-    }"""
+            }} 
+        }} 
+    }}"""
     net.set_options(physics_options)
 
     for topic, metrics in topic_aggregates.items():
         avg_weight = metrics["weight_sum"] / metrics["frequency"]
         freq = metrics["frequency"]
-        # Increased minimum and maximum node sizes significantly so bubbles appear much larger
-        node_size = max(50, 30 + (avg_weight * 5.0))
+        node_size = max(45, (30 + (avg_weight * 4.0)) * size_scale)
 
         base_col = color_map[topic]
         net.add_node(
@@ -766,7 +764,7 @@ def evaluation_metrics_dialog():
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} | vapri_{sym} = {weight_val:.6f} {rbot(q_key)}", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} | vapri_{sym} = {weight_val:.6f}", expanded=(title.startswith("C1"))):
             st.markdown(f"**Description:** {desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
             st.markdown("**Raw Parameter Data:**")
@@ -1455,6 +1453,16 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
+    # --- MAP MODULATION CONTROL PANEL ---
+    with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
+        mod_col1, mod_col2 = st.columns(2)
+        with mod_col1:
+            mod_repulsion = st.slider("Repulsion Force", min_val=-8000, max_val=-500, value=-3000, step=500, key="mod_repulsion")
+            mod_spring = st.slider("Spring Length", min_val=50, max_val=400, value=150, step=10, key="mod_spring")
+        with mod_col2:
+            mod_size = st.slider("Bubble Size Scale", min_val=0.5, max_val=3.0, value=1.5, step=0.1, key="mod_size")
+            mod_gravity = st.slider("Central Pull (Gravity)", min_val=0.01, max_val=0.5, value=0.15, step=0.01, key="mod_gravity")
+
     conn_m = get_db_connection()
     try:
         cursor_m = conn_m.cursor()
@@ -1485,7 +1493,13 @@ with top_analytics_col2:
         if filter_choice_top != "All Authors":
             selected_author_top = filter_choice_top
 
-    interactive_html_top, table_html_top = render_bubble_chart_clean(selected_author_top)
+    interactive_html_top, table_html_top = render_bubble_chart_clean(
+        selected_author_top,
+        repulsion=mod_repulsion,
+        spring_len=mod_spring,
+        size_scale=mod_size,
+        central_grav=mod_gravity
+    )
     if interactive_html_top:
         components.html(interactive_html_top, height=410, scrolling=True)
     else:
