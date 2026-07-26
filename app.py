@@ -890,55 +890,33 @@ doi_input = ""
 include_doi = False
 
 with st.expander(
-    "More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)",
+    "Unified Research Scope, DOI & Topic Intake",
     expanded=False,
 ):
-    research_scope = st.text_input(
-        "Define your specific Research Topic / Scope (Optional)",
-        placeholder="e.g., Application of deep learning in vascular imaging...",
-        key=f"research_scope_input_{st.session_state['reset_token']}",
+    unified_query = st.text_input(
+        "Research Scope, DOI, or OpenAlex Topic",
+        placeholder="Enter research topic, DOI (e.g. 10.1038/...), or search keyword...",
+        key=f"unified_query_{st.session_state['reset_token']}",
     )
-
-    st.markdown("---")
-    doi_input = st.text_input(
-        "2. Import via Unpaywall (DOI)",
-        placeholder="10.1038/s41586-020-2649-2",
-        key=f"doi_input_{st.session_state['reset_token']}",
-    )
-    if doi_input.strip():
-        include_doi = st.checkbox(
-            "Include this DOI in assessment",
-            value=True,
-            key=f"doi_chk_{st.session_state['reset_token']}",
-        )
-
-    st.markdown("")
-    st.markdown("**3. OpenAlex Topic Search**")
-    alex_topic_input = st.text_input(
-        "Custom OpenAlex Topic Search",
-        placeholder="e.g., structural integrity, neural networks, oncology",
-        key=f"alex_topic_{st.session_state['reset_token']}",
-    )
-    search_alex_btn = st.button("Search OpenAlex Papers")
-
-if "alex_visible_count" not in st.session_state:
-    st.session_state.alex_visible_count = 10
-
-if "search_alex_btn" in locals() and search_alex_btn:
-    st.session_state.alex_visible_count = 10
-    with st.spinner("Querying OpenAlex..."):
-        alex_results = []
-        if alex_topic_input.strip():
-            custom_res = search_openalex_topics(alex_topic_input.strip(), limit=50)
-            alex_results.extend(custom_res)
-
-        if alex_results:
-            st.session_state["alex_search_results"] = alex_results
-            st.success(
-                f"Successfully harvested {len(alex_results)} papers from OpenAlex."
-            )
+    
+    if unified_query.strip():
+        q_str = unified_query.strip()
+        if re.match(r"^10\.\d{4,9}/[-._;()/:A-Za-z0-9]+$", q_str) or q_str.startswith("10.") or "doi.org" in q_str:
+            doi_input = q_str
+            include_doi = True
+            research_scope = ""
+            st.caption("Detected as DOI. Will resolve via Unpaywall.")
         else:
-            st.warning("No Open Access papers found matching criteria.")
+            research_scope = q_str
+            if st.button("Search OpenAlex Papers for this Topic", key=f"unified_alex_btn_{st.session_state['reset_token']}"):
+                st.session_state.alex_visible_count = 10
+                with st.spinner("Querying OpenAlex..."):
+                    alex_results = search_openalex_topics(q_str, limit=50)
+                    if alex_results:
+                        st.session_state["alex_search_results"] = alex_results
+                        st.success(f"Successfully harvested {len(alex_results)} papers from OpenAlex.")
+                    else:
+                        st.warning("No Open Access papers found matching criteria.")
 
 selected_alex_papers = []
 if (
