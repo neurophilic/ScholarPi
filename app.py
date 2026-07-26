@@ -1453,15 +1453,15 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # --- MAP MODULATION CONTROL PANEL ---
+    # --- MAP MODULATION CONTROL PANEL (Using Correct min_value / max_value parameters) ---
     with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
         mod_col1, mod_col2 = st.columns(2)
         with mod_col1:
-            mod_repulsion = st.slider("Repulsion Force", min_val=-8000, max_val=-500, value=-3000, step=500, key="mod_repulsion")
-            mod_spring = st.slider("Spring Length", min_val=50, max_val=400, value=150, step=10, key="mod_spring")
+            mod_repulsion = st.slider("Repulsion Force", min_value=-8000, max_value=-500, value=-3000, step=500, key="mod_repulsion")
+            mod_spring = st.slider("Spring Length", min_value=50, max_value=400, value=150, step=10, key="mod_spring")
         with mod_col2:
-            mod_size = st.slider("Bubble Size Scale", min_val=0.5, max_val=3.0, value=1.5, step=0.1, key="mod_size")
-            mod_gravity = st.slider("Central Pull (Gravity)", min_val=0.01, max_val=0.5, value=0.15, step=0.01, key="mod_gravity")
+            mod_size = st.slider("Bubble Size Scale", min_value=0.5, max_value=3.0, value=1.5, step=0.1, key="mod_size")
+            mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.01, max_value=0.5, value=0.15, step=0.01, key="mod_gravity")
 
     conn_m = get_db_connection()
     try:
