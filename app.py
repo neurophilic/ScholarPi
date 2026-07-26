@@ -78,7 +78,9 @@ click_tracker_js = """
 <script>
 const parentDoc = window.parent.document;
 parentDoc.addEventListener('click', function(e) {
+    // Exclude clicks inside the sidebar to prevent looping or accidental triggers
     if (e.target.closest('[data-testid="stSidebar"]')) return;
+    // Exclude interactive elements
     if (['INPUT', 'TEXTAREA', 'BUTTON', 'A', 'SELECT', 'OPTION', 'SVG', 'PATH'].includes(e.target.tagName)) return;
 
     let text = e.target.innerText || e.target.textContent;
@@ -107,6 +109,7 @@ parentDoc.addEventListener('click', function(e) {
 </script>
 """
 components.html(click_tracker_js, height=0, width=0)
+
 
 st.sidebar.title("System Access")
 
@@ -176,14 +179,14 @@ if "orcid_id" not in st.session_state:
         st.session_state.orcid_name = "Verified Decentralized Identity" if "did:" in saved_orcid else "Verified Researcher (Name Private)"
         st.session_state.is_authenticated = True
     else:
-        st.session_state.orcid_id = "0009-0009-8456-8050"
-        st.session_state.orcid_name = "Verified Researcher (Name Private)"
+        st.session_state.orcid_id = "0000-0000-0000-0000"
+        st.session_state.orcid_name = ""
         st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
     st.sidebar.markdown("### Authenticate")
     manual_orcid = st.sidebar.text_input(
-        "Enter ORCID iD or W3C DID", placeholder="0009-0009-8456-8050"
+        "Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX"
     )
     remember_user = st.sidebar.checkbox("Remember me", value=True)
 
@@ -231,7 +234,7 @@ else:
             del st.query_params["orcid"]
         st.rerun()
 
-current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
+current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
 # --- Scilem Assistant in Sidebar ---
@@ -279,6 +282,7 @@ transparent_pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAA
 chat_container = st.sidebar.container()
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
+        # Apply the transparent pixel as the avatar for assistant to remove the robot icon
         msg_avatar = transparent_pixel if message["role"] == "assistant" else None
         with st.sidebar.chat_message(message["role"], avatar=msg_avatar):
             st.sidebar.markdown(message["content"])
@@ -286,6 +290,7 @@ with chat_container:
 if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
+    # Rapid lookup for clicked text explanations
     direct_answer = None
     if prompt.startswith("Explain:"):
         query_topic = prompt.replace("Explain:", "").strip().lower()
@@ -366,6 +371,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
         st.rerun()
 
+# --- Helper for Refining Subfields and Professional Science Fields ---
 def refine_science_field(s):
     s_lower = s.lower()
     if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
@@ -405,6 +411,7 @@ def refine_science_field(s):
     else:
         return f"Engineering & Technology > Applied Technical Research ({s.title()})"
 
+# --- Helper for Cartography Render ---
 def render_bubble_chart_clean(target_author):
     conn = get_db_connection()
     try:
@@ -546,6 +553,7 @@ def render_bubble_chart_clean(target_author):
 
     return html_string, table_html
 
+# --- Dialog for Evaluation Metrics ---
 @st.dialog("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", width="large")
 def evaluation_metrics_dialog():
     conn_top_ep = get_db_connection()
@@ -588,8 +596,6 @@ def evaluation_metrics_dialog():
     else:
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
-    green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
-
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures."
     )
@@ -600,38 +606,64 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    st.markdown(f"**C1: Originality** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
-    st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
-    st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
+    with st.expander(f"C1: Originality (apri_1 = {tw1:.6f}):"):
+        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
+        st.markdown(
+            r"$$ C_1 = apri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+            r" \times (1 - \lambda_{laundering}) $$"
+        )
 
-    st.markdown(f"**C2: Methodological Rigor** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
-    st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
-    st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
+    with st.expander(f"C2: Methodological Rigor (apri_2 = {tw2:.6f}):"):
+        st.markdown(
+            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
+        )
+        st.markdown(
+            r"$$ C_2 = apri_2 \cdot \mathcal{I}_{blinding} + apri_2 \cdot"
+            r" \mathcal{I}_{randomization} + apri_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + apri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r" \epsilon}\right) $$"
+        )
 
-    st.markdown(f"**C3: Interdisciplinary Synergy** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
-    st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
-    st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    with st.expander(f"C3: Interdisciplinary Synergy (apri_3 = {tw3:.6f}):"):
+        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
+        st.markdown(r"$$ C_3 = apri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    st.markdown(f"**C4: Societal & Open Infrastructure Impact** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
-    st.markdown("Evaluates broader societal and open infrastructure contributions.")
-    st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
+    with st.expander(f"C4: Societal & Open Infrastructure Impact (apri_4 = {tw4:.6f}):"):
+        st.markdown("Evaluates broader societal and open infrastructure contributions.")
+        st.markdown(
+            r"$$ C_4 = apri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r" U_v(\tau, \mathbf{x}) \right] $$"
+        )
 
-    st.markdown(f"**C5: Open Science & Executable Reproducibility** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
-    st.markdown("Evaluates open data, open code, and containerized reproducibility.")
-    st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
+    with st.expander(f"C5: Open Science & Executable Reproducibility (apri_5 = {tw5:.6f}):"):
+        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
+        st.markdown(
+            r"$$ C_5 = apri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+        )
 
-    st.markdown(f"**C6: Literature Integration** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
-    st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
-    st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
+    with st.expander(f"C6: Literature Integration (apri_6 = {tw6:.6f}):"):
+        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
+        st.markdown(
+            r"$$ C_6 = apri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+        )
 
-    st.markdown(f"**C7: Empirical Density & Validation** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
-    st.markdown("Assesses empirical sample strength and baseline variance.")
-    st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
+    with st.expander(f"C7: Empirical Density & Validation (apri_7 = {tw7:.6f}):"):
+        st.markdown("Assesses empirical sample strength and baseline variance.")
+        st.markdown(
+            r"$$ C_7 = apri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+        )
 
-    st.markdown(f"**C8: Future Actionability & FAIR** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
-    st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
-    st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
+    with st.expander(f"C8: Future Actionability & FAIR (apri_8 = {tw8:.6f}):"):
+        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
+        st.markdown(
+            r"$$ C_8 = apri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+        )
 
+# --- Top Header Layout ---
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
     st.title("Pi-Index Assessment Engine")
@@ -639,6 +671,7 @@ with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
 
+# ==================== COMPACT INTAKE & ASSESSMENT BLOCK ====================
 st.markdown("")
 with st.container(border=True):
     selected_uploaded_files = []
@@ -1076,7 +1109,7 @@ def paper_attestation_dialog(item):
     eval_hash = item["eval_hash"]
     title = item["title"]
     st.markdown(f"**Paper:** {title}")
-    current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
+    current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
     
     if not st.session_state.get("is_authenticated", False):
         st.warning("Please connect your ORCID iD or DID in the sidebar to use the DeSci Peer Attestation feature.")
@@ -1384,6 +1417,8 @@ st.markdown("---")
 
 # ==================== CONDITIONAL DISPLAY: ORCID CONNECTED VS NOT CONNECTED ====================
 if st.session_state.is_authenticated:
+    st.markdown("### Your Assessment History & Rewards")
+    
     conn_hist = get_db_connection()
     try:
         cur_h = conn_hist.cursor()
@@ -1393,31 +1428,13 @@ if st.session_state.is_authenticated:
                       b.block_height, b.block_hash
                FROM papers_assessment p
                LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
+               WHERE p.user_id = ? OR p.user_id = '0000-0000-0000-0000'
                ORDER BY p.timestamp DESC""",
             (st.session_state.orcid_id,)
         )
         user_history_rows = cur_h.fetchall()
     finally:
         conn_hist.close()
-
-    total_user_piq = sum(float(uh[5]) for uh in user_history_rows if uh[5]) if user_history_rows else 0.0
-
-    st.markdown(
-        f"""
-        <div style="background-color: #f8f9fa; border: 1px solid #e9ecef; border-left: 5px solid #27ae60; padding: 16px 20px; border-radius: 6px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h3 style="margin: 0; color: #2c3e50;">Your Assessment History & Rewards</h3>
-                <p style="margin: 4px 0 0 0; font-size: 13px; color: #7f8c8d;">Connected Vault: <code>{st.session_state.orcid_id}</code></p>
-            </div>
-            <div style="text-align: right;">
-                <h2 style="margin: 0; color: #27ae60;">{total_user_piq:.2f} piQ</h2>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: #7f8c8d; font-weight: bold;">TOTAL piQ OWNED</p>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     if user_history_rows:
         for idx, uh in enumerate(user_history_rows):
@@ -1693,6 +1710,7 @@ try:
 
 finally:
     conn.close()
+
 
 # ==================== SYSTEM OVERVIEW & POP-UP WORKFLOW MODAL ====================
 @st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
