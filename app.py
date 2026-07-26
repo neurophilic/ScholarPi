@@ -212,33 +212,269 @@ else:
             del st.query_params["orcid"]
         st.rerun()
 
-current_user = st.session_state.orcid_id
-current_email = "None"
+# --- Scilem Accessory Chatbot in Sidebar ---
+with st.sidebar.expander("🤖 Scilem Accessory Chatbot", expanded=False):
+    st.markdown("CoARA-aligned decentralized scientific assistant.")
+    
+    if st.button("Sync Pinata Knowledge Base", key="scilem_sync_btn", use_container_width=True):
+        st.session_state["scilem_synced"] = True
+        st.toast("Successfully synchronized decentralized RLHF dataset from Pinata IPFS!", icon="✅")
+    
+    if st.session_state.get("scilem_synced"):
+        st.success("Synced with Pinata IPFS.", icon="🌐")
 
-st.title(
-    "Pi-Index Assessment Engine (CoARA-Compliant)",
-    help=(
-        "Automated peer-review framework powered by neural networks, SciScore"
-        " reproducibility metrics, and multidimensional blockchain consensus."
-    ),
-)
-st.markdown(
-    "**Upload papers, define your scope of research, let Pi-Index filter noise"
-    " and yield quantitative results aligned with Responsible Research"
-    " Assessment (RRA).**"
-)
+    if "scilm_messages" not in st.session_state:
+        st.session_state.scilm_messages = [
+            {
+                "role": "assistant", 
+                "content": "Greetings. I am Scilem, your decentralized scientific intelligence assistant. How may I help?"
+            }
+        ]
 
-with st.expander(
-    "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)",
-    expanded=False,
-):
-    st.subheader(
-        "Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine"
+    chat_container = st.container(height=300)
+    with chat_container:
+        for idx, message in enumerate(st.session_state.scilm_messages):
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    if prompt := st.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
+        st.session_state.scilm_messages.append({"role": "user", "content": prompt})
+        
+        rag_context = ""
+        few_shot_examples = ""
+        try:
+            dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
+            if os.path.exists(dataset_path):
+                with open(dataset_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    query_terms = set(prompt.lower().split())
+                    relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
+                    if not relevant_lines:
+                        relevant_lines = lines[-5:]
+                    rag_context = "".join(relevant_lines[-5:])
+        except Exception:
+            rag_context = "No decentralized data accessible."
+
+        try:
+            conn_rag = get_db_connection()
+            cur_rag = conn_rag.cursor()
+            cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
+            top_paper = cur_rag.fetchone()
+            conn_rag.close()
+            if top_paper:
+                few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
+        except Exception:
+            pass
+
+        scilm_sys_prompt = (
+            "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines. "
+            "Be analytical, evidence-driven, and precise.\n\n"
+            f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
+            f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
+        )
+
+        messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
+            {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
+        ]
+
+        full_response = ""
+        try:
+            from brain import groq_client
+            PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
+            FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
+            if groq_client:
+                try:
+                    response = groq_client.chat.completions.create(
+                        model=PRIMARY_MODEL_NAME,
+                        messages=messages_for_api,
+                        temperature=0.15,
+                    )
+                    full_response = response.choices[0].message.content
+                except Exception as primary_err:
+                    if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
+                        fallback_response = groq_client.chat.completions.create(
+                            model=FALLBACK_MODEL_NAME,
+                            messages=messages_for_api,
+                            temperature=0.15,
+                        )
+                        full_response = fallback_response.choices[0].message.content + "\n\n*(Handled via Fallback Engine).* "
+                    else:
+                        raise primary_err
+            else:
+                full_response = "Error: Groq API client not initialized."
+        except Exception as e:
+            full_response = f"Error connecting to Scilem engine: {str(e)}"
+
+        st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
+
+# --- Helper for Cartography Render ---
+def render_bubble_chart_clean(target_author):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT fields, subfields, final_score, author_name FROM papers_assessment"
+        )
+        data = cursor.fetchall()
+    finally:
+        conn.close()
+
+    html_string, table_html = "", ""
+    if not data:
+        return html_string, table_html
+
+    topic_aggregates = {}
+    exclude_terms = {
+        "general", "general science", "unspecified domain",
+        "unspecified sub-domain", "core research topic",
+    }
+
+    for fields_json, subfields_json, final_score, author_str in data:
+        cleaned_author = clean_author_name(author_str)
+        if (
+            target_author
+            and target_author != "All Authors"
+            and target_author not in cleaned_author
+        ):
+            continue
+        try:
+            subfields = [s.title().strip() for s in json.loads(subfields_json)]
+            score = float(final_score) if final_score else 50.0
+            for s in subfields:
+                if s.lower() not in exclude_terms:
+                    if s not in topic_aggregates:
+                        topic_aggregates[s] = {"weight_sum": 0.0, "frequency": 0}
+                    topic_aggregates[s]["weight_sum"] += score
+                    topic_aggregates[s]["frequency"] += 1
+        except:
+            continue
+
+    if not topic_aggregates:
+        topic_aggregates["Core Research Domain"] = {
+            "weight_sum": 50.0,
+            "frequency": 1,
+        }
+
+    unique_topics = list(topic_aggregates.keys())
+
+    def get_color(i, n):
+        h, s, v = i / n if n > 0 else 0, 0.7, 0.9
+        rgb = colorsys.hsv_to_rgb(h, s, v)
+        return "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
+
+    color_map = {
+        topic: get_color(i, len(unique_topics))
+        for i, topic in enumerate(unique_topics)
+    }
+    net = Network(
+        height="450px",
+        width="100%",
+        bgcolor="#ffffff",
+        font_color="#2c3e50",
+        notebook=False,
     )
-    st.markdown("---")
+    physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
+    net.set_options(physics_options)
 
-    col1, col2 = st.columns(2)
-    with col1:
+    for topic, metrics in topic_aggregates.items():
+        avg_weight = metrics["weight_sum"] / metrics["frequency"]
+        freq = metrics["frequency"]
+        node_size = max(25, 15 + (avg_weight * 2.0))
+
+        base_col = color_map[topic]
+        net.add_node(
+            n_id=topic,
+            label=" ",
+            title=(
+                f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score:"
+                f" {avg_weight:.1f}"
+            ),
+            size=node_size,
+            shape="dot",
+            physics=True,
+            font={"color": "rgba(0,0,0,0)", "size": 0},
+            color={
+                "background": base_col,
+                "border": "#1a1a1a",
+                "highlight": {"background": base_col, "border": "#000000"},
+                "hover": {"background": base_col, "border": "#000000"},
+            },
+            shadow={
+                "enabled": True,
+                "color": "rgba(0,0,0,0.5)",
+                "size": 8,
+                "x": 4,
+                "y": 4,
+            },
+        )
+
+    tmp_fd, tmp_name = tempfile.mkstemp(suffix=".html")
+    os.close(tmp_fd) 
+    
+    try:
+        net.save_graph(tmp_name)
+        with open(tmp_name, "r", encoding="utf-8") as f:
+            html_string = f.read()
+    finally:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+
+    gradient_injection = """
+    <style type="text/css">
+        canvas {
+            background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
+        }
+    </style>
+    </head>
+    """
+    html_string = html_string.replace("</head>", gradient_injection)
+    html_string = html_string.replace(
+        "mynetwork", f"pi_network_{int(time.time() * 1000)}"
+    )
+
+    table_html = "<style>.table-big { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 6px; text-align: left; } .table-big td { padding: 6px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; } </style>"
+    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Scientific Topic</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
+    for topic, metrics in sorted(
+        topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True
+    ):
+        avg_w = metrics["weight_sum"] / metrics["frequency"]
+        table_html += (
+            f"<tr><td style='text-align: center;'><div class='color-box'"
+            f" style='background-color:{color_map[topic]};'></div></td><td><b>{topic}</b></td><td"
+            f" style='text-align: center;'>{metrics['frequency']}</td><td"
+            f" style='text-align: center;'>{avg_w:.1f}</td></tr>"
+        )
+    table_html += "</tbody></table></div>"
+
+    return html_string, table_html
+
+# --- Top Layout with Global Map of Science Permanent Display ---
+header_col1, header_col2 = st.columns([1.1, 0.9])
+
+with header_col1:
+    st.title(
+        "Pi-Index Assessment Engine (CoARA-Compliant)",
+        help=(
+            "Automated peer-review framework powered by neural networks, SciScore"
+            " reproducibility metrics, and multidimensional blockchain consensus."
+        ),
+    )
+    st.markdown(
+        "**Upload papers, define your scope of research, let Pi-Index filter noise"
+        " and yield quantitative results aligned with Responsible Research"
+        " Assessment (RRA).**"
+    )
+
+    with st.expander(
+        "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)",
+        expanded=False,
+    ):
+        st.subheader(
+            "Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine"
+        )
+        st.markdown("---")
+
         st.markdown(
             r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
             + tooltip(
@@ -254,116 +490,76 @@ with st.expander(
             r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
         )
 
-        st.markdown(
-            "**C1: Originality** "
-            + tooltip(
-                "Semantic distance from literature corpus penalized by generative"
-                " AI laundering heuristics."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
-            r" \times (1 - \lambda_{laundering}) $$"
-        )
+with header_col2:
+    st.markdown("#### 🌐 Global Map of Science (Live Cartography)")
+    conn_m = get_db_connection()
+    try:
+        cursor_m = conn_m.cursor()
+        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
+        all_global_authors = []
+        for row in cursor_m.fetchall():
+            if row[0]:
+                cleaned = clean_author_name(row[0])
+                for a in cleaned.split(","):
+                    if a.strip() and not is_likely_institution(a.strip()):
+                        all_global_authors.append(a.strip())
+    finally:
+        conn_m.close()
+    all_global_authors = sorted(list(set(all_global_authors)))
 
-        st.markdown(
-            "**C2: Methodological Rigor** "
-            + tooltip(
-                "Deterministic adherence to MDAR reporting standards and valid RRIDs"
-                " via SciScore."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
-            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
-            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
-            r" \epsilon}\right) $$"
-        )
+    selected_author_top = None
+    piq_dict, book_dict = get_author_piq_dict()
 
-        st.markdown(
-            "**C3: Interdisciplinary Synergy** "
-            + tooltip(
-                "Shannon entropy of the verified citation network across diverse"
-                " subfields."
+    if all_global_authors:
+        filter_choice_top = st.selectbox(
+            "Filter Map by Author:",
+            ["All Authors"] + all_global_authors,
+            key=f"top_author_filter_{st.session_state['assessment_update_token']}",
+            format_func=lambda x: (
+                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
             ),
-            unsafe_allow_html=True,
         )
-        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+        if filter_choice_top != "All Authors":
+            selected_author_top = filter_choice_top
 
-        st.markdown(
-            "**C4: Societal & Open Infrastructure Impact** "
-            + tooltip(
-                "CoARA WG TIER aligned rewards for public datasets, civic policy"
-                " integration, and open science."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
-            r" U_v(\tau, \mathbf{x}) \right] $$"
-        )
-    with col2:
-        st.markdown(
-            "**C5: Open Science & Executable Reproducibility** "
-            + tooltip(
-                "Cryptographic verification of open data/code repositories and"
-                " sandboxed container execution."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
-            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
-        )
+    interactive_html_top, table_html_top = render_bubble_chart_clean(selected_author_top)
+    if interactive_html_top:
+        components.html(interactive_html_top, height=430, scrolling=True)
+    else:
+        st.info("Awaiting sufficient data for map visualization.")
 
-        st.markdown(
-            "**C6: Literature Integration** "
-            + tooltip(
-                "Citation context polarity classification (supporting vs."
-                " contrasting engagement)."
-            ),
-            unsafe_allow_html=True,
+    with st.expander("🔍 View Map Legend, Frequency Metrics & Leaderboard"):
+        st.markdown(table_html_top, unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
+        search_query_top = st.text_input(
+            "Search Explorer by Author or Book Address:",
+            placeholder="Enter author name or 0x...",
+            key="top_search_query_input"
         )
-        st.markdown(
-            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
-            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
-        )
+        if piq_dict:
+            leaderboard_data = []
+            for author, piq in piq_dict.items():
+                leaderboard_data.append({
+                    "Contributing Author": author,
+                    "Unique Author Book Address": book_dict.get(author, "None"),
+                    "Total piQ Earned": round(piq, 2),
+                })
+            piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
+            if search_query_top:
+                q_clean = search_query_top.strip().lower()
+                filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
+                st.dataframe(filtered_df, use_container_width=True, height=180)
+            else:
+                st.dataframe(piq_df, use_container_width=True, height=180)
+        else:
+            st.info("No piQ tokens minted yet.")
 
-        st.markdown(
-            "**C7: Empirical Density & Validation** "
-            + tooltip(
-                "Deterministic extraction of sample sizes, degrees of freedom, and"
-                " cohort volumes."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
-            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
-        )
+st.markdown("---")
 
-        st.markdown(
-            "**C8: Future Actionability & FAIR** "
-            + tooltip(
-                "Strict measurement of adherence to FAIR principles for"
-                " downstream research cascade."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
-            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
-        )
-
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2 = st.tabs([
     "Assessment and Dossier",
-    "Global Map of Science",
-    "Active Epoch & DeSci Staking",
-    "Pi-Brain Neural Network",
-    "System Overview and Limitations",
-    "Scilem: Decentralized AI"
+    "Pinamic"
 ])
 
 with tab1:
@@ -1067,339 +1263,23 @@ with tab1:
 
 with tab2:
     st.markdown(
-        "### Global Map of Science (Ledger-Driven Cartography) "
+        "### Pinamic: Active Epoch, DeSci Staking & Pi-Brain Neural Network "
         + tooltip(
-            "Generates dynamic network topologies based on the aggregate metadata"
-            " of all ledger-evaluated papers."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "This map is permanently updated by every user assessing documents on"
-        " the blockchain ledger, forming an unalterable topological view of"
-        " current scientific trends."
-    )
-
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT author_name FROM papers_assessment")
-        all_global_authors = []
-        for row in cursor.fetchall():
-            if row[0]:
-                cleaned = clean_author_name(row[0])
-                for a in cleaned.split(","):
-                    if a.strip() and not is_likely_institution(a.strip()):
-                        all_global_authors.append(a.strip())
-    finally:
-        conn.close()
-        
-    all_global_authors = sorted(list(set(all_global_authors)))
-
-    selected_author = None
-    piq_dict, book_dict = get_author_piq_dict()
-
-    if all_global_authors:
-        filter_choice = st.selectbox(
-            "Filter Global Cartography by Author:",
-            ["All Authors"] + all_global_authors,
-            key=f"author_filter_dropdown_{st.session_state['assessment_update_token']}",
-            format_func=lambda x: (
-                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
-            ),
-        )
-        if filter_choice != "All Authors":
-            selected_author = filter_choice
-
-    def render_bubble_chart_clean(target_author):
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT fields, subfields, final_score, author_name FROM"
-                " papers_assessment"
-            )
-            data = cursor.fetchall()
-        finally:
-            conn.close()
-
-        html_string, table_html = "", ""
-        if not data:
-            return html_string, table_html
-
-        topic_aggregates = {}
-        exclude_terms = {
-            "general", "general science", "unspecified domain",
-            "unspecified sub-domain", "core research topic",
-        }
-
-        for fields_json, subfields_json, final_score, author_str in data:
-            cleaned_author = clean_author_name(author_str)
-            if (
-                target_author
-                and target_author != "All Authors"
-                and target_author not in cleaned_author
-            ):
-                continue
-            try:
-                subfields = [s.title().strip() for s in json.loads(subfields_json)]
-                score = float(final_score) if final_score else 50.0
-                for s in subfields:
-                    if s.lower() not in exclude_terms:
-                        if s not in topic_aggregates:
-                            topic_aggregates[s] = {"weight_sum": 0.0, "frequency": 0}
-                        topic_aggregates[s]["weight_sum"] += score
-                        topic_aggregates[s]["frequency"] += 1
-            except:
-                continue
-
-        if not topic_aggregates:
-            topic_aggregates["Core Research Domain"] = {
-                "weight_sum": 50.0,
-                "frequency": 1,
-            }
-
-        unique_topics = list(topic_aggregates.keys())
-
-        def get_color(i, n):
-            h, s, v = i / n if n > 0 else 0, 0.7, 0.9
-            rgb = colorsys.hsv_to_rgb(h, s, v)
-            return "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
-
-        color_map = {
-            topic: get_color(i, len(unique_topics))
-            for i, topic in enumerate(unique_topics)
-        }
-        net = Network(
-            height="600px",
-            width="100%",
-            bgcolor="#ffffff",
-            font_color="#2c3e50",
-            notebook=False,
-        )
-        physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
-        net.set_options(physics_options)
-
-        for topic, metrics in topic_aggregates.items():
-            avg_weight = metrics["weight_sum"] / metrics["frequency"]
-            freq = metrics["frequency"]
-            node_size = max(30, 20 + (avg_weight * 2.5))
-
-            base_col = color_map[topic]
-            net.add_node(
-                n_id=topic,
-                label=" ",
-                title=(
-                    f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score:"
-                    f" {avg_weight:.1f}"
-                ),
-                size=node_size,
-                shape="dot",
-                physics=True,
-                font={"color": "rgba(0,0,0,0)", "size": 0},
-                color={
-                    "background": base_col,
-                    "border": "#1a1a1a",
-                    "highlight": {"background": base_col, "border": "#000000"},
-                    "hover": {"background": base_col, "border": "#000000"},
-                },
-                shadow={
-                    "enabled": True,
-                    "color": "rgba(0,0,0,0.5)",
-                    "size": 12,
-                    "x": 8,
-                    "y": 8,
-                },
-            )
-
-        tmp_fd, tmp_name = tempfile.mkstemp(suffix=".html")
-        os.close(tmp_fd) 
-        
-        try:
-            net.save_graph(tmp_name)
-            with open(tmp_name, "r", encoding="utf-8") as f:
-                html_string = f.read()
-        finally:
-            if os.path.exists(tmp_name):
-                os.remove(tmp_name)
-
-        gradient_injection = """
-        <style type="text/css">
-            canvas {
-                background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
-            }
-        </style>
-        </head>
-        """
-        html_string = html_string.replace("</head>", gradient_injection)
-        html_string = html_string.replace(
-            "mynetwork", f"pi_network_{int(time.time() * 1000)}"
-        )
-
-        table_html = "<style>.table-big { width: 100%; font-size: 14px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; } .table-big td { padding: 8px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 30px; height: 30px; border-radius: 4px; display: inline-block; } </style>"
-        table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 20%; text-align: center;'>Color</th><th>Scientific Topic</th><th style='text-align: center;'>Frequency</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
-        for topic, metrics in sorted(
-            topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True
-        ):
-            avg_w = metrics["weight_sum"] / metrics["frequency"]
-            table_html += (
-                f"<tr><td style='text-align: center;'><div class='color-box'"
-                f" style='background-color:{color_map[topic]};'></div></td><td><b>{topic}</b></td><td"
-                f" style='text-align: center;'>{metrics['frequency']}</td><td"
-                f" style='text-align: center;'>{avg_w:.1f}</td></tr>"
-            )
-        table_html += "</tbody></table></div>"
-
-        return html_string, table_html
-
-    interactive_html, table_html = render_bubble_chart_clean(selected_author)
-    if interactive_html:
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            components.html(interactive_html, height=620, scrolling=True)
-        with col2:
-            st.markdown(
-                "### Legend & Frequency Metrics "
-                + tooltip(
-                    "Lists specific scientific paper topics, assessed frequencies,"
-                    " and calculated score weights."
-                ),
-                unsafe_allow_html=True,
-            )
-            st.markdown(table_html, unsafe_allow_html=True)
-    else:
-        st.info("Awaiting sufficient data for this selection.")
-
-    st.markdown("---")
-    st.markdown(
-        "### Pi Quotient (piQ) Explorer & Leaderboard "
-        + tooltip(
-            "piQ is a Soulbound Token (SBT). It cannot be transferred, bought, or"
-            " sold. It permanently attaches to the author's identity."
-        ),
-        unsafe_allow_html=True,
-    )
-
-    search_query = st.text_input(
-        "Search Explorer by Author Name or Unique Book Address:",
-        placeholder="Enter author name or 0x...",
-    )
-
-    if piq_dict:
-        leaderboard_data = []
-        for author, piq in piq_dict.items():
-            leaderboard_data.append({
-                "Contributing Author": author,
-                "Unique Author Book Address": book_dict.get(author, "None"),
-                "Total piQ Earned": round(piq, 2),
-            })
-        piq_df = pd.DataFrame(leaderboard_data)
-        piq_df = piq_df.sort_values(
-            by="Total piQ Earned", ascending=False
-        ).reset_index(drop=True)
-
-        if search_query:
-            query_clean = search_query.strip().lower()
-            conn = get_db_connection()
-            try:
-                cursor = conn.cursor()
-
-                if query_clean.startswith("0x"):
-                    cursor.execute(
-                        "SELECT title, author_name, eth_book, filename, eval_hash, final_score,"
-                        " piq_minted, timestamp FROM papers_assessment WHERE"
-                        " LOWER(eth_book)=? ORDER BY timestamp DESC",
-                        (query_clean,),
-                    )
-                    book_papers = cursor.fetchall()
-                    if book_papers:
-                        st.success(
-                            f"Found {len(book_papers)} papers linked to Unique Book Address:"
-                            f" `{search_query}`"
-                        )
-                        formatted_book_rows = []
-                        for r in book_papers:
-                            formatted_book_rows.append((
-                                r[0], clean_author_name(r[1]), r[2], r[3],
-                                r[4], r[5], r[6], r[7],
-                            ))
-                        df_book = pd.DataFrame(
-                            formatted_book_rows,
-                            columns=[
-                                "Paper Title", "Author", "Unique Book Address",
-                                "File Name", "Paper Address (Eval Hash)",
-                                "Pi-Index", "piQ Earned", "Timestamp",
-                            ],
-                        )
-                        st.dataframe(df_book, use_container_width=True, hide_index=True)
-                    else:
-                        st.warning(
-                            f"No records found for Unique Book Address '{search_query}'."
-                        )
-                else:
-                    cursor.execute(
-                        "SELECT author_name, title, eth_book, filename, eval_hash, final_score,"
-                        " piq_minted, timestamp FROM papers_assessment WHERE"
-                        " LOWER(author_name) LIKE ? ORDER BY timestamp DESC",
-                        (f"%{query_clean}%",),
-                    )
-                    author_papers = cursor.fetchall()
-                    if author_papers:
-                        st.success(
-                            f"Found {len(author_papers)} paper records for author matching"
-                            f" '{search_query}'."
-                        )
-                        formatted_auth_rows = []
-                        for r in author_papers:
-                            formatted_auth_rows.append((
-                                clean_author_name(r[0]), r[1], r[2], r[3],
-                                r[4], r[5], r[6], r[7],
-                            ))
-                        df_author = pd.DataFrame(
-                            formatted_auth_rows,
-                            columns=[
-                                "Author", "Paper Title", "Unique Book Address",
-                                "File Name", "Paper Address (Eval Hash)",
-                                "Pi-Index", "piQ Earned", "Timestamp",
-                            ],
-                        )
-                        st.dataframe(df_author, use_container_width=True, hide_index=True)
-                    else:
-                        st.warning(
-                            f"No papers or piQ records found for author '{search_query}'."
-                        )
-            finally:
-                conn.close()
-        else:
-            st.dataframe(piq_df, use_container_width=True)
-    else:
-        st.info("No Pi Quotient has been minted yet.")
-
-with tab3:
-    st.markdown(
-        "### Active Epoch & DeSci Staking Guide "
-        + tooltip(
-            "Detailed explanation of how blockchain blocks, epochs, proof-of-research"
-            " validation, and DeSci staking work in Tab 3."
+            "Manages decentralized consensus, ledger weights, DeSci peer attestations, and PyTorch LSTM meta-learning forecasts."
         ),
         unsafe_allow_html=True,
     )
 
     with st.expander(
-        "Detailed Guide: How Tab 3 Works (Blockchain Ledger & Staking)",
+        "Detailed Guide: How Pinamic Works (Ledger Consensus, Staking & Pi-Brain)",
         expanded=False,
     ):
         st.markdown("""
-        Tab 3 manages the immutable decentralization layer of the Pi-Index Assessment Engine. Here is how each component operates:
-        1. **Active Epoch & Block Height**: The system tracks an incremental block counter (`block_height`). Every evaluation increments the global evaluation counter. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: 
-           - Combines the block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-           - Guarantees complete auditability and cryptographic non-repudiation of every assessment round.
-        3. **Dynamic Weight Adjustment**: Weights shift dynamically across epochs driven by model evaluation statistics and algorithmic pi ($\pi$) convergence precision.
-        4. **DeSci Peer Attestation & Staking**: 
-           - High-reputation researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either **endorse** or **challenge** specific manuscript assessments on-chain (`desci_attestations` table).
-           - This provides decentralized crowd-auditing and stakes reputation against fraudulent or low-rigor preprints.
-        5. **Ledger Hashes & zk-SNARK Inspection**: Displays the chronological list of recent smart contract executions, linking paper evaluation hashes (`eval_hash`) to block hashes and zero-knowledge verification proofs.
+        Pinamic integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
+        4. **Pi-Brain Meta-Learning LSTM**: An on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks to forecast future criterion shifts.
         """)
 
     conn = get_db_connection()
@@ -1523,11 +1403,11 @@ with tab3:
             col_ex1, col_ex2 = st.columns(2)
             with col_ex1:
                 piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-                st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS[:10]}...`]({piq_url})")
+                st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
             with col_ex2:
                 reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
                 if REGISTRY_CONTRACT_ADDRESS:
-                    st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS[:10]}...`]({reg_url})")
+                    st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
                 else:
                     st.markdown("**Registry Contract:** `Not Configured`")
 
@@ -1614,6 +1494,108 @@ with tab3:
 
             st.markdown("---")
             st.markdown(
+                "### Pi-Brain LSTM Meta-Learning Forecasts "
+                + tooltip(
+                    "An LSTM neural network that trains directly on the block weights to"
+                    " predict future shifts in algorithmic evaluation standards."
+                ),
+                unsafe_allow_html=True,
+            )
+
+            @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+            def train_pibrain_cached(weight_data, actual_lookback):
+                dataset = PiBlockchainDataset(weight_data, actual_lookback)
+                dataloader = DataLoader(
+                    dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+                )
+
+                model = PiBrainLSTM()
+                weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+                if os.path.exists(weights_path):
+                    try:
+                        model.load_state_dict(torch.load(weights_path, weights_only=True))
+                    except Exception:
+                        pass
+
+                loss_function = nn.MSELoss()
+                optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+                model.train()
+                for epoch in range(200):
+                    for seq, target in dataloader:
+                        optimizer.zero_grad()
+                        loss = loss_function(model(seq), target)
+                        loss.backward()
+                        optimizer.step()
+
+                model.eval()
+                with torch.no_grad():
+                    predicted = (
+                        model(
+                            torch.tensor(
+                                weight_data[-actual_lookback:], dtype=torch.float32
+                            ).unsqueeze(0)
+                        )
+                        .squeeze()
+                        .numpy()
+                    )
+                    torch.save(model.state_dict(), weights_path)
+                    return predicted
+
+            cursor.execute(
+                "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+                " BY block_height ASC"
+            )
+            historical_rows = cursor.fetchall()
+
+            min_blocks_required = 2
+            if len(historical_rows) < min_blocks_required:
+                st.warning(
+                    f"Not enough blockchain data to train the meta-model. You need at least"
+                    f" {min_blocks_required} blocks (Currently on ledger:"
+                    f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+                    " block 2."
+                )
+            else:
+                current_block_count = len(historical_rows)
+                lookback_window = max(1, min(5, current_block_count - 1))
+
+                if (
+                    "last_trained_blocks" not in st.session_state
+                    or st.session_state.last_trained_blocks != current_block_count
+                ):
+                    weight_data = np.array(historical_rows, dtype=np.float32)
+                    actual_lookback = min(lookback_window, len(weight_data))
+
+                    st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+                    st.session_state.current_weights = weight_data[-1]
+                    st.session_state.last_trained_blocks = current_block_count
+                else:
+                    st.info(
+                        "Meta-model is cached and up-to-date with the latest blockchain"
+                        " ledger."
+                    )
+
+                df_compare = pd.DataFrame(
+                    {
+                        "Current Active Weights": st.session_state.current_weights,
+                        "Predicted Next Epoch": st.session_state.predicted_next_weights,
+                    },
+                    index=[
+                        "C1: Originality", "C2: Methodological Rigor",
+                        "C3: Interdisciplinary", "C4: Societal Impact",
+                        "C5: Open Science", "C6: Literature Integration",
+                        "C7: Empirical Density", "C8: Future Actionability",
+                    ],
+                )
+                st.bar_chart(df_compare, height=400)
+                st.markdown(
+                    f"**Mathematical Constraint Check:** Predicted Sum ="
+                    f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
+                )
+
+            st.markdown("---")
+            st.markdown(
                 "### Latest Blockchain Ledger Hashes, zk-SNARK Proofs, and piQ Minted "
                 + tooltip(
                     "Chronological view of the most recent smart contract executions,"
@@ -1650,134 +1632,12 @@ with tab3:
     finally:
         conn.close()
 
-with tab4:
+# --- System Overview & Flowchart Expander at Bottom of Main Page ---
+st.markdown("---")
+with st.expander("🏗️ View System Overview, Architecture Flowchart & Whitepaper DOI (Ali Vafadar Yengejeh)"):
     st.markdown(
-        "### Pi-Brain: Meta-Learning on the PoR Blockchain "
-        + tooltip(
-            "An LSTM neural network that trains directly on the block weights to"
-            " predict future shifts in algorithmic evaluation standards."
-        ),
-        unsafe_allow_html=True,
-    )
-
-    with st.expander(
-        "Detailed Guide: How Pi-Brain LSTM Meta-Learning Works", expanded=False
-    ):
-        st.markdown("""
-        Pi-Brain is an on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks:
-        1. **Data Pipeline (`PiBlockchainDataset`)**: Extracts historical weight matrices from the `blockchain_por_weights` table using a rolling lookback window (`lookback`).
-        2. **Recurrent Architecture (`nn.LSTM`)**: 
-           - Utilizes a Long Short-Term Memory (LSTM) layer with a hidden dimension size of 32 to capture temporal dependencies and drift patterns across successive epochs.
-        3. **Linear Regression & Softmax Normalization**: 
-           - Passes the final hidden state through a sequential multi-layer perceptron (Linear $\rightarrow$ ReLU $\rightarrow$ Linear) to output 8 projected criterion weights.
-           - Applies `torch.softmax(dim=-1) * 8.0` to strictly preserve the mathematical normalization constraint where the sum of all 8 criteria weights equals exactly 8.0.
-        4. **Optimization & Training Loop**: 
-           - Trains dynamically using Mean Squared Error loss (`nn.MSELoss`) and the Adam optimizer over 200 epochs to forecast how evaluation weights will shift in the upcoming epoch.
-        """)
-
-    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-    def train_pibrain_cached(weight_data, actual_lookback):
-        dataset = PiBlockchainDataset(weight_data, actual_lookback)
-        dataloader = DataLoader(
-            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-        )
-
-        model = PiBrainLSTM()
-        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-        if os.path.exists(weights_path):
-            try:
-                model.load_state_dict(torch.load(weights_path, weights_only=True))
-            except Exception:
-                pass
-
-        loss_function = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-        model.train()
-        for epoch in range(200):
-            for seq, target in dataloader:
-                optimizer.zero_grad()
-                loss = loss_function(model(seq), target)
-                loss.backward()
-                optimizer.step()
-
-        model.eval()
-        with torch.no_grad():
-            predicted = (
-                model(
-                    torch.tensor(
-                        weight_data[-actual_lookback:], dtype=torch.float32
-                    ).unsqueeze(0)
-                )
-                .squeeze()
-                .numpy()
-            )
-            torch.save(model.state_dict(), weights_path)
-            return predicted
-
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-            " BY block_height ASC"
-        )
-        historical_rows = cursor.fetchall()
-    finally:
-        conn.close()
-
-    min_blocks_required = 2
-    if len(historical_rows) < min_blocks_required:
-        st.warning(
-            f"Not enough blockchain data to train the meta-model. You need at least"
-            f" {min_blocks_required} blocks (Currently on ledger:"
-            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-            " block 2."
-        )
-    else:
-        current_block_count = len(historical_rows)
-        lookback_window = max(1, min(5, current_block_count - 1))
-
-        if (
-            "last_trained_blocks" not in st.session_state
-            or st.session_state.last_trained_blocks != current_block_count
-        ):
-            weight_data = np.array(historical_rows, dtype=np.float32)
-            actual_lookback = min(lookback_window, len(weight_data))
-
-            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
-            st.session_state.current_weights = weight_data[-1]
-            st.session_state.last_trained_blocks = current_block_count
-        else:
-            st.info(
-                "Meta-model is cached and up-to-date with the latest blockchain"
-                " ledger."
-            )
-
-        df_compare = pd.DataFrame(
-            {
-                "Current Active Weights": st.session_state.current_weights,
-                "Predicted Next Epoch": st.session_state.predicted_next_weights,
-            },
-            index=[
-                "C1: Originality", "C2: Methodological Rigor",
-                "C3: Interdisciplinary", "C4: Societal Impact",
-                "C5: Open Science", "C6: Literature Integration",
-                "C7: Empirical Density", "C8: Future Actionability",
-            ],
-        )
-        st.bar_chart(df_compare, height=400)
-        st.markdown(
-            f"**Mathematical Constraint Check:** Predicted Sum ="
-            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
-        )
-
-with tab5:
-    st.markdown(
-        "### The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance"
-        " Workflow"
-    )
-    st.markdown(
+        "### The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow\n\n"
+        "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
         "The enhanced system architecture flow below details the decentralized"
         " intake, ZK double-blind reviewer assignment, SciScore deterministic"
         " parsing, Item Response Theory (IRT) calibration, and smart contract"
@@ -1851,151 +1711,6 @@ with tab5:
         Mint -> PiBrain;
     }
     """)
-
-with tab6:
-    st.markdown(
-        "### Scilem: Decentralized Scientific Intelligence (Standard-Compliant Agent)"
-        + tooltip(
-            "Scilem implements advanced LLM standards: Semantic RAG, Chain-of-Thought "
-            "reasoning, and a decentralized RLHF preference alignment loop connected to Pinata IPFS."
-        ),
-        unsafe_allow_html=True,
-    )
-    
-    st.markdown(
-        "Query Scilem regarding research methodologies, request counterfactual logic stress tests, "
-        "or evaluate its alignment with CoARA guidelines."
-    )
-    st.markdown("---")
-
-    col_sync, col_info = st.columns([1, 4])
-    with col_sync:
-        if st.button("Sync Pinata Knowledge Base", key="scilem_sync_btn", use_container_width=True):
-            st.session_state["scilem_synced"] = True
-            st.toast("Successfully synchronized decentralized RLHF dataset from Pinata IPFS!", icon="✅")
-    with col_info:
-        if st.session_state.get("scilem_synced"):
-            st.success("Scilem active memory synchronized with live decentralized IPFS state.", icon="🌐")
-        else:
-            st.info("Using local cache. Click 'Sync' to pull latest Pinata dataset.")
-
-    st.markdown("---")
-
-    if "scilm_messages" not in st.session_state:
-        st.session_state.scilm_messages = [
-            {
-                "role": "assistant", 
-                "content": "Greetings. I am Scilem, a decentralized CoARA-aligned scientific intelligence engine. My reasoning is grounded in peer-attested ledger data and optimized via RLHF standards. How may I assist your inquiry?"
-            }
-        ]
-
-    for idx, message in enumerate(st.session_state.scilm_messages):
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            
-            if message["role"] == "assistant" and idx > 0:
-                fb_col1, fb_col2, fb_col3 = st.columns([1, 1, 8])
-                with fb_col1:
-                    if st.button("👍 Helpful", key=f"thumbs_up_{idx}"):
-                        st.toast("Preference recorded: Positive reinforcement logged to RLHF training set.", icon="📈")
-                        dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-                        with open(dataset_path, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"preference": "preferred", "response": message["content"], "timestamp": datetime.now().isoformat()}) + "\n")
-                with fb_col2:
-                    if st.button("👎 Flawed", key=f"thumbs_down_{idx}"):
-                        st.toast("Preference recorded: Negative penalty logged for model adjustment.", icon="📉")
-                        dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-                        with open(dataset_path, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"preference": "dispreferred", "response": message["content"], "timestamp": datetime.now().isoformat()}) + "\n")
-
-    if prompt := st.chat_input("Query Scilem with a scientific, methodological, or policy question..."):
-        st.session_state.scilm_messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            
-            rag_context = ""
-            few_shot_examples = ""
-            try:
-                dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-                if os.path.exists(dataset_path):
-                    with open(dataset_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
-                        query_terms = set(prompt.lower().split())
-                        relevant_lines = []
-                        for line in lines:
-                            if any(term in line.lower() for term in query_terms if len(term) > 3):
-                                relevant_lines.append(line)
-                        
-                        if not relevant_lines:
-                            relevant_lines = lines[-5:]
-                        
-                        rag_context = "".join(relevant_lines[-5:])
-            except Exception:
-                rag_context = "No decentralized data accessible at the moment."
-
-            try:
-                conn_rag = get_db_connection()
-                cur_rag = conn_rag.cursor()
-                cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
-                top_paper = cur_rag.fetchone()
-                conn_rag.close()
-                if top_paper:
-                    few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
-            except Exception:
-                pass
-
-            scilm_sys_prompt = (
-                "You are Scilem, an advanced, rigorous Scientific LLM aligned with CoARA guidelines and "
-                "decentralized DeSci tokenomics. You do not engage in conversational filler; you are analytical, "
-                "evidence-driven, and precise.\n\n"
-                "MANDATORY CHAIN-OF-THOUGHT INSTRUCTION:\n"
-                "Before providing your final response, structure your internal reasoning inside your thought process:\n"
-                "1. PREMISE ANALYSIS: Identify the core scientific or methodological claim.\n"
-                "2. EMPIRICAL CHECK: Cross-reference against SciScore rigor standards and empirical density.\n"
-                "3. POLICY ALIGNMENT: Ensure compliance with CoARA and responsible research assessment.\n\n"
-                f"RELEVANT DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
-                f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
-            )
-
-            messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
-                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
-            ]
-
-            full_response = ""
-            try:
-                from brain import groq_client
-                PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
-                FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
-                if groq_client:
-                    try:
-                        response = groq_client.chat.completions.create(
-                            model=PRIMARY_MODEL_NAME,
-                            messages=messages_for_api,
-                            temperature=0.15,
-                        )
-                        full_response = response.choices[0].message.content
-                    except Exception as primary_err:
-                        if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
-                            st.toast("Primary model rate limit reached. Automatically switching to Scilem Fallback Engine (8B)...", icon="⚡")
-                            fallback_response = groq_client.chat.completions.create(
-                                model=FALLBACK_MODEL_NAME,
-                                messages=messages_for_api,
-                                temperature=0.15,
-                            )
-                            full_response = fallback_response.choices[0].message.content + "\n\n*(Note: Handled via Scilem Fallback Engine due to TPD rate limit).* "
-                        else:
-                            raise primary_err
-                else:
-                    full_response = "Error: Groq API client is not initialized. Please verify your API keys."
-            except Exception as e:
-                full_response = f"Error connecting to Scilm inference engine: {str(e)}"
-
-            message_placeholder.markdown(full_response)
-        
-        st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
 
 st.markdown("---")
 st.markdown(
