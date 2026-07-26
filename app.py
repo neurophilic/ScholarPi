@@ -15,7 +15,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pyvis.network import Network
-import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -126,7 +125,7 @@ custom_ui_code = """
 <script>
 const parentDoc = window.parent.document;
 
-// Click Listener exclusively for the Robot Icon Trigger
+// 1. Click Listener exclusively for the Robot Icon Trigger
 parentDoc.addEventListener('click', function(e) {
     let trigger = e.target.closest('.scilm-trigger');
     if (!trigger) return; 
@@ -150,7 +149,7 @@ parentDoc.addEventListener('click', function(e) {
     }
 }, true);
 
-// Auto-scroll chat to bottom
+// 2. MutationObserver to auto-scroll chat
 const observer = new MutationObserver(() => {
     const chatContainers = parentDoc.querySelectorAll('[data-testid="stChatMessageContainer"]');
     chatContainers.forEach(container => {
@@ -1323,10 +1322,15 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
+        # Super Exaggeration for Visual Impact (150x Amplified to expose micro-shifts clearly)
+        mean_val = np.mean(curr_vals)
+        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 150.0)
+        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 150.0)
+
         df_compare = pd.DataFrame(
             {
-                "Current Active Weights": curr_vals,
-                "Predicted Next Epoch": pred_vals,
+                "Current Active Weights (150x Amplified)": exagg_curr,
+                "Predicted Next Epoch (150x Amplified)": exagg_pred,
             },
             index=[
                 "C1: Originality", "C2: Methodological Rigor",
@@ -1349,6 +1353,14 @@ with top_analytics_col1:
             f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
             f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
         )
+
+    with st.expander("What's Pidyne?", expanded=False):
+        st.markdown("""
+        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
+        """)
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
