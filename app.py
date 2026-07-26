@@ -573,39 +573,15 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
             "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
         )
         top_epoch_data = cur_te.fetchone()
-        cur_te.execute("SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE eval_hash != 'genesis'")
-        top_total_papers = cur_te.fetchone()[0]
     except Exception:
         top_epoch_data = None
-        top_total_papers = 0
     finally:
         conn_top_ep.close()
 
     if top_epoch_data:
-        tb_height, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, tmodel = top_epoch_data
-        t_pi_acc = generate_blockchain_pi(tb_height)
-        st.markdown(
-            f"**Processed:** `{top_total_papers}` | **Block Size:** `{EPOCH_BLOCK_SIZE}` | **Model:** `{tmodel}` | **Block:** `{tb_height}` | **Pi Algorithmic Precision:** `{t_pi_acc}`"
-        )
-        t_cols = st.columns(4)
-        t_weights_vals = [tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8]
-        t_labels = [
-            ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
-            ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
-            ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
-            ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
-        ]
-        for i, col in enumerate(t_cols * 2):
-            if i < 8:
-                col.markdown(f"**{t_labels[i][0]} ({t_labels[i][1]})**")
-                col.markdown(
-                    f"<h3 style='margin-top:0px; margin-bottom:5px;'>{t_weights_vals[i]:.6f}</h3>",
-                    unsafe_allow_html=True,
-                )
-        st.markdown("---")
+        _, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, _ = top_epoch_data
     else:
-        tw1 = 1.001328
-        tw2 = 1.000038
+        tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 0.999645, 0.997347, 0.999278, 0.997645, 1.002110, 1.002609
 
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
@@ -622,18 +598,14 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    st.markdown(
-        f"**C1: Originality ($\varpi_1$ = `{tw1:.6f}`):** "
-        + tooltip(
-            "Semantic distance from literature corpus penalized by generative"
-            " AI laundering heuristics."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
-        r" \times (1 - \lambda_{laundering}) $$"
-    )
+    with st.expander(f"C1: Originality ($\varpi_1$ = `{tw1:.6f}`):"):
+        st.markdown(
+            "Semantic distance from literature corpus penalized by generative AI laundering heuristics."
+        )
+        st.markdown(
+            r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+            r" \times (1 - \lambda_{laundering}) $$"
+        )
 
     with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
         st.markdown(
@@ -646,34 +618,52 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
             r" \epsilon}\right) $$"
         )
 
-    with st.expander("C3: Interdisciplinary Synergy"):
+    with st.expander(f"C3: Interdisciplinary Synergy ($\varpi_3$ = `{tw3:.6f}`):"):
+        st.markdown(
+            "Shannon entropy of the verified citation network across diverse subfields."
+        )
         st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    with st.expander("C4: Societal & Open Infrastructure Impact"):
+    with st.expander(f"C4: Societal & Open Infrastructure Impact ($\varpi_4$ = `{tw4:.6f}`):"):
+        st.markdown(
+            "CoARA WG TIER aligned rewards for public datasets, civic policy integration, and open science."
+        )
         st.markdown(
             r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
             r" U_v(\tau, \mathbf{x}) \right] $$"
         )
 
-    with st.expander("C5: Open Science & Executable Reproducibility"):
+    with st.expander(f"C5: Open Science & Executable Reproducibility ($\varpi_5$ = `{tw5:.6f}`):"):
+        st.markdown(
+            "Cryptographic verification of open data/code repositories and sandboxed container execution."
+        )
         st.markdown(
             r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
             r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
         )
 
-    with st.expander("C6: Literature Integration"):
+    with st.expander(f"C6: Literature Integration ($\varpi_6$ = `{tw6:.6f}`):"):
+        st.markdown(
+            "Citation context polarity classification (supporting vs. contrasting engagement)."
+        )
         st.markdown(
             r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
             r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
         )
 
-    with st.expander("C7: Empirical Density & Validation"):
+    with st.expander(f"C7: Empirical Density & Validation ($\varpi_7$ = `{tw7:.6f}`):"):
+        st.markdown(
+            "Deterministic extraction of sample sizes, degrees of freedom, and cohort volumes."
+        )
         st.markdown(
             r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
             r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
         )
 
-    with st.expander("C8: Future Actionability & FAIR"):
+    with st.expander(f"C8: Future Actionability & FAIR ($\varpi_8$ = `{tw8:.6f}`):"):
+        st.markdown(
+            "Strict measurement of adherence to FAIR principles for downstream research cascade."
+        )
         st.markdown(
             r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
             r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
