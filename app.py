@@ -15,7 +15,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pyvis.network import Network
-import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -74,7 +73,7 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-# Custom JS/CSS to manage the pointer cursor (finger), specific click-to-explain limits,
+# Custom JS/CSS to manage the robot pointer cursor, safe click-to-explain limits,
 # horizontal scroll lock on the Scilem box, and auto-scrolling the chat container.
 custom_ui_code = """
 <style>
@@ -84,9 +83,17 @@ custom_ui_code = """
     scroll-behavior: smooth;
 }
 
-/* Explainable text classes show a finger pointer and subtle underline */
+/* Scilem Box Styling */
+.scilem-box {
+    border: 1px solid #e0e6ed;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: #fcfcfc;
+}
+
+/* Explainable text classes show a robot pointer and subtle underline */
 .explainable {
-    cursor: pointer;
+    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><text y="20" font-size="20">🤖</text></svg>') 12 12, pointer;
     border-bottom: 1px dotted #2980b9;
     transition: all 0.2s ease-in-out;
 }
@@ -98,11 +105,14 @@ custom_ui_code = """
 <script>
 const parentDoc = window.parent.document;
 
-// 1. Click Listener for Explainable Elements Only
+// 1. Click Listener for Explainable Elements Only (Ignores dialogs/buttons to not block them)
 parentDoc.addEventListener('click', function(e) {
     let explainTarget = e.target.closest('.explainable');
-    if (!explainTarget) return; // Only process clicks on explicitly marked explainable features
+    if (!explainTarget) return; 
     
+    // Check if click originated from interactive elements inside the explainable area
+    if (e.target.closest('button, a, input, textarea, select, [role="button"], [role="tab"], [role="dialog"], [data-testid="stExpander"]')) return;
+
     let text = explainTarget.innerText || explainTarget.textContent;
     if (!text) return;
     text = text.trim();
@@ -259,7 +269,7 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
-# --- Scilem Assistant enclosed in a Bordered Box to prevent full-sidebar scrolling ---
+# --- Scilem Assistant enclosed in a Single Box ---
 st.sidebar.markdown("---")
 
 SCILEM_KNOWLEDGE_BASE = {
@@ -285,7 +295,7 @@ if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** If you see a pointer finger on any underlined text or feature in the main app, simply click it and I will automatically explain it here."
+            "content": "**Welcome! I am Scilem.** If you see a robot finger on any underlined text or feature in the main app, simply click it and I will automatically explain it here."
         }
     ]
 
@@ -298,19 +308,19 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
 
-# A tiny dot SVG for the Scilem Avatar
-tiny_scilem_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='15' fill='%232c3e50'/%3E%3C/svg%3E"
+# Make the scilem icon much smaller
+tiny_scilem_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='10' fill='%232c3e50'/%3E%3C/svg%3E"
 
-with st.sidebar.container(border=True):
-    st.markdown("### Scilem Assistant")
+st.sidebar.markdown('<div class="scilem-box">', unsafe_allow_html=True)
+st.sidebar.markdown("### Scilem Assistant")
     
-    # Internal scrollable container for the chat to prevent pushing sidebar content infinitely down
-    chat_container = st.container(height=380)
-    with chat_container:
-        for idx, message in enumerate(st.session_state.scilm_messages):
-            msg_avatar = tiny_scilem_avatar if message["role"] == "assistant" else None
-            with st.chat_message(message["role"], avatar=msg_avatar):
-                st.markdown(message["content"])
+# Internal scrollable container for the chat
+chat_container = st.sidebar.container(height=350)
+with chat_container:
+    for idx, message in enumerate(st.session_state.scilm_messages):
+        msg_avatar = tiny_scilem_avatar if message["role"] == "assistant" else None
+        with st.chat_message(message["role"], avatar=msg_avatar):
+            st.markdown(message["content"])
 
 if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
@@ -394,6 +404,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
 
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
         st.rerun()
+st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 def refine_science_field(s):
     s_lower = s.lower()
@@ -1021,10 +1032,11 @@ def more_details_dialog(item):
         st.write(f"**zk-SNARK:** `{zk_proof}`")
         
         tx_url = safe_get_sepolia_url(tx_hash)
+        tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
         if tx_url:
-            st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
+            st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({tx_url})")
         else:
-            st.write(f"**Tx Hash:** `{tx_hash}`")
+            st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
         st.write(f"**Executable Reproducibility Score (C5/C7 audit):** `{repro_score * 100:.1f}%`")
         st.write(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`")
@@ -1316,22 +1328,26 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
         
-        # ALTAIR CHART REPLACEMENT: Clean UI with Non-Zero scale for native micro-exaggeration
-        df_compare = pd.DataFrame({
-            "Criterion": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"],
-            "Current Active": curr_vals,
-            "Predicted Next": pred_vals,
-        }).melt("Criterion", var_name="State", value_name="Weight")
+        # Super Exaggeration for Visual Impact using Streamlit's native bar_chart
+        mean_val = np.mean(curr_vals)
+        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 150.0)
+        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 150.0)
 
-        pidyne_chart = alt.Chart(df_compare).mark_bar().encode(
-            x=alt.X('State:N', title=None, axis=alt.Axis(labels=False, ticks=False)),
-            y=alt.Y('Weight:Q', scale=alt.Scale(zero=False), title='Apri Weight'),
-            color=alt.Color('State:N', legend=alt.Legend(title=None, orient="bottom")),
-            column=alt.Column('Criterion:N', title=None, header=alt.Header(labelOrient="bottom"))
-        ).configure_view(stroke='transparent').properties(height=350)
+        df_compare = pd.DataFrame(
+            {
+                "Current Active Weights (150x Amplified)": exagg_curr,
+                "Predicted Next Epoch (150x Amplified)": exagg_pred,
+            },
+            index=[
+                "C1: Originality", "C2: Methodological Rigor",
+                "C3: Interdisciplinary", "C4: Societal Impact",
+                "C5: Open Science", "C6: Literature Integration",
+                "C7: Empirical Density", "C8: Future Actionability",
+            ],
+        )
         
-        st.altair_chart(pidyne_chart, use_container_width=True)
-
+        # Switched back to st.bar_chart to restore the native Streamlit dropdown menu options
+        st.bar_chart(df_compare, height=380, use_container_width=True)
         st.markdown(
             f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
             f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
@@ -1343,6 +1359,14 @@ with top_analytics_col1:
             f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
             f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
         )
+
+    with st.expander("What's Pidyne?", expanded=False):
+        st.markdown("""
+        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
+        """)
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
@@ -1453,7 +1477,7 @@ if st.session_state.is_authenticated:
             </div>
             <div style="text-align: right;">
                 <h2 style="margin: 0; color: #27ae60;">{total_user_piq:.2f} piQ</h2>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: #7f8c8d; font-weight: bold;">TOTAL piQ OWNED</p>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: #7f8c8d; font-weight: bold;">TOTAL piQ AWARDED</p>
             </div>
         </div>
         """,
@@ -1471,6 +1495,8 @@ if st.session_state.is_authenticated:
             u_author_clean = clean_author_name(u_author)
             u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
             u_tx_url = safe_get_sepolia_url(u_tx)
+            
+            tx_disp_val = u_tx if u_tx and str(u_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
             with st.expander(
                 f"[{idx+1}] {u_title[:65]}... — *{u_author_clean}* (Score: **{u_score:.2f}** | piQ: `{u_piq}` | {u_time[:16]})",
@@ -1487,9 +1513,9 @@ if st.session_state.is_authenticated:
                 st.write(f"**zk-SNARK Proof:** `{u_zk}`")
                 
                 if u_tx_url:
-                    st.markdown(f"**Tx Hash (Etherscan):** [`{u_tx}`]({u_tx_url})")
+                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
                 else:
-                    st.write(f"**Tx Hash:** `{u_tx}`")
+                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
     else:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
 else:
@@ -1526,6 +1552,8 @@ else:
             r_author_clean = clean_author_name(r_author)
             r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
             r_tx_url = safe_get_sepolia_url(r_tx)
+            
+            tx_disp_val = r_tx if r_tx and str(r_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
             with st.expander(
                 f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
@@ -1543,9 +1571,9 @@ else:
                 st.write(f"**zk-SNARK Proof:** `{r_zk}`")
                 
                 if r_tx_url:
-                    st.markdown(f"**Tx Hash (Etherscan):** [`{r_tx}`]({r_tx_url})")
+                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({r_tx_url})")
                 else:
-                    st.write(f"**Tx Hash:** `{r_tx}`")
+                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
                 st.write(
                     f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
@@ -1637,6 +1665,8 @@ try:
                         m_author_clean = clean_author_name(m_author)
                         m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
                         m_tx_url = safe_get_sepolia_url(m_tx)
+                        
+                        tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
                         with st.expander(
                             f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
@@ -1656,9 +1686,9 @@ try:
                             st.write(f"**zk-SNARK Proof:** `{m_zk}`")
                             
                             if m_tx_url:
-                                st.markdown(f"**Tx Hash (Etherscan):** [`{m_tx}`]({m_tx_url})")
+                                st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({m_tx_url})")
                             else:
-                                st.write(f"**Tx Hash:** `{m_tx}`")
+                                st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
                             st.write(
                                 f"**Logic Integrity:** `{m_logic:.1f}%` | **Reproducibility:**"
@@ -1718,7 +1748,8 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp = f"[{rtx[:10]}...]({tx_url})" if rtx else str(rtx)
+                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
+                tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
                     "Eval Hash": reval[:10] + "...",
