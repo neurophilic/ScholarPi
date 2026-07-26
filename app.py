@@ -78,7 +78,7 @@ def get_author_piq_dict():
 # STREAMLIT UI INITIALIZATION
 # ==========================================
 st.set_page_config(
-    page_title="Pi-Index Assessmendet Engine", layout="wide"
+    page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
 st.sidebar.title("System Access")
@@ -221,7 +221,7 @@ current_user = st.session_state.orcid_id
 current_email = "None"
 
 st.title(
-    "Pi-Index Assessment Engine (CoARA-Compliant)",
+    "Pi-Index Assessment Engine",
     help=(
         "Automated peer-review framework powered by neural networks, SciScore"
         " reproducibility metrics, and multidimensional blockchain consensus."
