@@ -184,7 +184,7 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
     white-space: nowrap !important;
 }
 
-/* 5. Force borderless strict 750x750 iframes for the map */
+/* 5. Eliminate all default iframe borders */
 iframe {
     border: none !important;
     border-radius: 8px !important;
@@ -192,15 +192,13 @@ iframe {
     box-shadow: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    display: block !important;
-    width: 750px !important;
-    height: 750px !important;
 }
-[data-testid="stHtml"] {
-    border: none !important;
-    padding: 0 !important;
+
+/* 4. Strict 750px by 750px PyVis Map Iframe */
+.pyvis-map-wrapper iframe {
     width: 750px !important;
     height: 750px !important;
+    display: block !important;
 }
 </style>
 <script>
@@ -280,19 +278,16 @@ function initUI() {
         }
     }
 
-    // 6. Merge Map Controls directly into the top-left corner of ymap
-    const marker = parentDoc.getElementById('map-controls-marker');
+    // 6. Overlay Map Modulator (⚙️) directly into the top-left corner of ymap
     const anchor = parentDoc.getElementById('map-anchor');
-    if (marker && anchor) {
-        let expander = marker.closest('[data-testid="stExpander"]');
-        let block = anchor.closest('[data-testid="stVerticalBlock"]');
-        if (expander && block && expander.style.position !== 'absolute') {
-            block.style.position = 'relative';
+    if (anchor) {
+        let expander = anchor.querySelector('[data-testid="stExpander"]');
+        if (expander && expander.style.position !== 'absolute') {
             expander.style.position = 'absolute';
             expander.style.top = '10px';
             expander.style.left = '10px';
-            expander.style.zIndex = '50';
-            expander.style.width = '380px';
+            expander.style.zIndex = '100';
+            expander.style.width = '350px';
             expander.style.background = 'rgba(255, 255, 255, 0.95)';
             expander.style.backdropFilter = 'blur(4px)';
             expander.style.border = '1px solid #d0d7de';
@@ -691,7 +686,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
-    # Injecting CSS to absolutely strip PyVis default borders and lock 750x750 dimensions
+    # Injecting CSS to absolutely strip PyVis default borders and lock strict 750x750 canvas dimensions
     gradient_injection = f"""
     <style type="text/css">
         body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 750px; height: 750px; }}
@@ -1459,7 +1454,6 @@ with top_analytics_col2:
         st.markdown("<div id='map-anchor' style='position: relative; width: 750px; height: 750px;'>", unsafe_allow_html=True)
         
         with st.expander("⚙️", expanded=False):
-            st.markdown("<div id='map-controls-marker'></div>", unsafe_allow_html=True)
             mod_col1, mod_col2 = st.columns(2)
             with mod_col1:
                 mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
@@ -1506,7 +1500,9 @@ with top_analytics_col2:
             central_grav=mod_gravity
         )
         if interactive_html_top:
+            st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
             components.html(interactive_html_top, height=750, width=750, scrolling=False)
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("Awaiting sufficient data for map visualization.")
             
