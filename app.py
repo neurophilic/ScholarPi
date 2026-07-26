@@ -104,9 +104,9 @@ def preprocess_pdf_layout(pdf_bytes, fname):
     return pdf_bytes
 
 def rbot(topic_key):
-    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
+    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for Scilem Floating Draggable Window & Clickable Triggers
+# Custom JS/CSS for UI Modifications
 custom_ui_code = """
 <style>
 [data-testid="stSidebar"] {
@@ -168,7 +168,7 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
 <script>
 const parentDoc = window.parent.document;
 
-// Fully working clickable 🤖 trigger handler
+// 1. Robot Auto-Trigger Handler
 parentDoc.addEventListener('click', function(e) {
     let trigger = e.target.closest('.scilm-trigger');
     if (!trigger) return; 
@@ -178,78 +178,92 @@ parentDoc.addEventListener('click', function(e) {
     let query = trigger.getAttribute('data-query');
     if (!query) return;
 
-    const inputField = parentDoc.querySelector('input[aria-label="Ask Scilem..."]') || parentDoc.querySelector('[data-testid="stChatInputTextArea"]');
+    let chatBlock = parentDoc.querySelector('[data-draggable="true"]');
+    if (!chatBlock) return;
+
+    let inputField = chatBlock.querySelector('input[type="text"]');
     if (inputField) {
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
         nativeInputValueSetter.call(inputField, "Explain: " + query);
         inputField.dispatchEvent(new Event('input', { bubbles: true }));
 
         setTimeout(() => {
-            const submitBtn = parentDoc.querySelector('button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"]') || parentDoc.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                submitBtn.click();
-            }
+            let btns = chatBlock.querySelectorAll('button');
+            let submitBtn = Array.from(btns).find(b => b.innerText.includes('Send') || b.textContent.includes('Send'));
+            if (submitBtn) submitBtn.click();
         }, 150);
     }
 }, true);
 
-function initDraggableScilem() {
+// 2. Element Positioning Loop
+function initUI() {
+    // Draggable Scilem setup
     const handle = parentDoc.getElementById('scilem-drag-handle');
-    if (!handle) return;
-    
-    let block = handle.closest('[data-testid="stVerticalBlock"]');
-    if (!block || block.getAttribute('data-draggable') === 'true') return;
+    if (handle) {
+        let block = handle.closest('[data-testid="stVerticalBlock"]');
+        if (block && block.getAttribute('data-draggable') !== 'true') {
+            if (!block.innerText.includes("Live System Monitor")) {
+                block.setAttribute('data-draggable', 'true');
+                block.style.position = 'fixed';
+                block.style.bottom = '20px';
+                block.style.right = '20px';
+                block.style.width = '380px';
+                block.style.backgroundColor = '#ffffff';
+                block.style.border = '1px solid #d0d7de';
+                block.style.borderRadius = '12px';
+                block.style.boxShadow = '0 10px 40px rgba(0,0,0,0.3)';
+                block.style.zIndex = '999999';
+                block.style.padding = '1rem';
+                
+                let isDragging = false;
+                let startX, startY, initialX, initialY;
 
-    if (block.innerText.includes("Pi-Index Assessment Engine") || block.innerText.includes("Live System Monitor")) {
-        const blocks = parentDoc.querySelectorAll('[data-testid="stVerticalBlock"]');
-        for(let i=0; i < blocks.length; i++) {
-            if(blocks[i].querySelector('#scilem-drag-handle') && !blocks[i].innerText.includes("Live System Monitor")) {
-                block = blocks[i];
+                handle.addEventListener('mousedown', function(e) {
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    const rect = block.getBoundingClientRect();
+                    initialX = rect.left;
+                    initialY = rect.top;
+                    block.style.bottom = 'auto';
+                    block.style.right = 'auto';
+                    block.style.transition = 'none'; 
+                    e.preventDefault(); 
+                });
+
+                parentDoc.addEventListener('mousemove', function(e) {
+                    if (!isDragging) return;
+                    block.style.left = (initialX + (e.clientX - startX)) + 'px';
+                    block.style.top = (initialY + (e.clientY - startY)) + 'px';
+                });
+
+                parentDoc.addEventListener('mouseup', function() { isDragging = false; });
             }
         }
     }
 
-    block.setAttribute('data-draggable', 'true');
-    block.style.position = 'fixed';
-    block.style.bottom = '20px';
-    block.style.right = '20px';
-    block.style.width = '380px';
-    block.style.backgroundColor = '#ffffff';
-    block.style.border = '1px solid #d0d7de';
-    block.style.borderRadius = '12px';
-    block.style.boxShadow = '0 10px 40px rgba(0,0,0,0.3)';
-    block.style.zIndex = '999999';
-    block.style.padding = '1rem';
-    
-    let isDragging = false;
-    let startX, startY, initialX, initialY;
-
-    handle.addEventListener('mousedown', function(e) {
-        isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
-        const rect = block.getBoundingClientRect();
-        initialX = rect.left;
-        initialY = rect.top;
-        block.style.bottom = 'auto';
-        block.style.right = 'auto';
-        block.style.transition = 'none'; 
-        e.preventDefault(); 
-    });
-
-    parentDoc.addEventListener('mousemove', function(e) {
-        if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        block.style.left = (initialX + dx) + 'px';
-        block.style.top = (initialY + dy) + 'px';
-    });
-
-    parentDoc.addEventListener('mouseup', function() {
-        isDragging = false;
-    });
+    // Merge Map Controls on top of Map
+    const marker = parentDoc.getElementById('map-controls-marker');
+    const anchor = parentDoc.getElementById('map-relative-container');
+    if (marker && anchor) {
+        let expander = marker.closest('[data-testid="stExpander"]');
+        let block = anchor.closest('[data-testid="stVerticalBlock"]');
+        if (expander && block && expander.style.position !== 'absolute') {
+            block.style.position = 'relative';
+            expander.style.position = 'absolute';
+            expander.style.top = '10px';
+            expander.style.left = '10px';
+            expander.style.zIndex = '50';
+            expander.style.width = '380px';
+            expander.style.background = 'rgba(255, 255, 255, 0.9)';
+            expander.style.backdropFilter = 'blur(4px)';
+            expander.style.border = '1px solid #d0d7de';
+            expander.style.borderRadius = '8px';
+            expander.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+        }
+    }
 }
-setInterval(initDraggableScilem, 800);
+setInterval(initUI, 800);
 </script>
 """
 components.html(custom_ui_code, height=0, width=0)
@@ -317,7 +331,6 @@ if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 
-# --- Initialize Scilem Chat State Early ---
 if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
@@ -404,7 +417,6 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
-# --- Live System Monitor in Sidebar ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("🖥️ Live System Monitor", expanded=False):
     log_text = "\n".join(st.session_state.app_logs)
@@ -564,28 +576,29 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    # Increased map height to 750px
+    # Taller Map Canvas (850px)
     net = Network(
-        height="750px",
+        height="850px",
         width="100%",
         bgcolor="#ffffff",
         font_color="#2c3e50",
         notebook=False,
     )
     
+    # Highly stabilized physics parameters for completely un-jiggly load
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
                 "gravitationalConstant": {repulsion}, 
                 "centralGravity": {central_grav}, 
                 "springLength": {spring_len}, 
-                "springConstant": 0.015,
-                "damping": 0.95,
+                "springConstant": 0.005,
+                "damping": 1.0,
                 "avoidOverlap": 2.0 
             }}, 
             "stabilization": {{ 
                 "enabled": true, 
-                "iterations": 2000,
+                "iterations": 2500,
                 "fit": true
             }} 
         }} 
@@ -1397,58 +1410,62 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # --- Collapsed Map Physics & Display Modulation Control Panel Merged Here ---
-    with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
-        mod_col1, mod_col2 = st.columns(2)
-        with mod_col1:
-            mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
-            mod_spring = st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
-        with mod_col2:
-            mod_size = st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
-            mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
+    # --- Container linking the Overlay Map Controls directly to the Map canvas ---
+    map_container = st.container()
+    with map_container:
+        st.markdown("<div id='map-relative-container'></div>", unsafe_allow_html=True)
+        
+        with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
+            st.markdown("<div id='map-controls-marker'></div>", unsafe_allow_html=True)
+            mod_col1, mod_col2 = st.columns(2)
+            with mod_col1:
+                mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
+                mod_spring = st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
+            with mod_col2:
+                mod_size = st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
+                mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
 
-    conn_m = get_db_connection()
-    try:
-        cursor_m = conn_m.cursor()
-        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
-        all_global_authors = []
-        for row in cursor_m.fetchall():
-            if row[0]:
-                cleaned = clean_author_name(row[0])
-                for a in cleaned.split(","):
-                    if a.strip() and not is_likely_institution(a.strip()):
-                        all_global_authors.append(a.strip())
-    finally:
-        conn_m.close()
-    all_global_authors = sorted(list(set(all_global_authors)))
+        conn_m = get_db_connection()
+        try:
+            cursor_m = conn_m.cursor()
+            cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
+            all_global_authors = []
+            for row in cursor_m.fetchall():
+                if row[0]:
+                    cleaned = clean_author_name(row[0])
+                    for a in cleaned.split(","):
+                        if a.strip() and not is_likely_institution(a.strip()):
+                            all_global_authors.append(a.strip())
+        finally:
+            conn_m.close()
+        all_global_authors = sorted(list(set(all_global_authors)))
 
-    selected_author_top = None
-    piq_dict, book_dict = get_author_piq_dict()
+        selected_author_top = None
+        piq_dict, book_dict = get_author_piq_dict()
 
-    if all_global_authors:
-        filter_choice_top = st.selectbox(
-            "Filter Map by Author:",
-            ["All Authors"] + all_global_authors,
-            key=f"top_author_filter_{st.session_state['assessment_update_token']}",
-            format_func=lambda x: (
-                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
-            ),
+        if all_global_authors:
+            filter_choice_top = st.selectbox(
+                "Filter Map by Author:",
+                ["All Authors"] + all_global_authors,
+                key=f"top_author_filter_{st.session_state['assessment_update_token']}",
+                format_func=lambda x: (
+                    f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
+                ),
+            )
+            if filter_choice_top != "All Authors":
+                selected_author_top = filter_choice_top
+
+        interactive_html_top, table_html_top = render_bubble_chart_clean(
+            selected_author_top,
+            repulsion=mod_repulsion,
+            spring_len=mod_spring,
+            size_scale=mod_size,
+            central_grav=mod_gravity
         )
-        if filter_choice_top != "All Authors":
-            selected_author_top = filter_choice_top
-
-    interactive_html_top, table_html_top = render_bubble_chart_clean(
-        selected_author_top,
-        repulsion=mod_repulsion,
-        spring_len=mod_spring,
-        size_scale=mod_size,
-        central_grav=mod_gravity
-    )
-    if interactive_html_top:
-        # Taller map component height (750px)
-        components.html(interactive_html_top, height=750, scrolling=False)
-    else:
-        st.info("Awaiting sufficient data for map visualization.")
+        if interactive_html_top:
+            components.html(interactive_html_top, height=850, scrolling=False)
+        else:
+            st.info("Awaiting sufficient data for map visualization.")
 
     with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
         st.markdown(table_html_top, unsafe_allow_html=True)
