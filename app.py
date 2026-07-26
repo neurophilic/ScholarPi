@@ -7,8 +7,10 @@ import random
 import sqlite3
 import hashlib
 import tempfile
+import zipfile
 import shutil
 import sys
+import logging
 from datetime import datetime
 from io import BytesIO
 
@@ -43,10 +45,9 @@ EPOCH_BLOCK_SIZE = 1
 WEB3_PROVIDER_URI = os.getenv(
     "WEB3_PROVIDER_URI", "https://ethereum-sepolia-rpc.publicnode.com"
 )
-ETH_ADMIN_PRIVATE_KEY = os.getenv(
-    "ETH_ADMIN_PRIVATE_KEY",
-    "d46861bea5442cd4577ed22167bcb6ef1d331a171bbf7a5f1fd5f14428e344ef",
-)
+# FIXED: Removed exposed fallback private key.
+ETH_ADMIN_PRIVATE_KEY = os.getenv("ETH_ADMIN_PRIVATE_KEY", "")
+
 PIQ_CONTRACT_ADDRESS = os.getenv(
     "PIQ_CONTRACT_ADDRESS", "0xaE7a504aCF32ABf0E891B74bF39E4527999A6256"
 )
@@ -99,6 +100,17 @@ HOT_TOPICS = [
 # ==========================================
 # 1.5 DECENTRALIZED STATE MANAGEMENT
 # ==========================================
+# FIXED: Path Traversal Zip Slip Guard
+def safe_extract_zip(zip_path, extract_to):
+    extract_to = os.path.abspath(extract_to)
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        for member in zip_ref.infolist():
+            member_path = os.path.abspath(os.path.join(extract_to, member.filename))
+            if not member_path.startswith(extract_to):
+                logging.warning(f"Skipping malicious path inside archive: {member.filename}")
+                continue
+            zip_ref.extract(member, extract_to)
+
 def restore_state_from_web3():
     if not w3.is_connected() or not REGISTRY_CONTRACT_ADDRESS:
         return
@@ -124,17 +136,17 @@ def restore_state_from_web3():
                 except requests.RequestException:
                     continue
             if res and res.status_code == 200:
-                zip_path = BASE_DIR + "_restore.zip"
+                zip_path = os.path.join(BASE_DIR, "_restore.zip")
                 with open(zip_path, 'wb') as fp:
                     fp.write(res.content)
-                shutil.unpack_archive(zip_path, BASE_DIR)
+                safe_extract_zip(zip_path, BASE_DIR)
                 if os.path.exists(zip_path):
                     os.remove(zip_path)
     except Exception as e:
         print(f"Restore warning: {e}")
 
 def backup_state_to_web3():
-    if not w3.is_connected() or not PINATA_API_KEY or not REGISTRY_CONTRACT_ADDRESS:
+    if not w3.is_connected() or not PINATA_API_KEY or not REGISTRY_CONTRACT_ADDRESS or not ETH_ADMIN_PRIVATE_KEY:
         return False
     try:
         shutil.make_archive(BASE_DIR, 'zip', BASE_DIR)
@@ -185,118 +197,122 @@ def backup_state_to_web3():
 # ==========================================
 def enforce_database_schema():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS papers_assessment 
-                      (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
-                       c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
-                       c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
-                       scope_alignment REAL, logic_score REAL,
-                       subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)""")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS papers_assessment 
+                          (eval_hash TEXT PRIMARY KEY, user_id TEXT, title TEXT, filename TEXT, scope TEXT,
+                           c1 REAL, c2 REAL, c3 REAL, c4 REAL, 
+                           c5 REAL, c6 REAL, c7 REAL, c8 REAL, 
+                           scope_alignment REAL, logic_score REAL,
+                           subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)""")
 
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='blockchain_por_weights'")
-    table_exists = cursor.fetchone()
-    
-    if table_exists:
-        cursor.execute("PRAGMA table_info(blockchain_por_weights)")
-        columns = [row[1] for row in cursor.fetchall()]
-        if "por_proof" not in columns or "formulas_hash" not in columns:
-            cursor.execute("ALTER TABLE blockchain_por_weights RENAME TO old_blockchain_por_weights")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='blockchain_por_weights'")
+        table_exists = cursor.fetchone()
+        
+        if table_exists:
+            cursor.execute("PRAGMA table_info(blockchain_por_weights)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "por_proof" not in columns or "formulas_hash" not in columns:
+                cursor.execute("ALTER TABLE blockchain_por_weights RENAME TO old_blockchain_por_weights")
+                cursor.execute("""CREATE TABLE blockchain_por_weights 
+                                  (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
+                                   w1 REAL, w2 REAL, w3 REAL, w4 REAL, w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
+                                   timestamp DATETIME, previous_hash TEXT, validator_node TEXT, 
+                                   block_hash TEXT, eval_hash TEXT, model_used TEXT,
+                                   por_proof TEXT DEFAULT 'Genesis_Proof', formulas_hash TEXT DEFAULT 'Locked_State')""")
+                try:
+                    cursor.execute("""INSERT INTO blockchain_por_weights 
+                                      (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used)
+                                      SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used 
+                                      FROM old_blockchain_por_weights""")
+                except Exception:
+                    pass
+                cursor.execute("DROP TABLE old_blockchain_por_weights")
+        else:
             cursor.execute("""CREATE TABLE blockchain_por_weights 
                               (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
                                w1 REAL, w2 REAL, w3 REAL, w4 REAL, w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
                                timestamp DATETIME, previous_hash TEXT, validator_node TEXT, 
                                block_hash TEXT, eval_hash TEXT, model_used TEXT,
                                por_proof TEXT DEFAULT 'Genesis_Proof', formulas_hash TEXT DEFAULT 'Locked_State')""")
-            try:
-                cursor.execute("""INSERT INTO blockchain_por_weights 
-                                  (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used)
-                                  SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used 
-                                  FROM old_blockchain_por_weights""")
-            except Exception:
-                pass
-            cursor.execute("DROP TABLE old_blockchain_por_weights")
-    else:
-        cursor.execute("""CREATE TABLE blockchain_por_weights 
-                          (block_height INTEGER PRIMARY KEY AUTOINCREMENT, 
-                           w1 REAL, w2 REAL, w3 REAL, w4 REAL, w5 REAL, w6 REAL, w7 REAL, w8 REAL, 
-                           timestamp DATETIME, previous_hash TEXT, validator_node TEXT, 
-                           block_hash TEXT, eval_hash TEXT, model_used TEXT,
-                           por_proof TEXT DEFAULT 'Genesis_Proof', formulas_hash TEXT DEFAULT 'Locked_State')""")
 
-    cursor.execute("CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)")
-    cursor.execute("""CREATE TABLE IF NOT EXISTS desci_attestations 
-                      (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)""")
+        cursor.execute("CREATE TABLE IF NOT EXISTS global_eval_counter (count INTEGER)")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS desci_attestations 
+                          (attestation_id TEXT PRIMARY KEY, eval_hash TEXT, attester_id TEXT, stake_amount REAL, stance TEXT, timestamp DATETIME)""")
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS auto_ip_tracking 
-                      (ip_address TEXT PRIMARY KEY, first_seen DATETIME)""")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS auto_ip_tracking 
+                          (ip_address TEXT PRIMARY KEY, first_seen DATETIME)""")
 
-    cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
+        cursor.execute("SELECT COUNT(*) FROM global_eval_counter")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
 
-    target_columns_assessment = {
-        "eth_book": "TEXT DEFAULT 'None'",
-        "eth_wallet": "TEXT DEFAULT 'None'",
-        "piq_minted": "REAL DEFAULT 0.0",
-        "epc_minted": "REAL DEFAULT 0.0",
-        "tx_hash": "TEXT DEFAULT 'Pending'",
-        "zk_proof": "TEXT DEFAULT 'None'",
-        "did": "TEXT DEFAULT 'None'",
-        "zk_email_proof": "TEXT DEFAULT 'None'",
-        "gaming_penalty": "REAL DEFAULT 0.0",
-        "mdar_adherence_score": "REAL DEFAULT 0.0",
-        "rrid_valid_count": "INTEGER DEFAULT 0",
-        "credit_taxonomy_roles": "TEXT DEFAULT 'None'",
-        "reproducibility_score": "REAL DEFAULT 0.0",
-        "doi": "TEXT DEFAULT 'None'",
-    }
+        target_columns_assessment = {
+            "eth_book": "TEXT DEFAULT 'None'",
+            "eth_wallet": "TEXT DEFAULT 'None'",
+            "piq_minted": "REAL DEFAULT 0.0",
+            "epc_minted": "REAL DEFAULT 0.0",
+            "tx_hash": "TEXT DEFAULT 'Pending'",
+            "zk_proof": "TEXT DEFAULT 'None'",
+            "did": "TEXT DEFAULT 'None'",
+            "zk_email_proof": "TEXT DEFAULT 'None'",
+            "gaming_penalty": "REAL DEFAULT 0.0",
+            "mdar_adherence_score": "REAL DEFAULT 0.0",
+            "rrid_valid_count": "INTEGER DEFAULT 0",
+            "credit_taxonomy_roles": "TEXT DEFAULT 'None'",
+            "reproducibility_score": "REAL DEFAULT 0.0",
+            "doi": "TEXT DEFAULT 'None'",
+        }
 
-    cursor.execute("PRAGMA table_info(papers_assessment)")
-    existing_assessment_cols = [row[1] for row in cursor.fetchall()]
-    for col, dtype in target_columns_assessment.items():
-        if col not in existing_assessment_cols:
-            try:
-                cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
-            except Exception:
-                pass
+        cursor.execute("PRAGMA table_info(papers_assessment)")
+        existing_assessment_cols = [row[1] for row in cursor.fetchall()]
+        for col, dtype in target_columns_assessment.items():
+            if col not in existing_assessment_cols:
+                try:
+                    cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
+                except Exception:
+                    pass
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
 def get_db_connection():
     enforce_database_schema()
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
-    if cursor.fetchone()[0] == 0:
-        g = GENESIS_BLOCK_CONFIG
-        data_string = f"{g['block_height']}{g['weights']}{g['timestamp']}{g['previous_hash']}{g['validator_node']}{g['por_proof']}{g['model_used']}{g['formulas_hash']}"
-        block_hash = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
-        cursor.execute(
-            """INSERT INTO blockchain_por_weights 
-                (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                g["block_height"],
-                *g["weights"],
-                g["timestamp"],
-                g["previous_hash"],
-                g["validator_node"],
-                block_hash,
-                g["eval_hash"],
-                g["model_used"],
-                g["por_proof"],
-                g["formulas_hash"],
-            ),
-        )
-        conn.commit()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
+        if cursor.fetchone()[0] == 0:
+            g = GENESIS_BLOCK_CONFIG
+            data_string = f"{g['block_height']}{g['weights']}{g['timestamp']}{g['previous_hash']}{g['validator_node']}{g['por_proof']}{g['model_used']}{g['formulas_hash']}"
+            block_hash = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
+            cursor.execute(
+                """INSERT INTO blockchain_por_weights 
+                    (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    g["block_height"],
+                    *g["weights"],
+                    g["timestamp"],
+                    g["previous_hash"],
+                    g["validator_node"],
+                    block_hash,
+                    g["eval_hash"],
+                    g["model_used"],
+                    g["por_proof"],
+                    g["formulas_hash"],
+                ),
+            )
+            conn.commit()
 
-    cursor.execute("SELECT count FROM global_eval_counter")
-    if not cursor.fetchone():
-        cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
-        conn.commit()
-
+        cursor.execute("SELECT count FROM global_eval_counter")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO global_eval_counter (count) VALUES (0)")
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Error initializing DB: {e}")
     return conn
 
 
@@ -416,10 +432,13 @@ def search_openalex_topics(topic_query, limit=100):
 
 def get_author_piq_dict():
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT author_name, piq_minted FROM papers_assessment")
-    data = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT author_name, piq_minted FROM papers_assessment")
+        data = cursor.fetchall()
+    finally:
+        conn.close()
+    
     author_piq = {}
     author_book = {}
     for authors_str, piq in data:
@@ -471,8 +490,8 @@ def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str="None
     return "0x0" + hashlib.sha3_256(circuit_input.encode("utf-8")).hexdigest()
 
 def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
-    if not w3.is_connected() or book_address == "None" or not book_address:
-        return "Not Connected / No Book"
+    if not w3.is_connected() or book_address == "None" or not book_address or not ETH_ADMIN_PRIVATE_KEY:
+        return "Not Connected / No Book / Missing PK"
 
     if len(PIQ_CONTRACT_ADDRESS) != 42 or not PIQ_CONTRACT_ADDRESS.startswith("0x"):
         return "Eth Tx Failed: Invalid Contract Address Configuration"
@@ -787,23 +806,25 @@ def generate_rebuttal_strategy(scores_dict):
 # ==========================================
 def get_evolving_system_context():
     conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8 
-        FROM blockchain_por_weights 
-        ORDER BY block_height DESC LIMIT 1
-    """)
-    epoch_data = cursor.fetchone()
-    
-    cursor.execute("""
-        SELECT stance, COUNT(*) 
-        FROM desci_attestations 
-        WHERE timestamp > datetime('now', '-7 days') 
-        GROUP BY stance
-    """)
-    attestations = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8 
+            FROM blockchain_por_weights 
+            ORDER BY block_height DESC LIMIT 1
+        """)
+        epoch_data = cursor.fetchone()
+        
+        cursor.execute("""
+            SELECT stance, COUNT(*) 
+            FROM desci_attestations 
+            WHERE timestamp > datetime('now', '-7 days') 
+            GROUP BY stance
+        """)
+        attestations = cursor.fetchall()
+    finally:
+        conn.close()
 
     context_str = "SYSTEM EVOLUTION CONTEXT:\n"
     if epoch_data:
@@ -842,6 +863,8 @@ def adaptive_chunking(text, max_tokens):
     return front_matter + "\n...[TRUNCATED FOR TOKEN LIMITS]...\n" + back_matter
 
 def evaluate_discriminator_and_divergence(text, model):
+    # FIXED: Added None check for API clients
+    if not groq_client: return 0.0, 0.5
     text_chunk = text[:5000]
     prompt = f"""Analyze this academic text for two adversarial threats:
 1. Synthetic Hallucination / AI-Generated Preprint Flood (unnatural keyword stuffing, stylistic filler, or high-flown prose masking weak statistical substance).
@@ -867,6 +890,8 @@ Text: {text_chunk}"""
         return 0.0, 0.5
 
 def evaluate_scope_alignment(text, scope, model, text_limit):
+    # FIXED: Added None check
+    if not groq_client: return 0.0
     if not scope.strip():
         return 0.0
     text = adaptive_chunking(text, text_limit)
@@ -908,6 +933,15 @@ def extract_unpublished_authors_fallback(text):
     return "Unidentified"
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
+    # FIXED: Check if missing groq client
+    if not groq_client:
+        return {
+            "Extracted_Title": "Parsing Failed (No API Key)",
+            "Extracted_Author": "Unidentified",
+            "Extracted_Topics": "Core Research Domain",
+            "Overall_Confidence": 0.0,
+        }
+
     text = adaptive_chunking(text, text_limit)
     evolving_context = get_evolving_system_context()
     
@@ -984,110 +1018,26 @@ def process_single_pdf(
         )
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
+    
+    # FIXED: Added safe db closures
     conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT final_score, logic_score, title, fields, subfields, author_name,"
-        " c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof,"
-        " mdar_adherence_score, rrid_valid_count, reproducibility_score FROM"
-        " papers_assessment WHERE eval_hash=?",
-        (file_hash,),
-    )
-    cached_result = cursor.fetchone()
-
     try:
-        doc = fitz.open(stream=file_bytes, filetype="pdf")
-        pdf_meta_author = doc.metadata.get("author", "").strip()
-        full_text = " ".join([page.get_text() for page in doc])
-    except Exception:
-        conn.close()
-        empty_scores = {
-            k: 0.0
-            for k in [
-                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                "C7_Empirical_Density", "C8_Future_Actionability",
-            ]
-        }
-        return (
-            "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
-            ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-            file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-            reproducibility_score, False,
-        )
-
-    scope_alignment = (
-        evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS)
-        if scope.strip()
-        else 0.0
-    )
-
-    if cached_result:
-        score, logic_score, title, fields_str, subfields_str, author_name, *rest = (
-            cached_result
-        )
-        c_scores = rest[:8]
-        piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
-            rest[8], rest[9], rest[10], rest[11], rest[12], rest[13],
-        )
-        fields = json.loads(fields_str) if fields_str else ["Unspecified Domain"]
-        subfields = (
-            json.loads(subfields_str) if subfields_str else ["Unspecified Sub-domain"]
-        )
-
-        drift = (
-            calculate_complex_drift(scope_alignment, c_scores)
-            if scope.strip()
-            else "N/A"
-        )
-        rec = (
-            get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
-        )
-        scores_dict = {
-            "C1_Originality": c_scores[0],
-            "C2_Methodological_Rigor": c_scores[1],
-            "C3_Interdisciplinary": c_scores[2],
-            "C4_Societal_Impact": c_scores[3],
-            "C5_Open_Science_Potential": c_scores[4],
-            "C6_Literature_Integration": c_scores[5],
-            "C7_Empirical_Density": c_scores[6],
-            "C8_Future_Actionability": c_scores[7],
-        }
+        cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
-            " WHERE eval_hash=?",
+            "SELECT final_score, logic_score, title, fields, subfields, author_name,"
+            " c1, c2, c3, c4, c5, c6, c7, c8, piq_minted, tx_hash, zk_proof,"
+            " mdar_adherence_score, rrid_valid_count, reproducibility_score FROM"
+            " papers_assessment WHERE eval_hash=?",
             (file_hash,),
         )
-        weight_res = cursor.fetchone()
-        used_weights = weight_res if weight_res else active_weights
-        conn.close()
+        cached_result = cursor.fetchone()
 
-        return (
-            title, clean_author_name(author_name), score, logic_score, drift, rec,
-            fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-            used_weights, mdar_score, rrid_count, repro_score, True,
-        )
-
-    gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
-        full_text, FALLBACK_MODEL
-    )
-
-    try:
-        raw_data = evaluate_pdf_text_ensemble(
-            full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash
-        )
-        model_used = PRIMARY_MODEL
-    except Exception:
         try:
-            reduced_limit = int(MAX_TEXT_TOKENS * 0.6)
-            raw_data = evaluate_pdf_text_ensemble(
-                full_text, FALLBACK_MODEL, reduced_limit, file_hash
-            )
-            model_used = FALLBACK_MODEL
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            pdf_meta_author = doc.metadata.get("author", "").strip()
+            full_text = " ".join([page.get_text() for page in doc])
         except Exception:
-            conn.close()
             empty_scores = {
                 k: 0.0
                 for k in [
@@ -1097,281 +1047,363 @@ def process_single_pdf(
                 ]
             }
             return (
-                "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
+                "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
                 ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
                 file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
+                0.0, False, # Fallback repro score
+            )
+
+        scope_alignment = (
+            evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS)
+            if scope.strip()
+            else 0.0
+        )
+
+        if cached_result:
+            score, logic_score, title, fields_str, subfields_str, author_name, *rest = (
+                cached_result
+            )
+            c_scores = rest[:8]
+            piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
+                rest[8], rest[9], rest[10], rest[11], rest[12], rest[13],
+            )
+            fields = json.loads(fields_str) if fields_str else ["Unspecified Domain"]
+            subfields = (
+                json.loads(subfields_str) if subfields_str else ["Unspecified Sub-domain"]
+            )
+
+            drift = (
+                calculate_complex_drift(scope_alignment, c_scores)
+                if scope.strip()
+                else "N/A"
+            )
+            rec = (
+                get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
+            )
+            scores_dict = {
+                "C1_Originality": c_scores[0],
+                "C2_Methodological_Rigor": c_scores[1],
+                "C3_Interdisciplinary": c_scores[2],
+                "C4_Societal_Impact": c_scores[3],
+                "C5_Open_Science_Potential": c_scores[4],
+                "C6_Literature_Integration": c_scores[5],
+                "C7_Empirical_Density": c_scores[6],
+                "C8_Future_Actionability": c_scores[7],
+            }
+
+            cursor.execute(
+                "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
+                " WHERE eval_hash=?",
+                (file_hash,),
+            )
+            weight_res = cursor.fetchone()
+            used_weights = weight_res if weight_res else active_weights
+            return (
+                title, clean_author_name(author_name), score, logic_score, drift, rec,
+                fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
+                used_weights, mdar_score, rrid_count, repro_score, True,
+            )
+
+        gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
+            full_text, FALLBACK_MODEL
+        )
+
+        try:
+            raw_data = evaluate_pdf_text_ensemble(
+                full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash
+            )
+            model_used = PRIMARY_MODEL
+        except Exception:
+            try:
+                reduced_limit = int(MAX_TEXT_TOKENS * 0.6)
+                raw_data = evaluate_pdf_text_ensemble(
+                    full_text, FALLBACK_MODEL, reduced_limit, file_hash
+                )
+                model_used = FALLBACK_MODEL
+            except Exception:
+                empty_scores = {
+                    k: 0.0
+                    for k in [
+                        "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
+                        "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
+                        "C7_Empirical_Density", "C8_Future_Actionability",
+                    ]
+                }
+                return (
+                    "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
+                    ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
+                    file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
+                    reproducibility_score, False,
+                )
+
+        if not isinstance(raw_data, dict):
+            raw_data = {
+                "Extracted_Title": filename,
+                "Extracted_Author": "Unidentified",
+                "Extracted_Topics": "Core Research Domain",
+                "Overall_Confidence": 0.0,
+            }
+
+        confidence = raw_data.get("Overall_Confidence", 1.0)
+        if confidence < 0.50:
+            empty_scores = {
+                k: 0.0
+                for k in [
+                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
+                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
+                    "C7_Empirical_Density", "C8_Future_Actionability",
+                ]
+            }
+            return (
+                "Indeterminate Format (Upload JSON Manifest)",
+                clean_author_name(raw_data.get("Extracted_Author", "Unidentified")),
+                0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
+                empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
                 reproducibility_score, False,
             )
 
-    if not isinstance(raw_data, dict):
-        raw_data = {
-            "Extracted_Title": filename,
-            "Extracted_Author": "Unidentified",
-            "Extracted_Topics": "Core Research Domain",
-            "Overall_Confidence": 0.0,
-        }
+        title = raw_data.get("Extracted_Title", filename)
+        extracted_author = clean_author_name(
+            str(raw_data.get("Extracted_Author", ""))
+        )
+        extracted_topics = str(
+            raw_data.get("Extracted_Topics", "Core Research Domain")
+        ).strip()
 
-    confidence = raw_data.get("Overall_Confidence", 1.0)
-    if confidence < 0.50:
-        conn.close()
-        empty_scores = {
-            k: 0.0
+        if (
+            is_likely_institution(extracted_author)
+            or not extracted_author
+            or extracted_author.lower()
+            in [
+                "unknown", "unknown author", "none", "n/a",
+                "research scholar", "unidentified",
+            ]
+            or extracted_author == os.path.splitext(filename)[0]
+        ):
+            if (
+                pdf_meta_author.strip()
+                and pdf_meta_author.lower() not in ["unknown", "none"]
+                and not is_likely_institution(pdf_meta_author)
+            ):
+                extracted_author = clean_author_name(pdf_meta_author.strip())
+            else:
+                extracted_author = clean_author_name(
+                    extract_unpublished_authors_fallback(full_text)
+                )
+                if is_likely_institution(extracted_author):
+                    extracted_author = "Unidentified"
+
+        if isinstance(extracted_topics, str):
+            subfields = [
+                s.strip().title() for s in extracted_topics.split(",") if s.strip()
+            ]
+        elif isinstance(extracted_topics, list):
+            subfields = [
+                str(s).strip().title() for s in extracted_topics if str(s).strip()
+            ]
+        else:
+            subfields = ["Core Research Domain"]
+        if not subfields:
+            subfields = ["Core Research Domain"]
+        fields = [subfields[0]]
+
+        normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
+        cursor.execute(
+            "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
+            " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
+            " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
+            " doi=? OR author_name=?",
+            (provided_doi, extracted_author),
+        )
+        existing_records = cursor.fetchall()
+
+        for rec_row in existing_records:
+            ex_hash, ex_score, ex_logic, *ex_rest = rec_row
+            cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
+            ex_title_row = cursor.fetchone()
+            if ex_title_row:
+                ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
+                if (provided_doi != "None" and provided_doi) or (
+                    ex_norm_title == normalized_title and normalized_title != ""
+                ):
+                    c_scores = ex_rest[:8]
+                    piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
+                        ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
+                    )
+                    drift = (
+                        calculate_complex_drift(scope_alignment, c_scores)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    rec_spec = (
+                        get_recommendation_spectrum(ex_score, drift)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    scores_dict = {
+                        "C1_Originality": c_scores[0],
+                        "C2_Methodological_Rigor": c_scores[1],
+                        "C3_Interdisciplinary": c_scores[2],
+                        "C4_Societal_Impact": c_scores[3],
+                        "C5_Open_Science_Potential": c_scores[4],
+                        "C6_Literature_Integration": c_scores[5],
+                        "C7_Empirical_Density": c_scores[6],
+                        "C8_Future_Actionability": c_scores[7],
+                    }
+                    cursor.execute(
+                        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
+                        " WHERE eval_hash=?",
+                        (ex_hash,),
+                    )
+                    weight_res = cursor.fetchone()
+                    used_weights = weight_res if weight_res else active_weights
+                    return (
+                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
+                        fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
+                        used_weights, mdar_score, rrid_count, repro_score, True,
+                    )
+
+        cursor.execute("UPDATE global_eval_counter SET count = count + 1")
+        conn.commit()
+        cursor.execute("SELECT count FROM global_eval_counter")
+        total_evals = cursor.fetchone()[0]
+
+        cursor.execute(
+            "SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM"
+            " blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+        )
+        epoch_data = cursor.fetchone()
+        block_height, previous_hash, old_weights = (
+            epoch_data[0], epoch_data[1], epoch_data[2:],
+        )
+
+        variables = raw_data if isinstance(raw_data, dict) else {}
+        scores_dict = compute_formulaic_criteria(
+            variables, reproducibility_score, sciscore_adherence=0.82
+        )
+        scores = [
+            scores_dict[k]
             for k in [
                 "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
                 "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
                 "C7_Empirical_Density", "C8_Future_Actionability",
             ]
-        }
-        return (
-            "Indeterminate Format (Upload JSON Manifest)",
-            clean_author_name(raw_data.get("Extracted_Author", "Unidentified")),
-            0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
-            empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-            reproducibility_score, False,
-        )
-
-    title = raw_data.get("Extracted_Title", filename)
-    extracted_author = clean_author_name(
-        str(raw_data.get("Extracted_Author", ""))
-    )
-    extracted_topics = str(
-        raw_data.get("Extracted_Topics", "Core Research Domain")
-    ).strip()
-
-    if (
-        is_likely_institution(extracted_author)
-        or not extracted_author
-        or extracted_author.lower()
-        in [
-            "unknown", "unknown author", "none", "n/a",
-            "research scholar", "unidentified",
         ]
-        or extracted_author == os.path.splitext(filename)[0]
-    ):
-        if (
-            pdf_meta_author.strip()
-            and pdf_meta_author.lower() not in ["unknown", "none"]
-            and not is_likely_institution(pdf_meta_author)
-        ):
-            extracted_author = clean_author_name(pdf_meta_author.strip())
-        else:
-            extracted_author = clean_author_name(
-                extract_unpublished_authors_fallback(full_text)
+
+        logic_integrity = compute_logical_integrity(raw_data, gaming_penalty)
+
+        raw_final_score = float(np.dot(scores, old_weights)) / 8.0
+        final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
+        formulas_hash = get_formulas_hash()
+
+        if total_evals % EPOCH_BLOCK_SIZE == 0:
+            active_weights = calculate_model_driven_weights(
+                old_weights, scores, model_used, block_height
             )
-            if is_likely_institution(extracted_author):
-                extracted_author = "Unidentified"
-
-    if isinstance(extracted_topics, str):
-        subfields = [
-            s.strip().title() for s in extracted_topics.split(",") if s.strip()
-        ]
-    elif isinstance(extracted_topics, list):
-        subfields = [
-            str(s).strip().title() for s in extracted_topics if str(s).strip()
-        ]
-    else:
-        subfields = ["Core Research Domain"]
-    if not subfields:
-        subfields = ["Core Research Domain"]
-    fields = [subfields[0]]
-
-    normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
-    cursor.execute(
-        "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
-        " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
-        " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
-        " doi=? OR author_name=?",
-        (provided_doi, extracted_author),
-    )
-    existing_records = cursor.fetchall()
-
-    for rec_row in existing_records:
-        ex_hash, ex_score, ex_logic, *ex_rest = rec_row
-        cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
-        ex_title_row = cursor.fetchone()
-        if ex_title_row:
-            ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
-            if (provided_doi != "None" and provided_doi) or (
-                ex_norm_title == normalized_title and normalized_title != ""
-            ):
-                c_scores = ex_rest[:8]
-                piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
-                    ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
-                )
-                drift = (
-                    calculate_complex_drift(scope_alignment, c_scores)
-                    if scope.strip()
-                    else "N/A"
-                )
-                rec_spec = (
-                    get_recommendation_spectrum(ex_score, drift)
-                    if scope.strip()
-                    else "N/A"
-                )
-                scores_dict = {
-                    "C1_Originality": c_scores[0],
-                    "C2_Methodological_Rigor": c_scores[1],
-                    "C3_Interdisciplinary": c_scores[2],
-                    "C4_Societal_Impact": c_scores[3],
-                    "C5_Open_Science_Potential": c_scores[4],
-                    "C6_Literature_Integration": c_scores[5],
-                    "C7_Empirical_Density": c_scores[6],
-                    "C8_Future_Actionability": c_scores[7],
-                }
-                cursor.execute(
-                    "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
-                    " WHERE eval_hash=?",
-                    (ex_hash,),
-                )
-                weight_res = cursor.fetchone()
-                used_weights = weight_res if weight_res else active_weights
-                conn.close()
-                return (
-                    title, extracted_author, ex_score, ex_logic, drift, rec_spec,
-                    fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
-                    used_weights, mdar_score, rrid_count, repro_score, True,
-                )
-
-    cursor.execute("UPDATE global_eval_counter SET count = count + 1")
-    conn.commit()
-    cursor.execute("SELECT count FROM global_eval_counter")
-    total_evals = cursor.fetchone()[0]
-
-    cursor.execute(
-        "SELECT block_height, block_hash, w1, w2, w3, w4, w5, w6, w7, w8 FROM"
-        " blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
-    )
-    epoch_data = cursor.fetchone()
-    block_height, previous_hash, old_weights = (
-        epoch_data[0], epoch_data[1], epoch_data[2:],
-    )
-
-    variables = raw_data if isinstance(raw_data, dict) else {}
-    scores_dict = compute_formulaic_criteria(
-        variables, reproducibility_score, sciscore_adherence=0.82
-    )
-    scores = [
-        scores_dict[k]
-        for k in [
-            "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-            "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-            "C7_Empirical_Density", "C8_Future_Actionability",
-        ]
-    ]
-
-    logic_integrity = compute_logical_integrity(raw_data, gaming_penalty)
-
-    raw_final_score = float(np.dot(scores, old_weights)) / 8.0
-    final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
-    formulas_hash = get_formulas_hash()
-
-    if total_evals % EPOCH_BLOCK_SIZE == 0:
-        active_weights = calculate_model_driven_weights(
-            old_weights, scores, model_used, block_height
-        )
-        timestamp = datetime.now().isoformat()
-        val_node, block_hash, por_proof = validate_block_por(
-            block_height + 1,
-            active_weights,
-            timestamp,
-            previous_hash,
-            file_hash,
-            model_used,
-            final_score,
-            formulas_hash,
-        )
-        cursor.execute(
-            """INSERT INTO blockchain_por_weights (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
+            timestamp = datetime.now().isoformat()
+            val_node, block_hash, por_proof = validate_block_por(
                 block_height + 1,
-                *active_weights,
+                active_weights,
                 timestamp,
                 previous_hash,
-                val_node,
-                block_hash,
                 file_hash,
                 model_used,
-                por_proof,
+                final_score,
                 formulas_hash,
+            )
+            cursor.execute(
+                """INSERT INTO blockchain_por_weights (block_height, w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    block_height + 1,
+                    *active_weights,
+                    timestamp,
+                    previous_hash,
+                    val_node,
+                    block_hash,
+                    file_hash,
+                    model_used,
+                    por_proof,
+                    formulas_hash,
+                ),
+            )
+        else:
+            active_weights = old_weights
+
+        works_count, cited_by_count, credit_role = fetch_author_coara_metrics(
+            extracted_author
+        )
+
+        cursor.execute(
+            "SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE"
+            " author_name=?",
+            (extracted_author,),
+        )
+        row = cursor.fetchone()
+        past_avg = row[0] if row[0] is not None else 0.0
+        past_count = row[1] if row[1] is not None else 0
+
+        if past_count == 0:
+            cursor.execute(
+                "SELECT AVG(final_score) FROM papers_assessment WHERE fields=?",
+                (json.dumps(fields),),
+            )
+            domain_avg = cursor.fetchone()[0]
+            past_avg = domain_avg if domain_avg else 50.0
+
+        improvement_multiplier = 1.0
+        if final_score > past_avg and past_avg > 0:
+            raw_multiplier = 1.5 + ((final_score - past_avg) / 50.0)
+            cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
+            improvement_multiplier = min(raw_multiplier, cap)
+
+        piq_minted = (
+            0.0
+            if extracted_author == "Unidentified"
+            else round((final_score / 10.0) * improvement_multiplier, 2)
+        )
+
+        zk_proof = generate_zk_snark_proof(
+            file_hash, final_score, logic_integrity, "None"
+        )
+        unique_author_book = (
+            "0x" + hashlib.sha256(extracted_author.encode()).hexdigest()[:40]
+            if extracted_author != "Unidentified"
+            else book_address
+        )
+        tx_hash = mint_pi_quotient_token(
+            unique_author_book, piq_minted, file_hash, zk_proof
+        )
+
+        drift = (
+            calculate_complex_drift(scope_alignment, scores)
+            if scope.strip()
+            else "N/A"
+        )
+        rec = (
+            get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
+        )
+
+        mdar_score = 0.85
+        rrid_count = 4
+        credit_roles_str = json.dumps(
+            [credit_role, "Methodology Validation", "Open Science Curation"]
+        )
+
+        cursor.execute(
+            """INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                file_hash, user_id, title, filename, scope, *scores,
+                logic_integrity, scope_alignment, json.dumps(subfields),
+                json.dumps(fields), extracted_author, final_score,
+                datetime.now().isoformat(), unique_author_book, piq_minted,
+                tx_hash, zk_proof, user_id, "None", gaming_penalty,
+                mdar_score, rrid_count, credit_roles_str, reproducibility_score,
+                provided_doi,
             ),
         )
-    else:
-        active_weights = old_weights
-
-    works_count, cited_by_count, credit_role = fetch_author_coara_metrics(
-        extracted_author
-    )
-
-    cursor.execute(
-        "SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE"
-        " author_name=?",
-        (extracted_author,),
-    )
-    row = cursor.fetchone()
-    past_avg = row[0] if row[0] is not None else 0.0
-    past_count = row[1] if row[1] is not None else 0
-
-    if past_count == 0:
-        cursor.execute(
-            "SELECT AVG(final_score) FROM papers_assessment WHERE fields=?",
-            (json.dumps(fields),),
-        )
-        domain_avg = cursor.fetchone()[0]
-        past_avg = domain_avg if domain_avg else 50.0
-
-    improvement_multiplier = 1.0
-    if final_score > past_avg and past_avg > 0:
-        raw_multiplier = 1.5 + ((final_score - past_avg) / 50.0)
-        cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
-        improvement_multiplier = min(raw_multiplier, cap)
-
-    piq_minted = (
-        0.0
-        if extracted_author == "Unidentified"
-        else round((final_score / 10.0) * improvement_multiplier, 2)
-    )
-
-    zk_proof = generate_zk_snark_proof(
-        file_hash, final_score, logic_integrity, "None"
-    )
-    unique_author_book = (
-        "0x" + hashlib.sha256(extracted_author.encode()).hexdigest()[:40]
-        if extracted_author != "Unidentified"
-        else book_address
-    )
-    tx_hash = mint_pi_quotient_token(
-        unique_author_book, piq_minted, file_hash, zk_proof
-    )
-
-    drift = (
-        calculate_complex_drift(scope_alignment, scores)
-        if scope.strip()
-        else "N/A"
-    )
-    rec = (
-        get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
-    )
-
-    mdar_score = 0.85
-    rrid_count = 4
-    credit_roles_str = json.dumps(
-        [credit_role, "Methodology Validation", "Open Science Curation"]
-    )
-
-    cursor.execute(
-        """INSERT OR REPLACE INTO papers_assessment (eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, logic_score, scope_alignment, subfields, fields, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, gaming_penalty, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, reproducibility_score, doi) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            file_hash, user_id, title, filename, scope, *scores,
-            logic_integrity, scope_alignment, json.dumps(subfields),
-            json.dumps(fields), extracted_author, final_score,
-            datetime.now().isoformat(), unique_author_book, piq_minted,
-            tx_hash, zk_proof, user_id, "None", gaming_penalty,
-            mdar_score, rrid_count, credit_roles_str, reproducibility_score,
-            provided_doi,
-        ),
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
     backup_state_to_web3()
 
@@ -1493,38 +1525,30 @@ except Exception:
     pass
 
 conn_ip = get_db_connection()
-cur_ip = conn_ip.cursor()
-cur_ip.execute(
-    "SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,)
-)
-ip_exists = cur_ip.fetchone()
-if not ip_exists:
+try:
+    cur_ip = conn_ip.cursor()
     cur_ip.execute(
-        "INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)",
-        (client_ip, datetime.now().isoformat()),
+        "SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,)
     )
-    conn_ip.commit()
-    try:
-        requests.post(
-            "https://formsubmit.co/ajax/a.vafadaryengejeh@campus.unimib.it",
-            data={
-                "subject": f"New User IP Connected to Pi-Index Engine: {client_ip}",
-                "message": (
-                    f"A new user IP address ({client_ip}) has accessed the"
-                    f" application at {datetime.now().isoformat()}."
-                ),
-            },
-            timeout=3,
+    ip_exists = cur_ip.fetchone()
+    if not ip_exists:
+        cur_ip.execute(
+            "INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)",
+            (client_ip, datetime.now().isoformat()),
         )
-    except Exception:
-        pass
-conn_ip.close()
+        conn_ip.commit()
+        # FIXED: Removed unconsented IP telemetry exfiltration and replaced with python logging.
+        logging.info(f"New User IP Connected locally logged: {client_ip}")
+finally:
+    conn_ip.close()
 
 conn_cnt = get_db_connection()
-cur_cnt = conn_cnt.cursor()
-cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
-total_analyzed_count = cur_cnt.fetchone()[0]
-conn_cnt.close()
+try:
+    cur_cnt = conn_cnt.cursor()
+    cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
+    total_analyzed_count = cur_cnt.fetchone()[0]
+finally:
+    conn_cnt.close()
 
 st.markdown(
     f"""
@@ -2097,7 +2121,9 @@ with tab1:
                             "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
                             "filename": fname,
                         }
+                        # FIXED: Bounded buffer size memory leak
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
                     else:
                         clean_doi = (
                             p_doi.replace("https://doi.org/", "").strip()
@@ -2152,6 +2178,7 @@ with tab1:
                         "filename": fname,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
                 else:
                     clean_doi = doi_snap.replace("https://doi.org/", "").strip()
                     doi_url = f"https://doi.org/{clean_doi}"
@@ -2188,6 +2215,7 @@ with tab1:
                         "filename": fname,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
                     progress_bar.progress((i + 1) / total_files)
 
             if st.session_state["cancel_requested"]:
@@ -2269,14 +2297,16 @@ with tab1:
     )
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM"
-        " papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50",
-        (current_user,),
-    )
-    user_papers = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM"
+            " papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50",
+            (current_user,),
+        )
+        user_papers = cursor.fetchall()
+    finally:
+        conn.close()
 
     if not user_papers:
         st.info(
@@ -2325,15 +2355,18 @@ with tab1:
     )
     if st.session_state.is_authenticated:
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT title, author_name, filename, scope, final_score, piq_minted,"
-            " tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC"
-            " LIMIT 20",
-            (current_user,),
-        )
-        history_data = cursor.fetchall()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT title, author_name, filename, scope, final_score, piq_minted,"
+                " tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC"
+                " LIMIT 20",
+                (current_user,),
+            )
+            history_data = cursor.fetchall()
+        finally:
+            conn.close()
+            
         if history_data:
             cleaned_history = []
             for row in history_data:
@@ -2378,14 +2411,16 @@ with tab1:
     )
 
     conn_last = get_db_connection()
-    cur_last = conn_last.cursor()
-    cur_last.execute(
-        """SELECT title, author_name, filename, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, 
-                  piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count, reproducibility_score, eval_hash, timestamp 
-           FROM papers_assessment ORDER BY timestamp DESC LIMIT 5"""
-    )
-    recent_papers = cur_last.fetchall()
-    conn_last.close()
+    try:
+        cur_last = conn_last.cursor()
+        cur_last.execute(
+            """SELECT title, author_name, filename, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, 
+                      piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count, reproducibility_score, eval_hash, timestamp 
+               FROM papers_assessment ORDER BY timestamp DESC LIMIT 5"""
+        )
+        recent_papers = cur_last.fetchall()
+    finally:
+        conn_last.close()
 
     if not recent_papers:
         st.info("No papers have been assessed in the database yet.")
@@ -2451,16 +2486,19 @@ with tab2:
     )
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT author_name FROM papers_assessment")
-    all_global_authors = []
-    for row in cursor.fetchall():
-        if row[0]:
-            cleaned = clean_author_name(row[0])
-            for a in cleaned.split(","):
-                if a.strip() and not is_likely_institution(a.strip()):
-                    all_global_authors.append(a.strip())
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT author_name FROM papers_assessment")
+        all_global_authors = []
+        for row in cursor.fetchall():
+            if row[0]:
+                cleaned = clean_author_name(row[0])
+                for a in cleaned.split(","):
+                    if a.strip() and not is_likely_institution(a.strip()):
+                        all_global_authors.append(a.strip())
+    finally:
+        conn.close()
+        
     all_global_authors = sorted(list(set(all_global_authors)))
 
     selected_author = None
@@ -2480,13 +2518,15 @@ with tab2:
 
     def render_bubble_chart_clean(target_author):
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT fields, subfields, final_score, author_name FROM"
-            " papers_assessment"
-        )
-        data = cursor.fetchall()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT fields, subfields, final_score, author_name FROM"
+                " papers_assessment"
+            )
+            data = cursor.fetchall()
+        finally:
+            conn.close()
 
         html_string, table_html = "", ""
         if not data:
@@ -2577,11 +2617,17 @@ with tab2:
                 },
             )
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
-            net.save_graph(tmp_file.name)
-            with open(tmp_file.name, "r", encoding="utf-8") as f:
+        # FIXED: PyVis temp file lock crash resolution
+        tmp_fd, tmp_name = tempfile.mkstemp(suffix=".html")
+        os.close(tmp_fd) 
+        
+        try:
+            net.save_graph(tmp_name)
+            with open(tmp_name, "r", encoding="utf-8") as f:
                 html_string = f.read()
-        os.remove(tmp_file.name)
+        finally:
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)
 
         gradient_injection = """
         <style type="text/css">
@@ -2661,74 +2707,75 @@ with tab2:
         if search_query:
             query_clean = search_query.strip().lower()
             conn = get_db_connection()
-            cursor = conn.cursor()
+            try:
+                cursor = conn.cursor()
 
-            if query_clean.startswith("0x"):
-                cursor.execute(
-                    "SELECT title, author_name, eth_book, filename, eval_hash, final_score,"
-                    " piq_minted, timestamp FROM papers_assessment WHERE"
-                    " LOWER(eth_book)=? ORDER BY timestamp DESC",
-                    (query_clean,),
-                )
-                book_papers = cursor.fetchall()
-                conn.close()
-                if book_papers:
-                    st.success(
-                        f"Found {len(book_papers)} papers linked to Unique Book Address:"
-                        f" `{search_query}`"
+                if query_clean.startswith("0x"):
+                    cursor.execute(
+                        "SELECT title, author_name, eth_book, filename, eval_hash, final_score,"
+                        " piq_minted, timestamp FROM papers_assessment WHERE"
+                        " LOWER(eth_book)=? ORDER BY timestamp DESC",
+                        (query_clean,),
                     )
-                    formatted_book_rows = []
-                    for r in book_papers:
-                        formatted_book_rows.append((
-                            r[0], clean_author_name(r[1]), r[2], r[3],
-                            r[4], r[5], r[6], r[7],
-                        ))
-                    df_book = pd.DataFrame(
-                        formatted_book_rows,
-                        columns=[
-                            "Paper Title", "Author", "Unique Book Address",
-                            "File Name", "Paper Address (Eval Hash)",
-                            "Pi-Index", "piQ Earned", "Timestamp",
-                        ],
-                    )
-                    st.dataframe(df_book, use_container_width=True, hide_index=True)
+                    book_papers = cursor.fetchall()
+                    if book_papers:
+                        st.success(
+                            f"Found {len(book_papers)} papers linked to Unique Book Address:"
+                            f" `{search_query}`"
+                        )
+                        formatted_book_rows = []
+                        for r in book_papers:
+                            formatted_book_rows.append((
+                                r[0], clean_author_name(r[1]), r[2], r[3],
+                                r[4], r[5], r[6], r[7],
+                            ))
+                        df_book = pd.DataFrame(
+                            formatted_book_rows,
+                            columns=[
+                                "Paper Title", "Author", "Unique Book Address",
+                                "File Name", "Paper Address (Eval Hash)",
+                                "Pi-Index", "piQ Earned", "Timestamp",
+                            ],
+                        )
+                        st.dataframe(df_book, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(
+                            f"No records found for Unique Book Address '{search_query}'."
+                        )
                 else:
-                    st.warning(
-                        f"No records found for Unique Book Address '{search_query}'."
+                    cursor.execute(
+                        "SELECT author_name, title, eth_book, filename, eval_hash, final_score,"
+                        " piq_minted, timestamp FROM papers_assessment WHERE"
+                        " LOWER(author_name) LIKE ? ORDER BY timestamp DESC",
+                        (f"%{query_clean}%",),
                     )
-            else:
-                cursor.execute(
-                    "SELECT author_name, title, eth_book, filename, eval_hash, final_score,"
-                    " piq_minted, timestamp FROM papers_assessment WHERE"
-                    " LOWER(author_name) LIKE ? ORDER BY timestamp DESC",
-                    (f"%{query_clean}%",),
-                )
-                author_papers = cursor.fetchall()
+                    author_papers = cursor.fetchall()
+                    if author_papers:
+                        st.success(
+                            f"Found {len(author_papers)} paper records for author matching"
+                            f" '{search_query}'."
+                        )
+                        formatted_auth_rows = []
+                        for r in author_papers:
+                            formatted_auth_rows.append((
+                                clean_author_name(r[0]), r[1], r[2], r[3],
+                                r[4], r[5], r[6], r[7],
+                            ))
+                        df_author = pd.DataFrame(
+                            formatted_auth_rows,
+                            columns=[
+                                "Author", "Paper Title", "Unique Book Address",
+                                "File Name", "Paper Address (Eval Hash)",
+                                "Pi-Index", "piQ Earned", "Timestamp",
+                            ],
+                        )
+                        st.dataframe(df_author, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(
+                            f"No papers or piQ records found for author '{search_query}'."
+                        )
+            finally:
                 conn.close()
-                if author_papers:
-                    st.success(
-                        f"Found {len(author_papers)} paper records for author matching"
-                        f" '{search_query}'."
-                    )
-                    formatted_auth_rows = []
-                    for r in author_papers:
-                        formatted_auth_rows.append((
-                            clean_author_name(r[0]), r[1], r[2], r[3],
-                            r[4], r[5], r[6], r[7],
-                        ))
-                    df_author = pd.DataFrame(
-                        formatted_auth_rows,
-                        columns=[
-                            "Author", "Paper Title", "Unique Book Address",
-                            "File Name", "Paper Address (Eval Hash)",
-                            "Pi-Index", "piQ Earned", "Timestamp",
-                        ],
-                    )
-                    st.dataframe(df_author, use_container_width=True, hide_index=True)
-                else:
-                    st.warning(
-                        f"No papers or piQ records found for author '{search_query}'."
-                    )
         else:
             st.dataframe(piq_df, use_container_width=True)
     else:
@@ -2762,223 +2809,225 @@ with tab3:
         """)
 
     conn = get_db_connection()
-    cursor = conn.cursor()
     try:
-        cursor.execute(
-            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used,"
-            " eval_hash, block_hash, por_proof, formulas_hash FROM"
-            " blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
-        )
-        epoch_data = cursor.fetchone()
-    except Exception:
-        epoch_data = None
-
-    if epoch_data:
-        (
-            block_height, weights, model_used, eval_hash,
-            block_hash, por_proof, formulas_hash,
-        ) = (
-            epoch_data[0], epoch_data[1:9], epoch_data[9],
-            epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
-        )
-        cursor.execute(
-            "SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE"
-            " eval_hash != 'genesis'"
-        )
-        total_papers_processed = cursor.fetchone()[0]
-
-        current_pi_accuracy = generate_blockchain_pi(block_height)
-
-        st.markdown(
-            f"**Processed:** `{total_papers_processed}` | **Block Size:**"
-            f" `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:**"
-            f" `{block_height}` | **Pi Algorithmic Precision:**"
-            f" `{current_pi_accuracy}`"
-        )
-
-        cols = st.columns(4)
-        labels = [
-            ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
-            ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
-            ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
-            ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
-        ]
-        for i, col in enumerate(cols * 2):
-            if i < 8:
-                col.markdown(f"**{labels[i][0]} ({labels[i][1]})**")
-                col.markdown(
-                    f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>",
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown(
-            "### Proof-of-Research Blockchain Explorer "
-            + tooltip(
-                "Search the ledger to mathematically verify if a specific research"
-                " document has been authentically graded and permanently sealed."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.info(
-            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
-            f" sealed to block `{block_hash}`."
-        )
-        st.caption(
-            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
-            " grading mathematical constants cannot be tampered with)."
-        )
-
-        explore_col1, explore_col2 = st.columns([3, 1])
-        with explore_col1:
-            search_query = st.text_input(
-                "Enter Document Evaluation Hash or Block Hash to verify ledger"
-                " record..."
-            )
-        with explore_col2:
-            st.write("")
-            st.write("")
-            search_btn = st.button("Verify Record")
-
-        if search_btn and search_query:
-            try:
-                cursor.execute(
-                    "SELECT * FROM blockchain_por_weights WHERE block_hash=? OR"
-                    " eval_hash=?",
-                    (search_query, search_query),
-                )
-                record = cursor.fetchone()
-                if record:
-                    st.success("Valid Block Found on Ledger")
-                    st.json({
-                        "Block Height": record[0],
-                        "Timestamp": record[9],
-                        "Model Used": record[14],
-                        "Validator Node": record[11],
-                        "Block Hash": record[12],
-                        "Evaluation Hash": record[13],
-                        "PoR Signature": record[15],
-                        "Formulas Hash": record[16],
-                        "Weights": dict(
-                            zip([f"w{i+1}" for i in range(8)], record[1:9])
-                        ),
-                    })
-                else:
-                    st.error(
-                        "No block matching that signature was found on the ledger."
-                    )
-            except:
-                st.error("Error reading database schema. Try refreshing the app.")
-
-        st.markdown("---")
-        st.markdown(
-            "### DeSci Peer Attestation & Stake-Weighted Validation "
-            + tooltip(
-                "High-reputation researchers can stake a fraction of their piQ to"
-                " endorse or challenge peer assessments on-chain."
-            ),
-            unsafe_allow_html=True,
-        )
-        if st.session_state.is_authenticated:
+        cursor = conn.cursor()
+        try:
             cursor.execute(
-                "SELECT eval_hash, title FROM papers_assessment ORDER BY timestamp"
-                " DESC LIMIT 20"
+                "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used,"
+                " eval_hash, block_hash, por_proof, formulas_hash FROM"
+                " blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
             )
-            eval_papers = cursor.fetchall()
-            if eval_papers:
-                attest_options = {p[1]: p[0] for p in eval_papers}
-                chosen_attest_title = st.selectbox(
-                    "Select Paper for Attestation:",
-                    list(attest_options.keys()),
-                    key="desci_attest_select",
-                )
-                target_eval_hash = attest_options[chosen_attest_title]
+            epoch_data = cursor.fetchone()
+        except Exception:
+            epoch_data = None
 
-                attest_stance = st.radio(
-                    "Attestation Stance:",
-                    ["Endorse Methodological Rigor", "Challenge / Flag Anomaly"],
-                    horizontal=True,
-                )
-                stake_val = st.slider(
-                    "Stake piQ Amount:",
-                    min_value=0.1,
-                    max_value=10.0,
-                    value=1.0,
-                    step=0.1,
-                )
+        if epoch_data:
+            (
+                block_height, weights, model_used, eval_hash,
+                block_hash, por_proof, formulas_hash,
+            ) = (
+                epoch_data[0], epoch_data[1:9], epoch_data[9],
+                epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
+            )
+            cursor.execute(
+                "SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE"
+                " eval_hash != 'genesis'"
+            )
+            total_papers_processed = cursor.fetchone()[0]
 
-                if st.button("Submit On-Chain Attestation"):
-                    attest_id = "ATT_" + hashlib.sha256(
-                        f"{current_user}:{target_eval_hash}:{time.time()}".encode()
-                    ).hexdigest()[:12]
+            current_pi_accuracy = generate_blockchain_pi(block_height)
+
+            st.markdown(
+                f"**Processed:** `{total_papers_processed}` | **Block Size:**"
+                f" `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:**"
+                f" `{block_height}` | **Pi Algorithmic Precision:**"
+                f" `{current_pi_accuracy}`"
+            )
+
+            cols = st.columns(4)
+            labels = [
+                ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
+                ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
+                ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
+                ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
+            ]
+            for i, col in enumerate(cols * 2):
+                if i < 8:
+                    col.markdown(f"**{labels[i][0]} ({labels[i][1]})**")
+                    col.markdown(
+                        f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>",
+                        unsafe_allow_html=True,
+                    )
+
+            st.markdown(
+                "### Proof-of-Research Blockchain Explorer "
+                + tooltip(
+                    "Search the ledger to mathematically verify if a specific research"
+                    " document has been authentically graded and permanently sealed."
+                ),
+                unsafe_allow_html=True,
+            )
+            st.info(
+                f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
+                f" sealed to block `{block_hash}`."
+            )
+            st.caption(
+                f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
+                " grading mathematical constants cannot be tampered with)."
+            )
+
+            explore_col1, explore_col2 = st.columns([3, 1])
+            with explore_col1:
+                search_query = st.text_input(
+                    "Enter Document Evaluation Hash or Block Hash to verify ledger"
+                    " record..."
+                )
+            with explore_col2:
+                st.write("")
+                st.write("")
+                search_btn = st.button("Verify Record")
+
+            if search_btn and search_query:
+                try:
                     cursor.execute(
-                        "INSERT OR REPLACE INTO desci_attestations (attestation_id,"
-                        " eval_hash, attester_id, stake_amount, stance, timestamp) VALUES"
-                        " (?, ?, ?, ?, ?, ?)",
-                        (
-                            attest_id, target_eval_hash, current_user,
-                            stake_val, attest_stance, datetime.now().isoformat(),
-                        ),
+                        "SELECT * FROM blockchain_por_weights WHERE block_hash=? OR"
+                        " eval_hash=?",
+                        (search_query, search_query),
                     )
-                    conn.commit()
-                    st.success(
-                        f"Attestation recorded successfully! Attestation ID: `{attest_id}`"
-                    )
+                    record = cursor.fetchone()
+                    if record:
+                        st.success("Valid Block Found on Ledger")
+                        st.json({
+                            "Block Height": record[0],
+                            "Timestamp": record[9],
+                            "Model Used": record[14],
+                            "Validator Node": record[11],
+                            "Block Hash": record[12],
+                            "Evaluation Hash": record[13],
+                            "PoR Signature": record[15],
+                            "Formulas Hash": record[16],
+                            "Weights": dict(
+                                zip([f"w{i+1}" for i in range(8)], record[1:9])
+                            ),
+                        })
+                    else:
+                        st.error(
+                            "No block matching that signature was found on the ledger."
+                        )
+                except:
+                    st.error("Error reading database schema. Try refreshing the app.")
 
+            st.markdown("---")
+            st.markdown(
+                "### DeSci Peer Attestation & Stake-Weighted Validation "
+                + tooltip(
+                    "High-reputation researchers can stake a fraction of their piQ to"
+                    " endorse or challenge peer assessments on-chain."
+                ),
+                unsafe_allow_html=True,
+            )
+            if st.session_state.is_authenticated:
                 cursor.execute(
-                    "SELECT attester_id, stake_amount, stance, timestamp FROM"
-                    " desci_attestations WHERE eval_hash=?",
-                    (target_eval_hash,),
+                    "SELECT eval_hash, title FROM papers_assessment ORDER BY timestamp"
+                    " DESC LIMIT 20"
                 )
-                existing_attestations = cursor.fetchall()
-                if existing_attestations:
-                    st.markdown("#### Active Community Attestations for this Manuscript")
-                    st.dataframe(
-                        pd.DataFrame(
-                            existing_attestations,
-                            columns=[
-                                "Attester ID", "Staked piQ", "Stance", "Timestamp",
-                            ],
-                        ),
-                        use_container_width=True,
-                        hide_index=True,
+                eval_papers = cursor.fetchall()
+                if eval_papers:
+                    attest_options = {p[1]: p[0] for p in eval_papers}
+                    chosen_attest_title = st.selectbox(
+                        "Select Paper for Attestation:",
+                        list(attest_options.keys()),
+                        key="desci_attest_select",
                     )
-            else:
-                st.info("No assessed papers available for attestation.")
-        else:
-            st.warning(
-                "Please authenticate with your ORCID iD or DID to participate in"
-                " DeSci attestation staking."
-            )
+                    target_eval_hash = attest_options[chosen_attest_title]
 
-        st.markdown("---")
-        st.markdown(
-            "### Latest Blockchain Ledger Hashes, zk-SNARK Proofs, and piQ Minted "
-            + tooltip(
-                "Chronological view of the most recent smart contract executions,"
-                " demonstrating mathematical proofs of computation and token"
-                " allocations."
-            ),
-            unsafe_allow_html=True,
-        )
-        cursor.execute("""
-            SELECT b.block_height, b.eval_hash, b.block_hash, p.zk_proof, p.piq_minted, b.timestamp 
-            FROM blockchain_por_weights b 
-            LEFT JOIN papers_assessment p ON b.eval_hash = p.eval_hash 
-            ORDER BY b.block_height DESC LIMIT 10
-        """)
-        recent_hashes = cursor.fetchall()
-        if recent_hashes:
-            df_hashes = pd.DataFrame(
-                recent_hashes,
-                columns=[
-                    "Block Height", "Evaluation Hash", "Block Hash",
-                    "zk-SNARK Proof", "Total piQ Minted", "Timestamp",
-                ],
+                    attest_stance = st.radio(
+                        "Attestation Stance:",
+                        ["Endorse Methodological Rigor", "Challenge / Flag Anomaly"],
+                        horizontal=True,
+                    )
+                    stake_val = st.slider(
+                        "Stake piQ Amount:",
+                        min_value=0.1,
+                        max_value=10.0,
+                        value=1.0,
+                        step=0.1,
+                    )
+
+                    if st.button("Submit On-Chain Attestation"):
+                        attest_id = "ATT_" + hashlib.sha256(
+                            f"{current_user}:{target_eval_hash}:{time.time()}".encode()
+                        ).hexdigest()[:12]
+                        cursor.execute(
+                            "INSERT OR REPLACE INTO desci_attestations (attestation_id,"
+                            " eval_hash, attester_id, stake_amount, stance, timestamp) VALUES"
+                            " (?, ?, ?, ?, ?, ?)",
+                            (
+                                attest_id, target_eval_hash, current_user,
+                                stake_val, attest_stance, datetime.now().isoformat(),
+                            ),
+                        )
+                        conn.commit()
+                        st.success(
+                            f"Attestation recorded successfully! Attestation ID: `{attest_id}`"
+                        )
+
+                    cursor.execute(
+                        "SELECT attester_id, stake_amount, stance, timestamp FROM"
+                        " desci_attestations WHERE eval_hash=?",
+                        (target_eval_hash,),
+                    )
+                    existing_attestations = cursor.fetchall()
+                    if existing_attestations:
+                        st.markdown("#### Active Community Attestations for this Manuscript")
+                        st.dataframe(
+                            pd.DataFrame(
+                                existing_attestations,
+                                columns=[
+                                    "Attester ID", "Staked piQ", "Stance", "Timestamp",
+                                ],
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                else:
+                    st.info("No assessed papers available for attestation.")
+            else:
+                st.warning(
+                    "Please authenticate with your ORCID iD or DID to participate in"
+                    " DeSci attestation staking."
+                )
+
+            st.markdown("---")
+            st.markdown(
+                "### Latest Blockchain Ledger Hashes, zk-SNARK Proofs, and piQ Minted "
+                + tooltip(
+                    "Chronological view of the most recent smart contract executions,"
+                    " demonstrating mathematical proofs of computation and token"
+                    " allocations."
+                ),
+                unsafe_allow_html=True,
             )
-            st.dataframe(df_hashes, use_container_width=True, hide_index=True)
-        else:
-            st.info("No hashes to display yet.")
-    conn.close()
+            cursor.execute("""
+                SELECT b.block_height, b.eval_hash, b.block_hash, p.zk_proof, p.piq_minted, b.timestamp 
+                FROM blockchain_por_weights b 
+                LEFT JOIN papers_assessment p ON b.eval_hash = p.eval_hash 
+                ORDER BY b.block_height DESC LIMIT 10
+            """)
+            recent_hashes = cursor.fetchall()
+            if recent_hashes:
+                df_hashes = pd.DataFrame(
+                    recent_hashes,
+                    columns=[
+                        "Block Height", "Evaluation Hash", "Block Hash",
+                        "zk-SNARK Proof", "Total piQ Minted", "Timestamp",
+                    ],
+                )
+                st.dataframe(df_hashes, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hashes to display yet.")
+    finally:
+        conn.close()
 
 with tab4:
     st.markdown(
@@ -3005,14 +3054,57 @@ with tab4:
            - Trains dynamically using Mean Squared Error loss (`nn.MSELoss`) and the Adam optimizer over 200 epochs to forecast how evaluation weights will shift in the upcoming epoch.
         """)
 
+    # FIXED: Train process cached to prevent UI freeze loop and redundant model calculations
+    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+    def train_pibrain_cached(weight_data, actual_lookback):
+        dataset = PiBlockchainDataset(weight_data, actual_lookback)
+        dataloader = DataLoader(
+            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+        )
+
+        model = PiBrainLSTM()
+        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+        if os.path.exists(weights_path):
+            try:
+                model.load_state_dict(torch.load(weights_path, weights_only=True))
+            except Exception:
+                pass
+
+        loss_function = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(200):
+            for seq, target in dataloader:
+                optimizer.zero_grad()
+                loss = loss_function(model(seq), target)
+                loss.backward()
+                optimizer.step()
+
+        model.eval()
+        with torch.no_grad():
+            predicted = (
+                model(
+                    torch.tensor(
+                        weight_data[-actual_lookback:], dtype=torch.float32
+                    ).unsqueeze(0)
+                )
+                .squeeze()
+                .numpy()
+            )
+            torch.save(model.state_dict(), weights_path)
+            return predicted
+
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-        " BY block_height ASC"
-    )
-    historical_rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+            " BY block_height ASC"
+        )
+        historical_rows = cursor.fetchall()
+    finally:
+        conn.close()
 
     min_blocks_required = 2
     if len(historical_rows) < min_blocks_required:
@@ -3033,58 +3125,10 @@ with tab4:
             weight_data = np.array(historical_rows, dtype=np.float32)
             actual_lookback = min(lookback_window, len(weight_data))
 
-            dataset = PiBlockchainDataset(weight_data, actual_lookback)
-            dataloader = DataLoader(
-                dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-            )
-
-            model = PiBrainLSTM()
-            weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-            if os.path.exists(weights_path):
-                try:
-                    model.load_state_dict(torch.load(weights_path, weights_only=True))
-                except Exception:
-                    pass
-
-            loss_function = nn.MSELoss()
-            optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-            progress_bar, status_text = st.progress(0), st.empty()
-            epochs = 200
-
-            model.train()
-            for epoch in range(epochs):
-                total_loss = 0
-                for seq, target in dataloader:
-                    optimizer.zero_grad()
-                    loss = loss_function(model(seq), target)
-                    loss.backward()
-                    optimizer.step()
-                    total_loss += loss.item()
-                if epoch % 10 == 0 or epoch == epochs - 1:
-                    status_text.text(
-                        f"Training Epoch {epoch}/{epochs} | MSE Loss:"
-                        f" {total_loss / max(1, len(dataloader)):.6f}"
-                    )
-                    progress_bar.progress((epoch + 1) / epochs)
-
-            model.eval()
-            with torch.no_grad():
-                st.session_state.predicted_next_weights = (
-                    model(
-                        torch.tensor(
-                            weight_data[-actual_lookback:], dtype=torch.float32
-                        ).unsqueeze(0)
-                    )
-                    .squeeze()
-                    .numpy()
-                )
-                st.session_state.current_weights = weight_data[-1]
-                st.session_state.last_trained_blocks = current_block_count
-                
-                torch.save(model.state_dict(), weights_path)
-                backup_state_to_web3()
-
+            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+            st.session_state.current_weights = weight_data[-1]
+            st.session_state.last_trained_blocks = current_block_count
+            backup_state_to_web3()
         else:
             st.info(
                 "Meta-model is cached and up-to-date with the latest blockchain"
@@ -3330,7 +3374,7 @@ with tab6:
             message_placeholder.markdown(full_response)
         
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
-        st.rerun()
+        # FIXED: Removed redundant st.rerun() that caused duplicate stream event flickering 
 
 st.markdown("---")
 st.markdown(
