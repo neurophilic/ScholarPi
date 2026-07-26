@@ -125,7 +125,7 @@ custom_ui_code = """
 <script>
 const parentDoc = window.parent.document;
 
-// 1. Click Listener exclusively for the Robot Icon Trigger
+// Click Listener exclusively for the Robot Icon Trigger
 parentDoc.addEventListener('click', function(e) {
     let trigger = e.target.closest('.scilm-trigger');
     if (!trigger) return; 
@@ -149,7 +149,7 @@ parentDoc.addEventListener('click', function(e) {
     }
 }, true);
 
-// 2. MutationObserver to auto-scroll chat
+// Auto-scroll chat to bottom
 const observer = new MutationObserver(() => {
     const chatContainers = parentDoc.querySelectorAll('[data-testid="stChatMessageContainer"]');
     chatContainers.forEach(container => {
@@ -351,7 +351,7 @@ with chat_container:
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     direct_answer = None
@@ -699,37 +699,37 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    st.markdown(f"**C1: Originality {rbot('c1: originality')}** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
-    st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
-    st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
+    with st.expander(f"C1: Originality {rbot('c1: originality')} — {green_badge(tw1)}"):
+        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
+        st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
 
-    st.markdown(f"**C2: Methodological Rigor {rbot('c2: methodological rigor')}** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
-    st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
-    st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
+    with st.expander(f"C2: Methodological Rigor {rbot('c2: methodological rigor')} — {green_badge(tw2)}"):
+        st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
+        st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
 
-    st.markdown(f"**C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')}** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
-    st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
-    st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    with st.expander(f"C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')}"):
+        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
+        st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    st.markdown(f"**C4: Societal Impact {rbot('c4: societal impact')}** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
-    st.markdown("Evaluates broader societal and open infrastructure contributions.")
-    st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
+    with st.expander(f"C4: Societal Impact {rbot('c4: societal impact')}"):
+        st.markdown("Evaluates broader societal and open infrastructure contributions.")
+        st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
 
-    st.markdown(f"**C5: Open Science {rbot('c5: open science')}** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
-    st.markdown("Evaluates open data, open code, and containerized reproducibility.")
-    st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
+    with st.expander(f"C5: Open Science {rbot('c5: open science')}"):
+        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
+        st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
 
-    st.markdown(f"**C6: Literature Integration {rbot('c6: literature integration')}** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
-    st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
-    st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
+    with st.expander(f"C6: Literature Integration {rbot('c6: literature integration')}"):
+        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
+        st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
 
-    st.markdown(f"**C7: Empirical Density {rbot('c7: empirical density')}** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
-    st.markdown("Assesses empirical sample strength and baseline variance.")
-    st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
+    with st.expander(f"C7: Empirical Density {rbot('c7: empirical density')}"):
+        st.markdown("Assesses empirical sample strength and baseline variance.")
+        st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
 
-    st.markdown(f"**C8: Future Actionability {rbot('c8: future actionability')}** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
-    st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
-    st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
+    with st.expander(f"C8: Future Actionability {rbot('c8: future actionability')}"):
+        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
+        st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
@@ -1807,14 +1807,14 @@ def framework_workflow_dialog():
         }
 
         subgraph cluster_outputs {
-            label = "4. User Interface, Trust Cartography & Institutional Policy Support";
+            label = "4. User Interface, Cartography & Institutional Policy Support";
             style = rounded;
             color = "#d35400";
             fillcolor = "#fef5e7";
 
-            Dossier [label="DORA & CoARA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
+            Dossier [label="CoARA & DORA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
             Cartography [label="Global Map of Science\\n• Ledger PyVis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
-            PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
+            PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillnumber="#f8c471"];
         }
 
         Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Text"];
