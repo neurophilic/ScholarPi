@@ -19,9 +19,9 @@ from pyvis.network import Network
 import streamlit as st
 import streamlit.components.v1 as components
 
-from config import BASE_DIR, EPOCH_BLOCK_SIZE
+from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS
 from database import get_db_connection
-from ledger import restore_state_from_web3, generate_blockchain_pi, get_ethereum_node_stats
+from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url
 from integrations import (
     clean_author_name, is_likely_institution, fetch_doi_metadata, 
     fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics,
@@ -540,7 +540,13 @@ with tab1:
             st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
             st.write(f"**piQ Minted:** `{piq}`")
             st.write(f"**zk-SNARK:** `{zk_proof}`")
-            st.write(f"**Tx Hash:** `{tx_hash}`")
+            
+            tx_url = get_sepolia_explorer_url(tx_hash, "tx")
+            if tx_url:
+                st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
+            else:
+                st.write(f"**Tx Hash:** `{tx_hash}`")
+
             st.write(
                 f"**Executable Reproducibility Score (C5/C7 audit):**"
                 f" `{repro_score * 100:.1f}%`"
@@ -950,6 +956,9 @@ with tab1:
         if history_data:
             cleaned_history = []
             for row in history_data:
+                tx_h = row[6]
+                tx_url = get_sepolia_explorer_url(tx_h, "tx")
+                tx_display = f"[{tx_h[:10]}...]({tx_url})" if tx_url else tx_h
                 cleaned_history.append((
                     row[0],
                     clean_author_name(row[1]),
@@ -957,9 +966,10 @@ with tab1:
                     row[3],
                     row[4],
                     row[5],
-                    row[6],
+                    tx_display,
                 ))
-            st.dataframe(
+            
+            st.markdown(
                 pd.DataFrame(
                     cleaned_history,
                     columns=[
@@ -971,9 +981,8 @@ with tab1:
                         "piQ Earned",
                         "Eth Tx Hash",
                     ],
-                ),
-                use_container_width=True,
-                hide_index=True,
+                ).to_markdown(index=False),
+                unsafe_allow_html=True
             )
         else:
             st.info("No assessment history found.")
@@ -1014,6 +1023,7 @@ with tab1:
 
             r_author_clean = clean_author_name(r_author)
             r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
+            r_tx_url = get_sepolia_explorer_url(r_tx, "tx")
 
             with st.expander(
                 f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
@@ -1025,7 +1035,12 @@ with tab1:
                 st.write(f"**Timestamp:** `{r_time}`")
                 st.write(f"**Evaluation Hash:** `{r_hash}`")
                 st.write(f"**Unique Author Book Address:** `{r_book}`")
-                st.write(f"**piQ Minted:** `{r_piq}` | **Tx Hash:** `{r_tx}`")
+                st.write(f"**piQ Minted:** `{r_piq}`")
+                if r_tx_url:
+                    st.markdown(f"**Tx Hash:** [`{r_tx}`]({r_tx_url})")
+                else:
+                    st.write(f"**Tx Hash:** `{r_tx}`")
+
                 st.write(
                     f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
                     f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
@@ -1498,24 +1513,23 @@ with tab3:
 
             st.markdown("---")
             st.markdown(
-                "### Live Ethereum Node & Peer Network Monitor "
+                "### View Data on Ethereum Explorer (Sepolia Etherscan) "
                 + tooltip(
-                    "Inspects the health, connected peer count, client software, and synchronization status of the active Sepolia/Ethereum RPC node using net_peerCount."
+                    "Direct links to inspect deployed smart contracts and live assessment transaction records on Sepolia Etherscan."
                 ),
                 unsafe_allow_html=True,
             )
             
-            node_stats = get_ethereum_node_stats()
-            if node_stats.get("connected"):
-                col_n1, col_n2, col_n3 = st.columns(3)
-                col_n1.metric("Connected Peers (`net_peerCount`)", node_stats.get("peer_count", 0))
-                col_n2.metric("Node Client Software", str(node_stats.get("client_version", "Unknown")))
-                col_n3.metric("Network Sync Status", str(node_stats.get("sync_status", "Synced")))
-                
-                if st.button("Refresh Node Connection Stats"):
-                    st.rerun()
-            else:
-                st.warning("Web3 provider is currently disconnected. Check your RPC URI configuration in `config.py`.")
+            col_ex1, col_ex2 = st.columns(2)
+            with col_ex1:
+                piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+                st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS[:10]}...`]({piq_url})")
+            with col_ex2:
+                reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+                if REGISTRY_CONTRACT_ADDRESS:
+                    st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS[:10]}...`]({reg_url})")
+                else:
+                    st.markdown("**Registry Contract:** `Not Configured`")
 
             st.markdown("---")
             st.markdown(
@@ -1609,21 +1623,28 @@ with tab3:
                 unsafe_allow_html=True,
             )
             cursor.execute("""
-                SELECT b.block_height, b.eval_hash, b.block_hash, p.zk_proof, p.piq_minted, b.timestamp 
+                SELECT b.block_height, b.eval_hash, b.block_hash, p.zk_proof, p.piq_minted, p.tx_hash, b.timestamp 
                 FROM blockchain_por_weights b 
                 LEFT JOIN papers_assessment p ON b.eval_hash = p.eval_hash 
                 ORDER BY b.block_height DESC LIMIT 10
             """)
             recent_hashes = cursor.fetchall()
             if recent_hashes:
+                formatted_hashes = []
+                for rh in recent_hashes:
+                    bh, eh, bhash, zk, piq, tx, ts = rh
+                    tx_url = get_sepolia_explorer_url(tx, "tx")
+                    tx_display = f"[{tx[:10]}...]({tx_url})" if tx_url else str(tx)
+                    formatted_hashes.append((bh, eh[:10] + "...", bhash[:10] + "...", zk[:10] + "...", piq, tx_display, ts))
+
                 df_hashes = pd.DataFrame(
-                    recent_hashes,
+                    formatted_hashes,
                     columns=[
-                        "Block Height", "Evaluation Hash", "Block Hash",
-                        "zk-SNARK Proof", "Total piQ Minted", "Timestamp",
+                        "Block Height", "Eval Hash", "Block Hash",
+                        "zk-SNARK", "piQ", "Tx Hash (Etherscan)", "Timestamp",
                     ],
                 )
-                st.dataframe(df_hashes, use_container_width=True, hide_index=True)
+                st.markdown(df_hashes.to_markdown(index=False), unsafe_allow_html=True)
             else:
                 st.info("No hashes to display yet.")
     finally:
