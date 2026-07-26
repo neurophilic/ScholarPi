@@ -184,7 +184,7 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
     white-space: nowrap !important;
 }
 
-/* 5. Force borderless iframes for the map */
+/* 5. Force borderless strict 750x750 iframes for the map */
 iframe {
     border: none !important;
     border-radius: 8px !important;
@@ -193,10 +193,14 @@ iframe {
     margin: 0 !important;
     padding: 0 !important;
     display: block !important;
+    width: 750px !important;
+    height: 750px !important;
 }
 [data-testid="stHtml"] {
     border: none !important;
     padding: 0 !important;
+    width: 750px !important;
+    height: 750px !important;
 }
 </style>
 <script>
@@ -687,19 +691,23 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
-    # Injecting CSS to absolutely strip PyVis default borders
+    # Injecting CSS to absolutely strip PyVis default borders and lock 750x750 dimensions
     gradient_injection = f"""
     <style type="text/css">
-        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; }}
+        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 750px; height: 750px; }}
         canvas {{
             background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
             border: none !important;
             outline: none !important;
+            width: 750px !important;
+            height: 750px !important;
         }}
         #mynetwork, .vis-network, .card-body {{
             border: none !important;
             box-shadow: none !important;
             margin: 0 !important;
+            width: 750px !important;
+            height: 750px !important;
         }}
     </style>
     <!-- reload_timestamp: {time.time()} -->
