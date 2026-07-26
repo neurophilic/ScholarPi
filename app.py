@@ -356,7 +356,7 @@ with chat_container:
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     direct_answer = None
@@ -423,7 +423,6 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
                     full_response = response.choices[0].message.content
                 except Exception as primary_err:
                     err_str = str(primary_err)
-                    # Handle 413 / Request too large / TPM rate limit exceeded gracefully by trimming payload
                     if "413" in err_str or "rate_limit_exceeded" in err_str or "tokens" in err_str or "limit" in err_str:
                         trimmed_messages = [messages_for_api[0]] + messages_for_api[-3:]
                         try:
@@ -1243,7 +1242,7 @@ with top_analytics_col1:
     with col_fc1:
         st.markdown(f"### {explain('Pidyne Forecast')}", unsafe_allow_html=True)
     with col_fc2:
-        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1)
+        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
         actual_lookback = int(forecast_horizon.split()[0])
 
     @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
@@ -1316,20 +1315,23 @@ with top_analytics_col1:
         if (
             "last_trained_blocks" not in st.session_state
             or st.session_state.last_trained_blocks != current_block_count
+            or st.session_state.get("last_lookback") != lookback_window
         ):
             weight_data = np.array(historical_rows, dtype=np.float32)
 
             st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, lookback_window)
             st.session_state.current_weights = weight_data[-1]
             st.session_state.last_trained_blocks = current_block_count
+            st.session_state.last_lookback = lookback_window
 
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
+        # Clean, well-proportioned bar chart comparing current active weights vs predicted next epoch weights
         df_compare = pd.DataFrame(
             {
-                "Current Active Weights (150x Amplified)": np.maximum(0.01, np.mean(curr_vals) + (curr_vals - np.mean(curr_vals)) * 150.0),
-                "Predicted Next Epoch (150x Amplified)": np.maximum(0.01, np.mean(curr_vals) + (pred_vals - np.mean(curr_vals)) * 150.0),
+                "Current Active Weights": curr_vals,
+                "Predicted Next Epoch": pred_vals,
             },
             index=[
                 "C1: Originality", "C2: Methodological Rigor",
@@ -1340,6 +1342,18 @@ with top_analytics_col1:
         )
         
         st.bar_chart(df_compare, height=350, use_container_width=True)
+
+        st.markdown(
+            f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
+            f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
+            f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
+            f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
+            f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
+            f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
+            f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
+            f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
+            f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
+        )
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
@@ -1472,7 +1486,7 @@ if st.session_state.is_authenticated:
                 if u_tx_url:
                     st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
                 else:
-                    st.write(f"**Tx Hash:** `{u_tx}`")
+                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
     else:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
 else:
@@ -1527,8 +1541,8 @@ else:
                 st.write(f"**piQ Minted:** `{r_piq}`")
                 st.markdown(f"**{explain('zk-SNARK')} Proof:** `{r_zk}`", unsafe_allow_html=True)
                 
-                if r_tx_url:
-                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({r_tx_url})")
+                if u_tx_url:
+                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
                 else:
                     st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
