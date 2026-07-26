@@ -248,15 +248,6 @@ if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 
-# --- Initialize Scilem Chat State Early ---
-if "scilm_messages" not in st.session_state:
-    st.session_state.scilm_messages = [
-        {
-            "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
-        }
-    ]
-
 if "orcid_id" not in st.session_state:
     saved_orcid = st.query_params.get("orcid", "")
     if saved_orcid and (re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", saved_orcid) or "did:" in saved_orcid):
@@ -362,6 +353,14 @@ SCILEM_KNOWLEDGE_BASE = {
     "sciscore mdar": "SciScore evaluates adherence to the Materials Design Analysis Reporting (MDAR) framework to ensure rigor.",
     "executable reproducibility score": "An audit metric calculating whether code, data, and software environments (C5 & C7) can reliably execute independent results."
 }
+
+if "scilm_messages" not in st.session_state:
+    st.session_state.scilm_messages = [
+        {
+            "role": "assistant", 
+            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
+        }
+    ]
 
 if "last_analyzed_tracked" not in st.session_state:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
@@ -503,6 +502,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         notebook=False,
     )
     
+    # Increased damping (0.99) and stabilization iterations (1000) to make the map less jiggly on load
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
@@ -510,12 +510,12 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
                 "centralGravity": {central_grav}, 
                 "springLength": {spring_len}, 
                 "springConstant": 0.02,
-                "damping": 0.95,
+                "damping": 0.99,
                 "avoidOverlap": 2.5 
             }}, 
             "stabilization": {{ 
                 "enabled": true, 
-                "iterations": 300,
+                "iterations": 1000,
                 "fit": true
             }} 
         }} 
@@ -1376,7 +1376,6 @@ with top_analytics_col2:
         central_grav=mod_gravity
     )
     if interactive_html_top:
-        # Map set to scrolling=False to make it unscrollable
         components.html(interactive_html_top, height=410, scrolling=False)
     else:
         st.info("Awaiting sufficient data for map visualization.")
