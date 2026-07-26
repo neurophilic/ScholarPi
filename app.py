@@ -410,6 +410,30 @@ with st.sidebar.expander("Scilem Accessory Chatbot", expanded=False):
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
         st.rerun()
 
+# --- Helper for Generalizing Scientific Topics ---
+def generalize_topic(s):
+    s_lower = s.lower()
+    if any(k in s_lower for k in ["computer", "algorithm", "software", "ai", "machine learning", "blockchain", "data", "cyber", "neural", "deep learning", "information"]):
+        return "Computer Science & IT"
+    elif any(k in s_lower for k in ["physics", "quantum", "optics", "energy", "mechanics", "astronomy"]):
+        return "Physics & Physical Sciences"
+    elif any(k in s_lower for k in ["chemistry", "polymer", "catalysis", "molecule", "chemical"]):
+        return "Chemistry & Chemical Sciences"
+    elif any(k in s_lower for k in ["biology", "genetics", "cellular", "protein", "ecology", "molecular", "gene"]):
+        return "Life & Biological Sciences"
+    elif any(k in s_lower for k in ["medicine", "clinical", "health", "disease", "pharmac", "biomedical", "hospital", "patient"]):
+        return "Medical & Health Sciences"
+    elif any(k in s_lower for k in ["environment", "climate", "earth", "geology", "ocean", "ecosystem", "carbon"]):
+        return "Earth & Environmental Sciences"
+    elif any(k in s_lower for k in ["economics", "finance", "sociology", "psychology", "policy", "social", "management"]):
+        return "Social Sciences & Economics"
+    elif any(k in s_lower for k in ["math", "statistics", "algebra", "calculus", "probability"]):
+        return "Mathematics & Statistics"
+    elif any(k in s_lower for k in ["engineering", "robotics", "materials", "civil", "mechanical", "electrical"]):
+        return "Engineering & Technology"
+    else:
+        return "General Interdisciplinary Science"
+
 # --- Helper for Cartography Render ---
 def render_bubble_chart_clean(target_author):
     conn = get_db_connection()
@@ -441,10 +465,11 @@ def render_bubble_chart_clean(target_author):
         ):
             continue
         try:
-            subfields = [s.title().strip() for s in json.loads(subfields_json)]
+            raw_subfields = [s.title().strip() for s in json.loads(subfields_json)]
             score = float(final_score) if final_score else 50.0
-            for s in subfields:
-                if s.lower() not in exclude_terms:
+            for rs in raw_subfields:
+                if rs.lower() not in exclude_terms:
+                    s = generalize_topic(rs)
                     if s not in topic_aggregates:
                         topic_aggregates[s] = {"weight_sum": 0.0, "frequency": 0}
                     topic_aggregates[s]["weight_sum"] += score
@@ -453,7 +478,7 @@ def render_bubble_chart_clean(target_author):
             continue
 
     if not topic_aggregates:
-        topic_aggregates["Core Research Domain"] = {
+        topic_aggregates["General Interdisciplinary Science"] = {
             "weight_sum": 50.0,
             "frequency": 1,
         }
@@ -489,7 +514,7 @@ def render_bubble_chart_clean(target_author):
             n_id=topic,
             label=" ",
             title=(
-                f"Topic: {topic} | Frequency: {freq} | Avg Weight/Score:"
+                f"Field: {topic} | Frequency: {freq} | Avg Weight/Score:"
                 f" {avg_weight:.1f}"
             ),
             size=node_size,
@@ -536,7 +561,7 @@ def render_bubble_chart_clean(target_author):
     )
 
     table_html = "<style>.table-big { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 6px; text-align: left; } .table-big td { padding: 6px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; } </style>"
-    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Scientific Topic</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
+    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>General Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
     for topic, metrics in sorted(
         topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True
     ):
@@ -1123,7 +1148,7 @@ def more_details_dialog(item):
         st.markdown(st.session_state[f"defense_{eval_hash}"])
 
 @st.dialog("AI Peer Review Defense Strategy", width="medium")
-def defense_strategy_dialog(scores_dict, eval_hash):
+def defense_strategy_dialog(scores_dict):
     with st.spinner("Synthesizing adversarial defense strategy..."):
         rebuttal = generate_rebuttal_strategy(scores_dict)
     st.markdown(rebuttal)
@@ -1148,7 +1173,7 @@ def render_breakdown_item(item, index):
                     more_details_dialog(item)
             with c_strat:
                 if st.button("Generate Strategy", key=f"gen_strat_{index}_{eval_hash}", use_container_width=True):
-                    defense_strategy_dialog(scores_dict, eval_hash)
+                    defense_strategy_dialog(scores_dict)
             with c_del:
                 if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
                     st.session_state["evaluated_papers_buffer"].pop(index)
