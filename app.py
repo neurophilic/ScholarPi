@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pyvis.network import Network
+import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -73,10 +74,10 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-def explain(text):
-    return f"<span class='explainable'>{text} <span style='font-size:0.9em;'>🤖</span></span>"
+def rbot(topic_key):
+    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click 🤖 to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Click-to-Explain and Layout Adjustments
+# Custom JS/CSS for Scilem Icon-Only Click Function & Layout Adjustments
 custom_ui_code = """
 <style>
 /* Scilem Chat Box Cushioning Reduction */
@@ -109,42 +110,37 @@ custom_ui_code = """
     background-color: #f8f9fa;
 }
 
-/* Explainable Technical Terms styling */
-.explainable {
+/* Robot Icon Trigger Styling */
+.scilm-trigger {
     cursor: pointer !important;
-    border-bottom: 1.5px dotted #2980b9;
-    color: #1a5276;
-    font-weight: 600;
-    transition: all 0.2s ease-in-out;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
+    font-size: 1.0em;
+    margin-left: 4px;
+    vertical-align: middle;
+    transition: transform 0.15s ease-in-out;
+    display: inline-block;
 }
-.explainable:hover {
-    background-color: #eaf2f8;
-    border-radius: 4px;
-    padding: 0 2px;
+.scilm-trigger:hover {
+    transform: scale(1.25);
 }
 </style>
 <script>
 const parentDoc = window.parent.document;
 
-// 1. Click Listener for Explainable Elements
+// Click Listener exclusively for the Robot Icon Trigger
 parentDoc.addEventListener('click', function(e) {
-    let explainTarget = e.target.closest('.explainable');
-    if (!explainTarget) return; 
+    let trigger = e.target.closest('.scilm-trigger');
+    if (!trigger) return; 
     
     e.preventDefault();
     e.stopPropagation();
 
-    let text = explainTarget.innerText || explainTarget.textContent;
-    if (!text) return;
-    text = text.replace(/🤖/g, '').trim();
+    let query = trigger.getAttribute('data-query');
+    if (!query) return;
 
     const textarea = parentDoc.querySelector('[data-testid="stChatInputTextArea"]');
     if (textarea) {
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-        nativeInputValueSetter.call(textarea, "Explain: " + text);
+        nativeInputValueSetter.call(textarea, "Explain: " + query);
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         const enterEvent = new KeyboardEvent('keydown', {
@@ -154,7 +150,7 @@ parentDoc.addEventListener('click', function(e) {
     }
 }, true);
 
-// 2. MutationObserver to auto-scroll chat
+// Auto-scroll chat to bottom
 const observer = new MutationObserver(() => {
     const chatContainers = parentDoc.querySelectorAll('[data-testid="stChatMessageContainer"]');
     chatContainers.forEach(container => {
@@ -331,7 +327,7 @@ if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** If you see a 🤖 icon on any text in the app, simply click it and I will explain it here."
+            "content": "**Welcome! I am Scilem.** Click any 🤖 icon next to technical app features or terms to get instant explanations."
         }
     ]
 
@@ -694,7 +690,7 @@ def evaluation_metrics_dialog():
     green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
 
     st.markdown(
-        f"**{explain('Adversarial Logic Gap')} ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+        f"**Adversarial Logic Gap {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
         unsafe_allow_html=True
     )
     st.markdown(
@@ -704,35 +700,35 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    st.markdown(f"**{explain('C1: Originality')}** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
+    st.markdown(f"**C1: Originality {rbot('c1: originality')}** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
     st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
     st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
 
-    st.markdown(f"**{explain('C2: Methodological Rigor')}** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
+    st.markdown(f"**C2: Methodological Rigor {rbot('c2: methodological rigor')}** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
     st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
     st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
 
-    st.markdown(f"**{explain('C3: Interdisciplinary Synergy')}** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
+    st.markdown(f"**C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')}** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
     st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
     st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    st.markdown(f"**{explain('C4: Societal Impact')}** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
+    st.markdown(f"**C4: Societal Impact {rbot('c4: societal impact')}** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
     st.markdown("Evaluates broader societal and open infrastructure contributions.")
     st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
 
-    st.markdown(f"**{explain('C5: Open Science')}** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
+    st.markdown(f"**C5: Open Science {rbot('c5: open science')}** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
     st.markdown("Evaluates open data, open code, and containerized reproducibility.")
     st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
 
-    st.markdown(f"**{explain('C6: Literature Integration')}** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
+    st.markdown(f"**C6: Literature Integration {rbot('c6: literature integration')}** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
     st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
     st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
 
-    st.markdown(f"**{explain('C7: Empirical Density')}** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
+    st.markdown(f"**C7: Empirical Density {rbot('c7: empirical density')}** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
     st.markdown("Assesses empirical sample strength and baseline variance.")
     st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
 
-    st.markdown(f"**{explain('C8: Future Actionability')}** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
+    st.markdown(f"**C8: Future Actionability {rbot('c8: future actionability')}** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
     st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
     st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
 
@@ -1072,7 +1068,7 @@ def more_details_dialog(item):
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
         st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
         st.write(f"**piQ Minted:** `{piq}`")
-        st.markdown(f"**{explain('zk-SNARK')}:** `{zk_proof}`", unsafe_allow_html=True)
+        st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{zk_proof}`", unsafe_allow_html=True)
         
         tx_url = safe_get_sepolia_url(tx_hash)
         tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
@@ -1081,8 +1077,8 @@ def more_details_dialog(item):
         else:
             st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-        st.markdown(f"**{explain('Executable Reproducibility Score')}:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
-        st.markdown(f"**{explain('SciScore MDAR Adherence')}:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
+        st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
+        st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
 
     scope_val = st.session_state.get("snap_scope", "")
     if scope_val.strip() and drift != "N/A" and rec != "N/A":
@@ -1240,7 +1236,7 @@ top_analytics_col1, top_analytics_col2 = st.columns(2)
 with top_analytics_col1:
     col_fc1, col_fc2 = st.columns([3, 1])
     with col_fc1:
-        st.markdown(f"### {explain('Pidyne Forecast')}", unsafe_allow_html=True)
+        st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
     with col_fc2:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
         actual_lookback = int(forecast_horizon.split()[0])
@@ -1327,7 +1323,6 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
-        # Clean, well-proportioned bar chart comparing current active weights vs predicted next epoch weights
         df_compare = pd.DataFrame(
             {
                 "Current Active Weights": curr_vals,
@@ -1358,7 +1353,7 @@ with top_analytics_col1:
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
     with map_title_col:
-        st.markdown(f"### {explain('Global Map of Science')}", unsafe_allow_html=True)
+        st.markdown(f"### Global Map of Science {rbot('global map of science')}", unsafe_allow_html=True)
     with map_badge_col:
         st.markdown(
             f"""
@@ -1481,7 +1476,7 @@ if st.session_state.is_authenticated:
                 st.write(f"**Block Hash:** `{u_block_hash if u_block_hash is not None else 'Pending'}`")
                 st.write(f"**Unique Author Book Address:** `{u_book}`")
                 st.write(f"**piQ Rewards Earned:** `{u_piq} piQ`")
-                st.markdown(f"**{explain('zk-SNARK')} Proof:** `{u_zk}`", unsafe_allow_html=True)
+                st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{u_zk}`", unsafe_allow_html=True)
                 
                 if u_tx_url:
                     st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
@@ -1539,10 +1534,10 @@ else:
                 st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
                 st.write(f"**Unique Author Book Address:** `{r_book}`")
                 st.write(f"**piQ Minted:** `{r_piq}`")
-                st.markdown(f"**{explain('zk-SNARK')} Proof:** `{r_zk}`", unsafe_allow_html=True)
+                st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{r_zk}`", unsafe_allow_html=True)
                 
-                if u_tx_url:
-                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
+                if r_tx_url:
+                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({r_tx_url})")
                 else:
                     st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
@@ -1572,7 +1567,7 @@ else:
 
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
-st.markdown(f"### {explain('Proof-of-Research Blockchain Explorer')}", unsafe_allow_html=True)
+st.markdown(f"### Proof-of-Research Blockchain Explorer {rbot('proof-of-research')}", unsafe_allow_html=True)
 
 conn = get_db_connection()
 try:
@@ -1650,11 +1645,11 @@ try:
                             st.write(f"**Evaluation Hash (Eval Hash):** `{m_hash}`")
                             st.write(f"**Block Height:** `{m_block_height if m_block_height is not None else 'Pending'}`")
                             st.write(f"**Block Hash:** `{m_block_hash if m_block_hash is not None else 'Pending'}`")
-                            st.markdown(f"**{explain('Proof-of-Research')} (PoR):** `{m_por}`", unsafe_allow_html=True)
+                            st.markdown(f"**Proof-of-Research {rbot('proof-of-research')} (PoR):** `{m_por}`", unsafe_allow_html=True)
                             st.write(f"**Formulas State Hash:** `{m_form}`")
                             st.write(f"**Unique Author Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.markdown(f"**{explain('zk-SNARK')} Proof:** `{m_zk}`", unsafe_allow_html=True)
+                            st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{m_zk}`", unsafe_allow_html=True)
                             
                             if m_tx_url:
                                 st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({m_tx_url})")
