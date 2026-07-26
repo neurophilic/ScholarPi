@@ -231,9 +231,8 @@ parentDoc.addEventListener('click', function(e) {
     }
 }, true);
 
-// 2. Element Positioning Loop
+// 2. Element Positioning Loop for Draggable Scilem
 function initUI() {
-    // Draggable Scilem setup
     const handle = parentDoc.getElementById('scilem-drag-handle');
     if (handle) {
         let block = handle.closest('[data-testid="stVerticalBlock"]');
@@ -275,24 +274,6 @@ function initUI() {
 
                 parentDoc.addEventListener('mouseup', function() { isDragging = false; });
             }
-        }
-    }
-
-    // 6. Overlay Map Modulator (⚙️) directly into the top-left corner of ymap
-    const anchor = parentDoc.getElementById('map-anchor');
-    if (anchor) {
-        let expander = anchor.querySelector('[data-testid="stExpander"]');
-        if (expander && expander.style.position !== 'absolute') {
-            expander.style.position = 'absolute';
-            expander.style.top = '10px';
-            expander.style.left = '10px';
-            expander.style.zIndex = '100';
-            expander.style.width = '320px';
-            expander.style.background = 'rgba(255, 255, 255, 0.95)';
-            expander.style.backdropFilter = 'blur(4px)';
-            expander.style.border = '1px solid #d0d7de';
-            expander.style.borderRadius = '8px';
-            expander.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
         }
     }
 }
@@ -618,7 +599,6 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         notebook=False,
     )
     
-    # High damping to completely prevent initial jiggliness
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
@@ -686,7 +666,6 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
-    # Injecting CSS to absolutely strip PyVis default borders and lock strict 450x450 canvas dimensions
     gradient_injection = f"""
     <style type="text/css">
         body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 450px; height: 450px; }}
@@ -1451,9 +1430,7 @@ with tab_map:
 
     map_container = st.container()
     with map_container:
-        st.markdown("<div id='map-anchor' style='position: relative; width: 450px; height: 450px;'>", unsafe_allow_html=True)
-        
-        with st.expander("⚙️", expanded=False):
+        with st.expander("⚙️ Map Modulator Settings", expanded=False):
             mod_col1, mod_col2 = st.columns(2)
             with mod_col1:
                 mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
@@ -1505,8 +1482,6 @@ with tab_map:
             st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("Awaiting sufficient data for map visualization.")
-            
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
         st.markdown(table_html_top, unsafe_allow_html=True)
@@ -1820,7 +1795,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
