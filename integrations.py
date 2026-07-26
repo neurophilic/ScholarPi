@@ -2,6 +2,7 @@ import re
 import json
 import requests
 import cloudscraper
+import fitz  # PyMuPDF
 
 def clean_author_name(author_str):
     if not author_str:
@@ -39,8 +40,6 @@ def is_likely_institution(name):
             return True
     return False
 
-import fitz  # PyMuPDF
-
 def fetch_core_text_by_doi(doi):
     """Queries the CORE API v3 using the DOI to extract available full-text or abstract."""
     if not doi or doi == "None":
@@ -57,7 +56,6 @@ def fetch_core_text_by_doi(doi):
             results = data.get("results", [])
             if results:
                 paper_data = results[0]
-                # CORE indexes fullText or abstract
                 text = paper_data.get("fullText") or paper_data.get("abstract")
                 if text and len(text.strip()) > 200:
                     return text
@@ -66,14 +64,11 @@ def fetch_core_text_by_doi(doi):
         
     return None
 
-
 def create_virtual_pdf_from_text(text, title="CORE Open Access Text"):
     """Converts raw text into an in-memory PDF binary stream so the processing pipeline doesn't break."""
     try:
-        doc = fitz.open()  # Create a new blank PDF in memory
+        doc = fitz.open()  
         page = doc.new_page()
-        
-        # Inject the text into a printable bounding box on the page
         rect = fitz.Rect(50, 50, 550, 800)
         page.insert_textbox(rect, f"Title: {title}\n\n{text}", fontsize=10, fontname="helv")
         
@@ -123,9 +118,7 @@ def search_openalex_topics(topic_query, limit=100):
                 doi = item.get("doi", "")
 
                 best_oa = item.get("best_oa_location") or {}
-                pdf_url = best_oa.get("pdf_url") or item.get("open_access", {}).get(
-                    "oa_url", ""
-                )
+                pdf_url = best_oa.get("pdf_url") or item.get("open_access", {}).get("oa_url", "")
 
                 authorships = item.get("authorships", [])
                 authors_list = [
