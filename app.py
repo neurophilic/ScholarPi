@@ -551,14 +551,136 @@ def render_bubble_chart_clean(target_author):
 
     return html_string, table_html
 
-# --- Top Header Layout ---
-st.title(
-    "Pi-Index Assessment Engine",
-    help=(
-        "Automated peer-review framework powered by neural networks, SciScore"
-        " reproducibility metrics, and multidimensional blockchain consensus."
-    ),
-)
+# --- Dialog for Evaluation Metrics ---
+@st.dialog("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", width="large")
+def evaluation_metrics_dialog():
+    conn_top_ep = get_db_connection()
+    try:
+        cur_te = conn_top_ep.cursor()
+        cur_te.execute(
+            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+        )
+        top_epoch_data = cur_te.fetchone()
+        cur_te.execute("SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE eval_hash != 'genesis'")
+        top_total_papers = cur_te.fetchone()[0]
+    except Exception:
+        top_epoch_data = None
+        top_total_papers = 0
+    finally:
+        conn_top_ep.close()
+
+    if top_epoch_data:
+        tb_height, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, tmodel = top_epoch_data
+        t_pi_acc = generate_blockchain_pi(tb_height)
+        st.markdown(
+            f"**Processed:** `{top_total_papers}` | **Block Size:** `{EPOCH_BLOCK_SIZE}` | **Model:** `{tmodel}` | **Block:** `{tb_height}` | **Pi Algorithmic Precision:** `{t_pi_acc}`"
+        )
+        t_cols = st.columns(4)
+        t_weights_vals = [tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8]
+        t_labels = [
+            ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
+            ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
+            ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
+            ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
+        ]
+        for i, col in enumerate(t_cols * 2):
+            if i < 8:
+                col.markdown(f"**{t_labels[i][0]} ({t_labels[i][1]})**")
+                col.markdown(
+                    f"<h3 style='margin-top:0px; margin-bottom:5px;'>{t_weights_vals[i]:.6f}</h3>",
+                    unsafe_allow_html=True,
+                )
+        st.markdown("---")
+    else:
+        tw1 = 1.001328
+        tw2 = 1.000038
+
+    st.markdown(
+        r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
+        + tooltip(
+            "Evaluates reasoning structure and penalizes claims unsupported by"
+            " evidence or counterfactual stress failures."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
+        r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
+        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
+    )
+
+    st.markdown(
+        f"**C1: Originality ($\varpi_1$ = `{tw1:.6f}`):** "
+        + tooltip(
+            "Semantic distance from literature corpus penalized by generative"
+            " AI laundering heuristics."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+        r" \times (1 - \lambda_{laundering}) $$"
+    )
+
+    with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
+        st.markdown(
+            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
+        )
+        st.markdown(
+            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
+            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r" \epsilon}\right) $$"
+        )
+
+    with st.expander("C3: Interdisciplinary Synergy"):
+        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+
+    with st.expander("C4: Societal & Open Infrastructure Impact"):
+        st.markdown(
+            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r" U_v(\tau, \mathbf{x}) \right] $$"
+        )
+
+    with st.expander("C5: Open Science & Executable Reproducibility"):
+        st.markdown(
+            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+        )
+
+    with st.expander("C6: Literature Integration"):
+        st.markdown(
+            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+        )
+
+    with st.expander("C7: Empirical Density & Validation"):
+        st.markdown(
+            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+        )
+
+    with st.expander("C8: Future Actionability & FAIR"):
+        st.markdown(
+            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+        )
+
+# --- Top Header Layout with Evaluation Metrics Popup Button ---
+col_t1, col_t2 = st.columns([4, 2])
+with col_t1:
+    st.title(
+        "Pi-Index Assessment Engine",
+        help=(
+            "Automated peer-review framework powered by neural networks, SciScore"
+            " reproducibility metrics, and multidimensional blockchain consensus."
+        ),
+    )
+with col_t2:
+    st.write("")
+    if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
+        evaluation_metrics_dialog()
 
 # ==================== COMPACT INTAKE & ASSESSMENT BLOCK ====================
 st.markdown("")
@@ -1046,221 +1168,114 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
-    conn_top_ep = get_db_connection()
-    try:
-        cur_te = conn_top_ep.cursor()
-        cur_te.execute(
-            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
-        )
-        top_epoch_data = cur_te.fetchone()
-    except Exception:
-        top_epoch_data = None
-    finally:
-        conn_top_ep.close()
-
-    if top_epoch_data:
-        _, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, _ = top_epoch_data
-    else:
-        tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 0.999645, 0.997347, 0.999278, 0.997645, 1.002110, 1.002609
-
-    st.markdown(
-        r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
-        + tooltip(
-            "Evaluates reasoning structure and penalizes claims unsupported by"
-            " evidence or counterfactual stress failures."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
-        r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
-        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
-        r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
-    )
-
-    with st.expander(f"C1: Originality ($\varpi_1$ = `{tw1:.6f}`):"):
-        st.markdown(
-            "Semantic distance from literature corpus penalized by generative AI laundering heuristics."
-        )
-        st.markdown(
-            r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
-            r" \times (1 - \lambda_{laundering}) $$"
-        )
-
-    with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
-        st.markdown(
-            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
-        )
-        st.markdown(
-            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
-            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
-            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
-            r" \epsilon}\right) $$"
-        )
-
-    with st.expander(f"C3: Interdisciplinary Synergy ($\varpi_3$ = `{tw3:.6f}`):"):
-        st.markdown(
-            "Shannon entropy of the verified citation network across diverse subfields."
-        )
-        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
-
-    with st.expander(f"C4: Societal & Open Infrastructure Impact ($\varpi_4$ = `{tw4:.6f}`):"):
-        st.markdown(
-            "CoARA WG TIER aligned rewards for public datasets, civic policy integration, and open science."
-        )
-        st.markdown(
-            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
-            r" U_v(\tau, \mathbf{x}) \right] $$"
-        )
-
-    with st.expander(f"C5: Open Science & Executable Reproducibility ($\varpi_5$ = `{tw5:.6f}`):"):
-        st.markdown(
-            "Cryptographic verification of open data/code repositories and sandboxed container execution."
-        )
-        st.markdown(
-            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
-            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
-        )
-
-    with st.expander(f"C6: Literature Integration ($\varpi_6$ = `{tw6:.6f}`):"):
-        st.markdown(
-            "Citation context polarity classification (supporting vs. contrasting engagement)."
-        )
-        st.markdown(
-            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
-            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
-        )
-
-    with st.expander(f"C7: Empirical Density & Validation ($\varpi_7$ = `{tw7:.6f}`):"):
-        st.markdown(
-            "Deterministic extraction of sample sizes, degrees of freedom, and cohort volumes."
-        )
-        st.markdown(
-            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
-            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
-        )
-
-    with st.expander(f"C8: Future Actionability & FAIR ($\varpi_8$ = `{tw8:.6f}`):"):
-        st.markdown(
-            "Strict measurement of adherence to FAIR principles for downstream research cascade."
-        )
-        st.markdown(
-            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
-            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
-        )
-
-# ==================== TOP SIDE-BY-SIDE ANALYTICS (PI-BRAIN ON LEFT, GLOBAL MAP ON RIGHT) ====================
+# ==================== TOP SIDE-BY-SIDE ANALYTICS (PIDYNE FORECAST ON LEFT, GLOBAL MAP ON RIGHT) ====================
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
-    st.markdown(
-        "### Pi-Brain LSTM Meta-Learning Forecasts "
-        + tooltip(
+    with st.expander("Pidyne Forecast", expanded=True):
+        st.markdown(
             "An LSTM neural network that trains directly on the block weights to"
             " predict future shifts in algorithmic evaluation standards."
-        ),
-        unsafe_allow_html=True,
-    )
-
-    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-    def train_pibrain_cached(weight_data, actual_lookback):
-        dataset = PiBlockchainDataset(weight_data, actual_lookback)
-        dataloader = DataLoader(
-            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
         )
 
-        model = PiBrainLSTM()
-        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-        if os.path.exists(weights_path):
-            try:
-                model.load_state_dict(torch.load(weights_path, weights_only=True))
-            except Exception:
-                pass
+        @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+        def train_pibrain_cached(weight_data, actual_lookback):
+            dataset = PiBlockchainDataset(weight_data, actual_lookback)
+            dataloader = DataLoader(
+                dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+            )
 
-        loss_function = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
+            model = PiBrainLSTM()
+            weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+            if os.path.exists(weights_path):
+                try:
+                    model.load_state_dict(torch.load(weights_path, weights_only=True))
+                except Exception:
+                    pass
 
-        model.train()
-        for epoch in range(200):
-            for seq, target in dataloader:
-                optimizer.zero_grad()
-                loss = loss_function(model(seq), target)
-                loss.backward()
-                optimizer.step()
+            loss_function = nn.MSELoss()
+            optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-        model.eval()
-        with torch.no_grad():
-            predicted = (
-                model(
-                    torch.tensor(
-                        weight_data[-actual_lookback:], dtype=torch.float32
-                    ).unsqueeze(0)
+            model.train()
+            for epoch in range(200):
+                for seq, target in dataloader:
+                    optimizer.zero_grad()
+                    loss = loss_function(model(seq), target)
+                    loss.backward()
+                    optimizer.step()
+
+            model.eval()
+            with torch.no_grad():
+                predicted = (
+                    model(
+                        torch.tensor(
+                            weight_data[-actual_lookback:], dtype=torch.float32
+                        ).unsqueeze(0)
+                    )
+                    .squeeze()
+                    .numpy()
                 )
-                .squeeze()
-                .numpy()
+                torch.save(model.state_dict(), weights_path)
+                return predicted
+
+        conn_pb = get_db_connection()
+        try:
+            cursor_pb = conn_pb.cursor()
+            cursor_pb.execute(
+                "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+                " BY block_height ASC"
             )
-            torch.save(model.state_dict(), weights_path)
-            return predicted
+            historical_rows = cursor_pb.fetchall()
+        finally:
+            conn_pb.close()
 
-    conn_pb = get_db_connection()
-    try:
-        cursor_pb = conn_pb.cursor()
-        cursor_pb.execute(
-            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-            " BY block_height ASC"
-        )
-        historical_rows = cursor_pb.fetchall()
-    finally:
-        conn_pb.close()
-
-    min_blocks_required = 2
-    if len(historical_rows) < min_blocks_required:
-        st.warning(
-            f"Not enough blockchain data to train the meta-model. You need at least"
-            f" {min_blocks_required} blocks (Currently on ledger:"
-            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-            " block 2."
-        )
-    else:
-        current_block_count = len(historical_rows)
-        lookback_window = max(1, min(5, current_block_count - 1))
-
-        if (
-            "last_trained_blocks" not in st.session_state
-            or st.session_state.last_trained_blocks != current_block_count
-        ):
-            weight_data = np.array(historical_rows, dtype=np.float32)
-            actual_lookback = min(lookback_window, len(weight_data))
-
-            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
-            st.session_state.current_weights = weight_data[-1]
-            st.session_state.last_trained_blocks = current_block_count
+        min_blocks_required = 2
+        if len(historical_rows) < min_blocks_required:
+            st.warning(
+                f"Not enough blockchain data to train the meta-model. You need at least"
+                f" {min_blocks_required} blocks (Currently on ledger:"
+                f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+                " block 2."
+            )
         else:
-            st.info(
-                "Meta-model is cached and up-to-date with the latest blockchain"
-                " ledger."
+            current_block_count = len(historical_rows)
+            lookback_window = max(1, min(5, current_block_count - 1))
+
+            if (
+                "last_trained_blocks" not in st.session_state
+                or st.session_state.last_trained_blocks != current_block_count
+            ):
+                weight_data = np.array(historical_rows, dtype=np.float32)
+                actual_lookback = min(lookback_window, len(weight_data))
+
+                st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+                st.session_state.current_weights = weight_data[-1]
+                st.session_state.last_trained_blocks = current_block_count
+            else:
+                st.info(
+                    "Meta-model is cached and up-to-date with the latest blockchain"
+                    " ledger."
+                )
+
+            df_compare = pd.DataFrame(
+                {
+                    "Current Active Weights": st.session_state.current_weights,
+                    "Predicted Next Epoch": st.session_state.predicted_next_weights,
+                },
+                index=[
+                    "C1: Originality", "C2: Methodological Rigor",
+                    "C3: Interdisciplinary", "C4: Societal Impact",
+                    "C5: Open Science", "C6: Literature Integration",
+                    "C7: Empirical Density", "C8: Future Actionability",
+                ],
+            )
+            st.bar_chart(df_compare, height=380)
+            st.markdown(
+                f"**Mathematical Constraint Check:** Predicted Sum ="
+                f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
             )
 
-        df_compare = pd.DataFrame(
-            {
-                "Current Active Weights": st.session_state.current_weights,
-                "Predicted Next Epoch": st.session_state.predicted_next_weights,
-            },
-            index=[
-                "C1: Originality", "C2: Methodological Rigor",
-                "C3: Interdisciplinary", "C4: Societal Impact",
-                "C5: Open Science", "C6: Literature Integration",
-                "C7: Empirical Density", "C8: Future Actionability",
-            ],
-        )
-        st.bar_chart(df_compare, height=380)
-        st.markdown(
-            f"**Mathematical Constraint Check:** Predicted Sum ="
-            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
-        )
-
-    with st.expander("Pidyne", expanded=False):
+        st.markdown("---")
         st.markdown("""
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
@@ -1450,15 +1465,6 @@ try:
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
 
-        st.info(
-            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
-            f" sealed to block `{block_hash}`."
-        )
-        st.caption(
-            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
-            " grading mathematical constants cannot be tampered with)."
-        )
-
         explore_col1, explore_col2 = st.columns([3, 1])
         with explore_col1:
             search_query = st.text_input(
@@ -1563,6 +1569,15 @@ try:
                 st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
             else:
                 st.markdown("**Registry Contract:** `Not Configured`")
+
+        st.info(
+            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
+            f" sealed to block `{block_hash}`."
+        )
+        st.caption(
+            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
+            " grading mathematical constants cannot be tampered with)."
+        )
 
         st.markdown("#### Recent Ledger Proofs Summary & Transaction Ledger")
         cursor.execute(
