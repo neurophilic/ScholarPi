@@ -439,7 +439,7 @@ with st.sidebar.expander("🖥️ Live System Monitor", expanded=False):
 SCILEM_KNOWLEDGE_BASE = {
     "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
     "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
-    "pinamic forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
+    "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
     "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
     "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs. It validates evaluations directly on the blockchain.",
     "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
@@ -1279,14 +1279,14 @@ if (
         render_breakdown_item(item, item_idx)
 
 # --- Top Analytics Section: Organized via Tabs per Request ---
-tab_desci, tab_map = st.tabs(["DeSci (Pinamic)", "Global Map of Science"])
+tab_desci, tab_map = st.tabs(["DeSci (Pidyne)", "Global Map of Science"])
 
 with tab_desci:
     col_fc1, col_fc2 = st.columns([3, 1])
     with col_fc1:
-        st.markdown(f"### Pinamic Forecast {rbot('pinamic forecast')}", unsafe_allow_html=True)
+        st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
     with col_fc2:
-        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pinamic_lookback_dropdown")
+        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
         actual_lookback = int(forecast_horizon.split()[0])
 
     @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
@@ -1406,9 +1406,9 @@ with tab_desci:
             f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
         )
 
-    with st.expander("What's Pinamic?", expanded=False):
+    with st.expander("What's Pidyne?", expanded=False):
         st.markdown("""
-        Pinamic integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
         2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
@@ -1430,6 +1430,31 @@ with tab_map:
 
     map_container = st.container()
     with map_container:
+        st.markdown("""
+        <style>
+        /* Tiny inline button styling for the ⚙️ expander */
+        div[data-testid="stExpander"] details summary p {
+            font-size: 14px !important;
+            margin: 0 !important;
+            display: inline-block !important;
+        }
+        div[data-testid="stExpander"] {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin-bottom: 5px !important;
+        }
+        div[data-testid="stExpander"] details {
+            border: 1px solid #d0d7de !important;
+            border-radius: 6px !important;
+            background-color: #f6f8fa !important;
+            padding: 0px 8px !important;
+            width: fit-content !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         with st.expander("⚙️", expanded=False):
             mod_col1, mod_col2 = st.columns(2)
             with mod_col1:
@@ -1676,12 +1701,12 @@ try:
         with explore_col1:
             search_query = st.text_input(
                 "Enter Document Evaluation Hash, Block Hash, Paper Name, or Author Name to verify ledger record...",
-                key="pinamic_ledger_search_query"
+                key="pidyne_ledger_search_query"
             )
         with explore_col2:
             st.write("")
             st.write("")
-            search_btn = st.button("Verify Record", key="pinamic_verify_record_btn")
+            search_btn = st.button("Verify Record", key="pidyne_verify_record_btn")
 
         if search_btn and search_query:
             try:
