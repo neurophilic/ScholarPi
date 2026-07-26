@@ -15,7 +15,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pyvis.network import Network
-import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -74,39 +73,57 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-# Custom JS/CSS for Robot Cursor, Scilem Click-to-Explain, and Layout Adjustments
+# Custom JS/CSS for Robot Cursor, Scilem Space Optimization, and Global Click Listeners
 custom_ui_code = """
 <style>
-/* Prevent horizontal scroll in chat */
+/* Scilem Chat Box Cushioning Reduction */
 [data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
     overflow-x: hidden !important;
     scroll-behavior: smooth;
-    padding-right: 2px;
+    padding: 0 !important;
+    gap: 0.2rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stChatMessage"] {
+    padding: 0.5rem !important;
+    background-color: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #f0f2f6;
+    margin-bottom: 0.3rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stChatMessageAvatar"] {
+    width: 1.2rem !important;
+    height: 1.2rem !important;
+    min-width: 1.2rem !important;
+}
+[data-testid="stSidebar"] .stMarkdown p {
+    font-size: 0.85rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: 0 !important;
 }
 
-/* Explainable technical terms with URL-encoded Robot SVG cursor */
+/* Explainable Technical Terms styling with Robot Cursor */
 .explainable {
-    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ctext y='20' font-size='20'%3E%F0%9F%A4%96%3C/text%3E%3C/svg%3E"), pointer !important;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ctext y='24' font-size='24'%3E%F0%9F%A4%96%3C/text%3E%3C/svg%3E"), pointer !important;
     border-bottom: 1.5px dotted #2980b9;
     color: #1a5276;
     font-weight: 600;
     transition: all 0.2s ease-in-out;
+    padding: 0 2px;
 }
 .explainable:hover {
     background-color: #eaf2f8;
     border-radius: 4px;
-    padding: 0 2px;
 }
 </style>
 <script>
 const parentDoc = window.parent.document;
 
-// 1. Click Listener for Explainable Elements (Captures clicks anywhere, including dialogs)
+// Intercept clicks on .explainable elements globally
 parentDoc.addEventListener('click', function(e) {
     let explainTarget = e.target.closest('.explainable');
     if (!explainTarget) return; 
     
-    // Prevent normal click actions if it's purely for Scilem explanation
+    // Stop propagation so it doesn't trigger tooltips or default expander toggles incorrectly
     e.preventDefault();
     e.stopPropagation();
 
@@ -114,8 +131,8 @@ parentDoc.addEventListener('click', function(e) {
     if (!text) return;
     text = text.trim();
 
-    // Find the Scilem Chat Input Textarea
-    const textarea = parentDoc.querySelector('[data-testid="stChatInputTextArea"]');
+    // Inject into Scilem Input
+    const textarea = parentDoc.querySelector('textarea[aria-label="Ask Scilem..."]');
     if (textarea) {
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
         nativeInputValueSetter.call(textarea, "Explain: " + text);
@@ -126,9 +143,9 @@ parentDoc.addEventListener('click', function(e) {
         });
         textarea.dispatchEvent(enterEvent);
     }
-}, true); // Use capture phase to intercept early
+}, true); 
 
-// 2. MutationObserver to always keep the chat scrolled to the bottom
+// Auto-scroll chat to bottom
 const observer = new MutationObserver(() => {
     const chatContainers = parentDoc.querySelectorAll('[data-testid="stChatMessageContainer"]');
     chatContainers.forEach(container => {
@@ -144,7 +161,6 @@ st.sidebar.title("System Access")
 
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
-    st.toast("Application initialized successfully.")
 
 client_ip = "127.0.0.1"
 try:
@@ -162,17 +178,11 @@ except Exception:
 conn_ip = get_db_connection()
 try:
     cur_ip = conn_ip.cursor()
-    cur_ip.execute(
-        "SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,)
-    )
+    cur_ip.execute("SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,))
     ip_exists = cur_ip.fetchone()
     if not ip_exists:
-        cur_ip.execute(
-            "INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)",
-            (client_ip, datetime.now().isoformat()),
-        )
+        cur_ip.execute("INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)", (client_ip, datetime.now().isoformat()))
         conn_ip.commit()
-        logging.info(f"New User IP Connected locally logged: {client_ip}")
 finally:
     conn_ip.close()
 
@@ -214,37 +224,29 @@ if "orcid_id" not in st.session_state:
 
 if not st.session_state.is_authenticated:
     st.sidebar.markdown("### Authenticate")
-    manual_orcid = st.sidebar.text_input(
-        "Enter ORCID iD or W3C DID", placeholder="0009-0009-8456-8050"
-    )
+    manual_orcid = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="0009-0009-8456-8050")
     remember_user = st.sidebar.checkbox("Remember me", value=True)
 
     if st.sidebar.button("Validate and Connect"):
         clean_orcid = manual_orcid.strip()
-        if (
-            re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", clean_orcid)
-            or "did:" in clean_orcid
-        ):
+        if re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", clean_orcid) or "did:" in clean_orcid:
             with st.sidebar.status("Connecting to Identity Registry..."):
                 if "did:" in clean_orcid:
-                    is_valid, user_name = True, "Verified Decentralized Identity"
+                    user_name = "Verified Decentralized Identity"
                 elif "8050" in clean_orcid:
-                    is_valid, user_name = True, "Ali Vafadar Yengejeh"
+                    user_name = "Ali Vafadar Yengejeh"
                 else:
-                    is_valid, user_name = True, "Verified Researcher"
-            if is_valid:
-                st.session_state.orcid_id = clean_orcid
-                st.session_state.orcid_name = user_name
-                st.session_state.is_authenticated = True
-                st.session_state.inst_email = "None"
-                if remember_user:
-                    st.query_params["orcid"] = clean_orcid
-                else:
-                    if "orcid" in st.query_params:
-                        del st.query_params["orcid"]
-                st.rerun()
+                    user_name = "Verified Researcher"
+            
+            st.session_state.orcid_id = clean_orcid
+            st.session_state.orcid_name = user_name
+            st.session_state.is_authenticated = True
+            if remember_user:
+                st.query_params["orcid"] = clean_orcid
             else:
-                st.sidebar.error("Authentication Failed.")
+                if "orcid" in st.query_params:
+                    del st.query_params["orcid"]
+            st.rerun()
         else:
             st.sidebar.error("Invalid ORCID or DID format.")
 
@@ -252,10 +254,7 @@ if not st.session_state.is_authenticated:
     st.sidebar.info("Notice: Please connect your ORCID iD or DID above to unlock and use your personal Assessment History features.")
 else:
     st.sidebar.success("Securely Connected")
-    st.sidebar.markdown(
-        f"**Researcher:** {st.session_state.orcid_name}\n**ID Vault:**"
-        f" `{st.session_state.orcid_id}`"
-    )
+    st.sidebar.markdown(f"**Researcher:** {st.session_state.orcid_name}\n**ID Vault:** `{st.session_state.orcid_id}`")
 
     if st.sidebar.button("Disconnect Session"):
         st.session_state.is_authenticated = False
@@ -268,7 +267,7 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
-# --- Scilem Assistant enclosed cleanly to maximize horizontal text space ---
+# --- Scilem Assistant enclosed in a Single Box ---
 st.sidebar.markdown("---")
 
 SCILEM_KNOWLEDGE_BASE = {
@@ -297,7 +296,7 @@ if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** If you see a robot finger 🤖 on any bold/underlined text in the app, simply click it and I will automatically explain it here."
+            "content": "**Welcome! I am Scilem.** If you see a robot finger 🤖 on any highlighted text in the app, simply click it and I will explain it here."
         }
     ]
 
@@ -310,17 +309,18 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
 
-tiny_scilem_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='10' fill='%232c3e50'/%3E%3C/svg%3E"
+# Blank transparent pixel for custom minimalist avatar
+transparent_pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
-st.sidebar.markdown("### Scilem Assistant")
+with st.sidebar.container(border=True):
+    st.markdown("### Scilem Assistant")
     
-# Internal scrollable container for the chat (no border container to save horizontal space)
-chat_container = st.sidebar.container(height=350)
-with chat_container:
-    for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = tiny_scilem_avatar if message["role"] == "assistant" else None
-        with st.chat_message(message["role"], avatar=msg_avatar):
-            st.markdown(message["content"])
+    chat_container = st.container(height=320)
+    with chat_container:
+        for idx, message in enumerate(st.session_state.scilm_messages):
+            msg_avatar = transparent_pixel if message["role"] == "assistant" else None
+            with st.chat_message(message["role"], avatar=msg_avatar):
+                st.markdown(message["content"])
 
 if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
@@ -1237,7 +1237,12 @@ if (
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
-    st.markdown("### <span class='explainable'>Pidyne Forecast</span>", unsafe_allow_html=True)
+    col_fc1, col_fc2 = st.columns([3, 1])
+    with col_fc1:
+        st.markdown("### <span class='explainable'>Pidyne Forecast</span>", unsafe_allow_html=True)
+    with col_fc2:
+        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1)
+        actual_lookback = int(forecast_horizon.split()[0])
 
     @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
     def train_pibrain_cached(weight_data, actual_lookback):
@@ -1304,53 +1309,44 @@ with top_analytics_col1:
         )
     else:
         current_block_count = len(historical_rows)
-        lookback_window = max(1, min(5, current_block_count - 1))
+        lookback_window = max(1, min(actual_lookback, current_block_count - 1))
 
         if (
             "last_trained_blocks" not in st.session_state
             or st.session_state.last_trained_blocks != current_block_count
         ):
             weight_data = np.array(historical_rows, dtype=np.float32)
-            actual_lookback = min(lookback_window, len(weight_data))
 
-            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, lookback_window)
             st.session_state.current_weights = weight_data[-1]
             st.session_state.last_trained_blocks = current_block_count
-        else:
-            st.info(
-                "Meta-model is cached and up-to-date with the latest blockchain"
-                " ledger."
-            )
 
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
-        df_compare = pd.DataFrame({
-            "Criterion": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"],
-            "Current Active": curr_vals,
-            "Predicted Next": pred_vals,
-        }).melt("Criterion", var_name="State", value_name="Weight")
-
-        pidyne_chart = alt.Chart(df_compare).mark_bar().encode(
-            x=alt.X('State:N', title=None, axis=alt.Axis(labels=False, ticks=False)),
-            y=alt.Y('Weight:Q', scale=alt.Scale(zero=False), title='Apri Weight'),
-            color=alt.Color('State:N', legend=alt.Legend(title=None, orient="bottom")),
-            column=alt.Column('Criterion:N', title=None, header=alt.Header(labelOrient="bottom"))
-        ).configure_view(stroke='transparent').properties(height=350)
-        
-        st.altair_chart(pidyne_chart, use_container_width=True)
-
-        st.markdown(
-            f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
-            f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
-            f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
-            f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
-            f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
-            f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
-            f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
-            f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
-            f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
+        # Standard Streamlit Bar Chart for native dropdown toolbars
+        df_compare = pd.DataFrame(
+            {
+                "Current Active Weights (150x Amplified)": np.maximum(0.01, np.mean(curr_vals) + (curr_vals - np.mean(curr_vals)) * 150.0),
+                "Predicted Next Epoch (150x Amplified)": np.maximum(0.01, np.mean(curr_vals) + (pred_vals - np.mean(curr_vals)) * 150.0),
+            },
+            index=[
+                "C1: Originality", "C2: Methodological Rigor",
+                "C3: Interdisciplinary", "C4: Societal Impact",
+                "C5: Open Science", "C6: Literature Integration",
+                "C7: Empirical Density", "C8: Future Actionability",
+            ],
         )
+        
+        st.bar_chart(df_compare, height=350, use_container_width=True)
+
+    with st.expander("What's Pidyne?", expanded=False):
+        st.markdown("""
+        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
+        """)
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
