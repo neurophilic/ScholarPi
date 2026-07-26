@@ -1455,149 +1455,148 @@ try:
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
 
-        with st.expander("Proof-of-Research Blockchain Explorer & Sepolia Contract Verification", expanded=False):
-            st.info(
-                f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
-                f" sealed to block `{block_hash}`."
-            )
-            st.caption(
-                f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
-                " grading mathematical constants cannot be tampered with)."
-            )
+        st.info(
+            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
+            f" sealed to block `{block_hash}`."
+        )
+        st.caption(
+            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
+            " grading mathematical constants cannot be tampered with)."
+        )
 
-            explore_col1, explore_col2 = st.columns([3, 1])
-            with explore_col1:
-                search_query = st.text_input(
-                    "Enter Document Evaluation Hash, Block Hash, Paper Name, or Author Name to verify ledger record...",
-                    key="pinamic_ledger_search_query"
+        explore_col1, explore_col2 = st.columns([3, 1])
+        with explore_col1:
+            search_query = st.text_input(
+                "Enter Document Evaluation Hash, Block Hash, Paper Name, or Author Name to verify ledger record...",
+                key="pinamic_ledger_search_query"
+            )
+        with explore_col2:
+            st.write("")
+            st.write("")
+            search_btn = st.button("Verify Record", key="pinamic_verify_record_btn")
+
+        if search_btn and search_query:
+            try:
+                q_term = f"%{search_query.strip()}%"
+                cursor.execute(
+                    """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                              p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                              p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash
+                       FROM papers_assessment p
+                       LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                       WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ?
+                       LIMIT 5""",
+                    (q_term, q_term, q_term, q_term)
                 )
-            with explore_col2:
-                st.write("")
-                st.write("")
-                search_btn = st.button("Verify Record", key="pinamic_verify_record_btn")
+                matched_records = cursor.fetchall()
+                if matched_records:
+                    st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
+                    for m_idx, mr in enumerate(matched_records):
+                        (
+                            m_title, m_author, m_filename, m_score, m_logic,
+                            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                            m_block_height, m_block_hash, m_por, m_form
+                        ) = mr
 
-            if search_btn and search_query:
-                try:
-                    q_term = f"%{search_query.strip()}%"
-                    cursor.execute(
-                        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                                  b.block_height, b.block_hash, b.por_proof, b.formulas_hash
-                           FROM papers_assessment p
-                           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                           WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ?
-                           LIMIT 5""",
-                        (q_term, q_term, q_term, q_term)
-                    )
-                    matched_records = cursor.fetchall()
-                    if matched_records:
-                        st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
-                        for m_idx, mr in enumerate(matched_records):
-                            (
-                                m_title, m_author, m_filename, m_score, m_logic,
-                                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-                                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                                m_block_height, m_block_hash, m_por, m_form
-                            ) = mr
+                        m_author_clean = clean_author_name(m_author)
+                        m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
+                        m_tx_url = safe_get_sepolia_url(m_tx)
 
-                            m_author_clean = clean_author_name(m_author)
-                            m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
-                            m_tx_url = safe_get_sepolia_url(m_tx)
+                        with st.expander(
+                            f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
+                            f" **{m_score:.2f}** | {m_time[:16]})",
+                            expanded=True,
+                        ):
+                            st.write(f"**Title:** {m_title}")
+                            st.write(f"**Author(s):** {m_author_clean}")
+                            st.write(f"**Timestamp:** `{m_time}`")
+                            st.write(f"**Evaluation Hash (Eval Hash):** `{m_hash}`")
+                            st.write(f"**Block Height:** `{m_block_height if m_block_height is not None else 'Pending'}`")
+                            st.write(f"**Block Hash:** `{m_block_hash if m_block_hash is not None else 'Pending'}`")
+                            st.write(f"**Proof-of-Research (PoR):** `{m_por}`")
+                            st.write(f"**Formulas State Hash:** `{m_form}`")
+                            st.write(f"**Unique Author Book Address:** `{m_book}`")
+                            st.write(f"**piQ Minted:** `{m_piq}`")
+                            st.write(f"**zk-SNARK Proof:** `{m_zk}`")
+                            
+                            if m_tx_url:
+                                st.markdown(f"**Tx Hash (Etherscan):** [`{m_tx}`]({m_tx_url})")
+                            else:
+                                st.write(f"**Tx Hash:** `{m_tx}`")
 
-                            with st.expander(
-                                f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
-                                f" **{m_score:.2f}** | {m_time[:16]})",
-                                expanded=True,
-                            ):
-                                st.write(f"**Title:** {m_title}")
-                                st.write(f"**Author(s):** {m_author_clean}")
-                                st.write(f"**Timestamp:** `{m_time}`")
-                                st.write(f"**Evaluation Hash (Eval Hash):** `{m_hash}`")
-                                st.write(f"**Block Height:** `{m_block_height if m_block_height is not None else 'Pending'}`")
-                                st.write(f"**Block Hash:** `{m_block_hash if m_block_hash is not None else 'Pending'}`")
-                                st.write(f"**Proof-of-Research (PoR):** `{m_por}`")
-                                st.write(f"**Formulas State Hash:** `{m_form}`")
-                                st.write(f"**Unique Author Book Address:** `{m_book}`")
-                                st.write(f"**piQ Minted:** `{m_piq}`")
-                                st.write(f"**zk-SNARK Proof:** `{m_zk}`")
-                                
-                                if m_tx_url:
-                                    st.markdown(f"**Tx Hash (Etherscan):** [`{m_tx}`]({m_tx_url})")
-                                else:
-                                    st.write(f"**Tx Hash:** `{m_tx}`")
+                            st.write(
+                                f"**Logic Integrity:** `{m_logic:.1f}%` | **Reproducibility:**"
+                                f" `{m_repro * 100:.1f}%` | **MDAR Adherence:**"
+                                f" `{m_mdar * 100:.1f}%`"
+                            )
 
-                                st.write(
-                                    f"**Logic Integrity:** `{m_logic:.1f}%` | **Reproducibility:**"
-                                    f" `{m_repro * 100:.1f}%` | **MDAR Adherence:**"
-                                    f" `{m_mdar * 100:.1f}%`"
-                                )
-
-                                m_df = pd.DataFrame({
-                                    "Criterion": [
-                                        "C1: Semantic Originality",
-                                        "C2: Methodological Rigor (SciScore)",
-                                        "C3: Interdisciplinary Entropy",
-                                        "C4: Societal Impact",
-                                        "C5: Open Science & Repro",
-                                        "C6: Literature Integration",
-                                        "C7: Empirical Density",
-                                        "C8: Future Actionability & FAIR",
-                                    ],
-                                    "Score (0-100)": [
-                                        m_c1, m_c2, m_c3, m_c4,
-                                        m_c5, m_c6, m_c7, m_c8,
-                                    ],
-                                })
-                                st.dataframe(m_df, hide_index=True, use_container_width=True)
-                    else:
-                        st.error(
-                            "No records matching that evaluation hash, block hash, paper name, or author name were found on the ledger."
-                        )
-                except Exception as e:
-                    st.error(f"Error reading database: {str(e)}")
-
-        with st.expander("Deployed Smart Contracts on Sepolia Etherscan", expanded=False):
-            col_ex1, col_ex2 = st.columns(2)
-            with col_ex1:
-                piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-                st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
-            with col_ex2:
-                reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-                if REGISTRY_CONTRACT_ADDRESS:
-                    st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+                            m_df = pd.DataFrame({
+                                "Criterion": [
+                                    "C1: Semantic Originality",
+                                    "C2: Methodological Rigor (SciScore)",
+                                    "C3: Interdisciplinary Entropy",
+                                    "C4: Societal Impact",
+                                    "C5: Open Science & Repro",
+                                    "C6: Literature Integration",
+                                    "C7: Empirical Density",
+                                    "C8: Future Actionability & FAIR",
+                                ],
+                                "Score (0-100)": [
+                                    m_c1, m_c2, m_c3, m_c4,
+                                    m_c5, m_c6, m_c7, m_c8,
+                                ],
+                            })
+                            st.dataframe(m_df, hide_index=True, use_container_width=True)
                 else:
-                    st.markdown("**Registry Contract:** `Not Configured`")
+                    st.error(
+                        "No records matching that evaluation hash, block hash, paper name, or author name were found on the ledger."
+                    )
+            except Exception as e:
+                st.error(f"Error reading database: {str(e)}")
 
-        with st.expander("Recent Ledger Proofs Summary & Transaction Ledger", expanded=False):
-            cursor.execute(
-                """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                          p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                          b.block_height, b.block_hash
-                   FROM papers_assessment p
-                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                   ORDER BY p.timestamp DESC LIMIT 5"""
-            )
-            recent_ledger_rows = cursor.fetchall()
-            if recent_ledger_rows:
-                table_data = []
-                for rrow in recent_ledger_rows:
-                    rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
-                    tx_url = safe_get_sepolia_url(rtx)
-                    tx_disp = f"[{rtx[:10]}...]({tx_url})" if rtx else str(rtx)
-                    table_data.append({
-                        "Block Height": rbh if rbh is not None else "Pending",
-                        "Eval Hash": reval[:10] + "...",
-                        "Block Hash": rbhash[:10] + "..." if rbhash else "Pending",
-                        "zk-SNARK": rzk[:10] + "..." if rzk else "N/A",
-                        "piQ": rpiq,
-                        "Tx Hash (Etherscan)": tx_disp,
-                        "Timestamp": rts[:19] if rts else ""
-                    })
-                st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
+        st.markdown("#### Deployed Smart Contracts on Sepolia Etherscan")
+        col_ex1, col_ex2 = st.columns(2)
+        with col_ex1:
+            piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+            st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
+        with col_ex2:
+            reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+            if REGISTRY_CONTRACT_ADDRESS:
+                st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
             else:
-                st.info("No ledger transaction proofs recorded yet.")
+                st.markdown("**Registry Contract:** `Not Configured`")
+
+        st.markdown("#### Recent Ledger Proofs Summary & Transaction Ledger")
+        cursor.execute(
+            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
+               FROM papers_assessment p
+               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+               ORDER BY p.timestamp DESC LIMIT 5"""
+        )
+        recent_ledger_rows = cursor.fetchall()
+        if recent_ledger_rows:
+            table_data = []
+            for rrow in recent_ledger_rows:
+                rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
+                tx_url = safe_get_sepolia_url(rtx)
+                tx_disp = f"[{rtx[:10]}...]({tx_url})" if rtx else str(rtx)
+                table_data.append({
+                    "Block Height": rbh if rbh is not None else "Pending",
+                    "Eval Hash": reval[:10] + "...",
+                    "Block Hash": rbhash[:10] + "..." if rbhash else "Pending",
+                    "zk-SNARK": rzk[:10] + "..." if rzk else "N/A",
+                    "piQ": rpiq,
+                    "Tx Hash (Etherscan)": tx_disp,
+                    "Timestamp": rts[:19] if rts else ""
+                })
+            st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
+        else:
+            st.info("No ledger transaction proofs recorded yet.")
 
 finally:
     conn.close()
