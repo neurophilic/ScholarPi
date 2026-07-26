@@ -194,10 +194,10 @@ iframe {
     padding: 0 !important;
 }
 
-/* Strict compact square PyVis Map Iframe (450px by 450px to match Pinamic perfectly) */
+/* Responsive PyVis Map Iframe */
 .pyvis-map-wrapper iframe {
-    width: 450px !important;
-    height: 450px !important;
+    width: 100% !important;
+    height: 600px !important;
     display: block !important;
 }
 </style>
@@ -590,10 +590,10 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    # Strictly squared 450x450 compact layout matching Pinamic
+    # Responsive layout dimensions (width 100%, height 600px)
     net = Network(
-        height="450px",
-        width="450px",
+        height="600px",
+        width="100%",
         bgcolor="#ffffff",
         font_color="#2c3e50",
         notebook=False,
@@ -668,20 +668,20 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
 
     gradient_injection = f"""
     <style type="text/css">
-        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 450px; height: 450px; }}
+        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 100%; height: 600px; }}
         canvas {{
             background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
             border: none !important;
             outline: none !important;
-            width: 450px !important;
-            height: 450px !important;
+            width: 100% !important;
+            height: 600px !important;
         }}
         #mynetwork, .vis-network, .card-body {{
             border: none !important;
             box-shadow: none !important;
             margin: 0 !important;
-            width: 450px !important;
-            height: 450px !important;
+            width: 100% !important;
+            height: 600px !important;
         }}
     </style>
     <!-- reload_timestamp: {time.time()} -->
@@ -1478,7 +1478,7 @@ with tab_map:
         )
         if interactive_html_top:
             st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
-            components.html(interactive_html_top, height=450, width=450, scrolling=False)
+            components.html(interactive_html_top, height=600, width=1000, scrolling=False)
             st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("Awaiting sufficient data for map visualization.")
@@ -1795,7 +1795,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
