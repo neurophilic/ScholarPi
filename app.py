@@ -249,66 +249,10 @@ else:
 current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
-# --- DeSci Peer Attestation & Stake-Weighted Validation in Sidebar ---
-with st.sidebar.expander("DeSci Peer Attestation & Staking", expanded=False):
-    st.markdown("Use this feature to endorse or challenge peer assessments on-chain by staking your earned piQ tokens.")
-    if st.session_state.is_authenticated:
-        conn_att = get_db_connection()
-        try:
-            cur_att = conn_att.cursor()
-            cur_att.execute("SELECT eval_hash, title FROM papers_assessment ORDER BY timestamp DESC LIMIT 20")
-            eval_papers_att = cur_att.fetchall()
-        finally:
-            conn_att.close()
-
-        if eval_papers_att:
-            attest_options = {p[1]: p[0] for p in eval_papers_att}
-            chosen_attest_title = st.selectbox(
-                "Select Paper for Attestation:",
-                list(attest_options.keys()),
-                key="sidebar_desci_attest_select",
-            )
-            target_eval_hash = attest_options[chosen_attest_title]
-
-            attest_stance = st.radio(
-                "Attestation Stance:",
-                ["Endorse Rigor", "Challenge Anomaly"],
-                horizontal=True,
-                key="sidebar_attest_stance"
-            )
-            stake_val = st.slider(
-                "Stake piQ Amount:",
-                min_value=0.1,
-                max_value=10.0,
-                value=1.0,
-                step=0.1,
-                key="sidebar_stake_val"
-            )
-
-            if st.button("Submit Attestation On-Chain", key="sidebar_submit_attest"):
-                attest_id = "ATT_" + hashlib.sha256(
-                    f"{current_user}:{target_eval_hash}:{time.time()}".encode()
-                ).hexdigest()[:12]
-                conn_sub = get_db_connection()
-                try:
-                    cur_sub = conn_sub.cursor()
-                    cur_sub.execute(
-                        "INSERT OR REPLACE INTO desci_attestations (attestation_id, eval_hash, attester_id, stake_amount, stance, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                        (attest_id, target_eval_hash, current_user, stake_val, attest_stance, datetime.now().isoformat()),
-                    )
-                    conn_sub.commit()
-                    st.success(f"Attestation recorded! ID: `{attest_id}`")
-                finally:
-                    conn_sub.close()
-        else:
-            st.info("No assessed papers available for attestation.")
-    else:
-        st.warning("Please connect your ORCID iD or DID above to use the DeSci Peer Attestation feature.")
-
-# --- Scilem Accessory Chatbot in Sidebar (Not a dropdown, auto-updated knowledge base) ---
+# --- Scilem Accessory Chatbot in Sidebar (Prominent, Auto-Updated Knowledge Base) ---
 st.sidebar.markdown("---")
 st.sidebar.markdown(
-    "### Scilem Accessory Chatbot "
+    "### 🔬 Scilem Assistant "
     + tooltip("CoARA-aligned decentralized scientific assistant."),
     unsafe_allow_html=True,
 )
@@ -321,7 +265,7 @@ if "scilm_messages" not in st.session_state:
         }
     ]
 
-chat_container = st.sidebar.container(height=250)
+chat_container = st.sidebar.container(height=320)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
         with st.sidebar.chat_message(message["role"]):
@@ -398,7 +342,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
     st.rerun()
 
-# --- Helper for Refining Subfields and Professional Science Fields (No Interdisciplinary Research) ---
+# --- Helper for Refining Subfields and Professional Science Fields ---
 def refine_science_field(s):
     s_lower = s.lower()
     if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
