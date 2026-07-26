@@ -666,14 +666,14 @@ def evaluation_metrics_dialog():
     )
 
     criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "ϖ₁", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "ϖ₂", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "ϖ₃", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "ϖ₄", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "ϖ₅", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "ϖ₆", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "ϖ₇", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "ϖ₈", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+        ("C1: Originality", "c1: originality", tw1, "vapri₁", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "vapri₂", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "vapri₃", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4: Societal Impact", "c4: societal impact", tw4, "vapri₄", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5: Open Science", "c5: open science", tw5, "vapri₅", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6: Literature Integration", "c6: literature integration", tw6, "vapri₆", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7: Empirical Density", "c7: empirical density", tw7, "vapri₇", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8: Future Actionability", "c8: future actionability", tw8, "vapri₈", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
@@ -1277,24 +1277,19 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
-        mean_val = np.mean(curr_vals)
-        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 150.0)
-        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 150.0)
-
-        df_compare = pd.DataFrame(
-            {
-                "Current Active Weights (150x Amplified)": exagg_curr,
-                "Predicted Next Epoch (150x Amplified)": exagg_pred,
-            },
-            index=[
-                "C1: Originality", "C2: Methodological Rigor",
-                "C3: Interdisciplinary", "C4: Societal Impact",
-                "C5: Open Science", "C6: Literature Integration",
-                "C7: Empirical Density", "C8: Future Actionability",
-            ],
-        )
-        
-        st.bar_chart(df_compare, height=350, use_container_width=True)
+        # Fixed Pidyne Graph: Render historical block weights trend using st.line_chart across epochs/blocks
+        if len(historical_rows) > 0:
+            df_history = pd.DataFrame(
+                historical_rows,
+                columns=[
+                    "C1: Originality", "C2: Methodological Rigor",
+                    "C3: Interdisciplinary", "C4: Societal Impact",
+                    "C5: Open Science", "C6: Literature Integration",
+                    "C7: Empirical Density", "C8: Future Actionability",
+                ]
+            )
+            df_history.index.name = "Block / Epoch"
+            st.line_chart(df_history, height=300, use_container_width=True)
 
         st.markdown(
             f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
