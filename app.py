@@ -130,7 +130,7 @@ custom_ui_code = """
 }
 
 .scilm-trigger {
-    cursor: pointer !important;
+    cursor: url('image_f69f5e.png'), pointer !important;
     font-size: 1.4em;
     margin-left: 4px;
     vertical-align: middle;
@@ -576,16 +576,15 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    # Taller Map Canvas (850px)
+    # Strictly squared layout and stripped borders
     net = Network(
-        height="850px",
-        width="100%",
+        height="750px",
+        width="750px",
         bgcolor="#ffffff",
         font_color="#2c3e50",
         notebook=False,
     )
     
-    # Highly stabilized physics parameters for completely un-jiggly load
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
@@ -653,10 +652,19 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
+    # Injecting CSS to absolutely strip PyVis default borders
     gradient_injection = f"""
     <style type="text/css">
+        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; }}
         canvas {{
             background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
+            border: none !important;
+            outline: none !important;
+        }}
+        #mynetwork, .vis-network, .card-body {{
+            border: none !important;
+            box-shadow: none !important;
+            margin: 0 !important;
         }}
     </style>
     <!-- reload_timestamp: {time.time()} -->
@@ -1415,7 +1423,7 @@ with top_analytics_col2:
     with map_container:
         st.markdown("<div id='map-relative-container'></div>", unsafe_allow_html=True)
         
-        with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
+        with st.expander("⚙️", expanded=False):
             st.markdown("<div id='map-controls-marker'></div>", unsafe_allow_html=True)
             mod_col1, mod_col2 = st.columns(2)
             with mod_col1:
@@ -1463,7 +1471,7 @@ with top_analytics_col2:
             central_grav=mod_gravity
         )
         if interactive_html_top:
-            components.html(interactive_html_top, height=850, scrolling=False)
+            components.html(interactive_html_top, height=750, width=750, scrolling=False)
         else:
             st.info("Awaiting sufficient data for map visualization.")
 
@@ -1895,7 +1903,7 @@ def framework_workflow_dialog():
 st.markdown("---")
 col_pad1, col_center, col_pad2 = st.columns([1, 4, 1])
 with col_center:
-    if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
+    if st.button("The Pi-Index Framework Workflow", use_container_width=True):
         framework_workflow_dialog()
 
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
