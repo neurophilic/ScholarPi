@@ -562,9 +562,9 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    # Increased map height to 600px
+    # Increased map height to 750px for an even taller map box
     net = Network(
-        height="600px",
+        height="750px",
         width="100%",
         bgcolor="#ffffff",
         font_color="#2c3e50",
@@ -1445,8 +1445,8 @@ with top_analytics_col2:
         central_grav=mod_gravity
     )
     if interactive_html_top:
-        # Taller map component height (580px)
-        components.html(interactive_html_top, height=580, scrolling=False)
+        # Taller map component height (730px)
+        components.html(interactive_html_top, height=730, scrolling=False)
     else:
         st.info("Awaiting sufficient data for map visualization.")
 
@@ -1862,7 +1862,7 @@ def framework_workflow_dialog():
     """)
     st.markdown("---")
     st.markdown("""
-    ### 📜 CoARA Compliance & Core Pillars
+    ### CoARA Compliance & Core Pillars
     
     *   **Diverse Research Outputs (C5 & C8):** Moving beyond traditional journal impact factors, Pi-Index structurally evaluates open datasets, code repositories, and containerized executable environments.
     *   **Qualitative & Quantitative Balance (C1-C8):** Algorithms act as auditors, not replacements for peer review. They standardize empirical rigor (e.g., RRID usage, MDAR adherence) while an adversarial logic matrix maps qualitative reasoning structure.
