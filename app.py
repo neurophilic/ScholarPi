@@ -305,101 +305,98 @@ with st.sidebar.expander("DeSci Peer Attestation & Staking", expanded=False):
     else:
         st.warning("Please connect your ORCID iD or DID above to use the DeSci Peer Attestation feature.")
 
-# --- Scilem Accessory Chatbot in Sidebar ---
-with st.sidebar.expander("Scilem Accessory Chatbot", expanded=False):
-    st.markdown("CoARA-aligned decentralized scientific assistant.")
+# --- Scilem Accessory Chatbot in Sidebar (Not a dropdown) ---
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "### Scilem Accessory Chatbot "
+    + tooltip("CoARA-aligned decentralized scientific assistant."),
+    unsafe_allow_html=True,
+)
+
+if "scilm_messages" not in st.session_state:
+    st.session_state.scilm_messages = [
+        {
+            "role": "assistant", 
+            "content": "Greetings. I am Scilem, your decentralized scientific intelligence assistant. How may I help?"
+        }
+    ]
+
+chat_container = st.sidebar.container(height=250)
+with chat_container:
+    for idx, message in enumerate(st.session_state.scilm_messages):
+        with st.sidebar.chat_message(message["role"]):
+            st.sidebar.markdown(message["content"])
+
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
+    st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
-    if st.button("Sync Pinata Knowledge Base", key="scilem_sync_btn", use_container_width=True):
-        st.session_state["scilem_synced"] = True
-        st.toast("Successfully synchronized decentralized RLHF dataset from Pinata IPFS!")
-    
-    if st.session_state.get("scilem_synced"):
-        st.success("Synced with Pinata IPFS.")
+    rag_context = ""
+    few_shot_examples = ""
+    try:
+        dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
+        if os.path.exists(dataset_path):
+            with open(dataset_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                query_terms = set(prompt.lower().split())
+                relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
+                if not relevant_lines:
+                    relevant_lines = lines[-5:]
+                rag_context = "".join(relevant_lines[-5:])
+    except Exception:
+        rag_context = "No decentralized data accessible."
 
-    if "scilm_messages" not in st.session_state:
-        st.session_state.scilm_messages = [
-            {
-                "role": "assistant", 
-                "content": "Greetings. I am Scilem, your decentralized scientific intelligence assistant. How may I help?"
-            }
-        ]
+    try:
+        conn_rag = get_db_connection()
+        cur_rag = conn_rag.cursor()
+        cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
+        top_paper = cur_rag.fetchone()
+        conn_rag.close()
+        if top_paper:
+            few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
+    except Exception:
+        pass
 
-    chat_container = st.container(height=300)
-    with chat_container:
-        for idx, message in enumerate(st.session_state.scilm_messages):
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+    scilm_sys_prompt = (
+        "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines. "
+        "Be analytical, evidence-driven, and precise.\n\n"
+        f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
+        f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
+    )
 
-    if prompt := st.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
-        st.session_state.scilm_messages.append({"role": "user", "content": prompt})
-        
-        rag_context = ""
-        few_shot_examples = ""
-        try:
-            dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-            if os.path.exists(dataset_path):
-                with open(dataset_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                    query_terms = set(prompt.lower().split())
-                    relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
-                    if not relevant_lines:
-                        relevant_lines = lines[-5:]
-                    rag_context = "".join(relevant_lines[-5:])
-        except Exception:
-            rag_context = "No decentralized data accessible."
+    messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
+        {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
+    ]
 
-        try:
-            conn_rag = get_db_connection()
-            cur_rag = conn_rag.cursor()
-            cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
-            top_paper = cur_rag.fetchone()
-            conn_rag.close()
-            if top_paper:
-                few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
-        except Exception:
-            pass
-
-        scilm_sys_prompt = (
-            "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines. "
-            "Be analytical, evidence-driven, and precise.\n\n"
-            f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
-            f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
-        )
-
-        messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
-            {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
-        ]
-
-        full_response = ""
-        try:
-            from brain import groq_client
-            PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
-            FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
-            if groq_client:
-                try:
-                    response = groq_client.chat.completions.create(
-                        model=PRIMARY_MODEL_NAME,
+    full_response = ""
+    try:
+        from brain import groq_client
+        PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
+        FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
+        if groq_client:
+            try:
+                response = groq_client.chat.completions.create(
+                    model=PRIMARY_MODEL_NAME,
+                    messages=messages_for_api,
+                    temperature=0.15,
+                )
+                full_response = response.choices[0].message.content
+            except Exception as primary_err:
+                if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
+                    fallback_response = groq_client.chat.completions.create(
+                        model=FALLBACK_MODEL_NAME,
                         messages=messages_for_api,
                         temperature=0.15,
                     )
-                    full_response = response.choices[0].message.content
-                except Exception as primary_err:
-                    if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
-                        fallback_response = groq_client.chat.completions.create(
-                            model=FALLBACK_MODEL_NAME,
-                            messages=messages_for_api,
-                            temperature=0.15,
-                        )
-                        full_response = fallback_response.choices[0].message.content + "\n\n*(Handled via Fallback Engine).* "
-                    else:
-                        raise primary_err
-            else:
-                full_response = "Error: Groq API client not initialized."
-        except Exception as e:
-            full_response = f"Error connecting to Scilem engine: {str(e)}"
+                    full_response = fallback_response.choices[0].message.content + "\n\n*(Handled via Fallback Engine).* "
+                else:
+                    raise primary_err
+        else:
+            full_response = "Error: Groq API client not initialized."
+    except Exception as e:
+        full_response = f"Error connecting to Scilem engine: {str(e)}"
 
-        st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
-        st.rerun()
+    st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+    st.rerun()
 
 # --- Helper for Refining Subfields and Professional Science Fields ---
 def refine_science_field(s):
