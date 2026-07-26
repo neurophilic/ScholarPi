@@ -1164,6 +1164,148 @@ with top_analytics_col2:
 
 st.markdown("---")
 
+def render_breakdown_item(item):
+    title = item["title"]
+    author_name = clean_author_name(item["author_name"])
+    score = item["score"]
+    logic_integrity = item["logic_integrity"]
+    scores_dict = item["scores_dict"]
+    used_weights = item["used_weights"]
+    eval_hash = item["eval_hash"]
+    piq = item["piq"]
+    tx_hash = item["tx_hash"]
+    zk_proof = item["zk_proof"]
+    drift = item["drift"]
+    rec = item["rec"]
+    mdar_score = item["h_idx"]
+    rrid_count = item["i10_idx"]
+    repro_score = item["repro_score"]
+    filename = item["filename"]
+    author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
+
+    st.markdown("---")
+    st.subheader(f"{title} by {author_name}")
+
+    with st.expander(
+        f"Ledger Data & Dossier Details ({filename})", expanded=False
+    ):
+        st.write(f"**File Name:** `{filename}`")
+        st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
+        st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
+        st.write(f"**piQ Minted:** `{piq}`")
+        st.write(f"**zk-SNARK:** `{zk_proof}`")
+        
+        tx_url = safe_get_sepolia_url(tx_hash)
+        if tx_url:
+            st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
+        else:
+            st.write(f"**Tx Hash:** `{tx_hash}`")
+
+        st.write(
+            f"**Executable Reproducibility Score (C5/C7 audit):**"
+            f" `{repro_score * 100:.1f}%`"
+        )
+        st.write(
+            f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid"
+            f" RRIDs:** `{rrid_count}`"
+        )
+
+    scope_val = st.session_state.get("snap_scope", "")
+    if scope_val.strip() and drift != "N/A" and rec != "N/A":
+        st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
+        st.markdown(f"**Recommendation Tier:** `{rec}`")
+
+    breakdown_df = pd.DataFrame({
+        "Criterion": [
+            "C1: Semantic Originality",
+            "C2: Methodological Rigor (SciScore)",
+            "C3: Interdisciplinary Entropy",
+            "C4: Societal Impact",
+            "C5: Open Science & Repro",
+            "C6: Literature Integration",
+            "C7: Empirical Density",
+            "C8: Future Actionability & FAIR",
+        ],
+        "Score Extracted (0-100)": [
+            scores_dict.get("C1_Originality", 0),
+            scores_dict.get("C2_Methodological_Rigor", 0),
+            scores_dict.get("C3_Interdisciplinary", 0),
+            scores_dict.get("C4_Societal_Impact", 0),
+            scores_dict.get("C5_Open_Science_Potential", 0),
+            scores_dict.get("C6_Literature_Integration", 0),
+            scores_dict.get("C7_Empirical_Density", 0),
+            scores_dict.get("C8_Future_Actionability", 0),
+        ],
+        "Epoch Weight": used_weights,
+        "Weighted Value": [
+            scores_dict.get(k, 0) * used_weights[i]
+            for i, k in enumerate([
+                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
+                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
+                "C7_Empirical_Density", "C8_Future_Actionability",
+            ])
+        ],
+    })
+    st.dataframe(breakdown_df, hide_index=True)
+    raw_base = sum(breakdown_df["Weighted Value"]) / 8.0
+    logic_multiplier = 0.7 + (logic_integrity / 333.3)
+    st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
+    st.markdown(
+        f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from"
+        f" {logic_integrity:.1f}% raw logic score)"
+    )
+    st.markdown(
+        f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}`"
+        f" &nbsp;|&nbsp; **MDAR Adherence:** `{mdar_score * 100:.1f}%`"
+        f" &nbsp;|&nbsp; **Valid RRIDs:** `{rrid_count}` &nbsp;|&nbsp; **File:**"
+        f" `{filename}`"
+    )
+
+    dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
+**Title:** {title}
+**Author:** {author_name}
+**File Name:** {filename}
+**Evaluation Hash (Paper Address):** {eval_hash}
+**Unique Author Book Address:** {author_book}
+**Final Pi-Index Score:** {score:.2f} / 100
+**Logic Integrity Score:** {logic_integrity:.1f}%
+**Executable Reproducibility Score:** {repro_score * 100:.1f}%
+**SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
+**Valid RRIDs Count:** {rrid_count}
+
+## 8-Criteria Evaluation Breakdown
+- C1 Semantic Originality: {scores_dict.get("C1_Originality",0)}
+- C2 Methodological Rigor (SciScore): {scores_dict.get("C2_Methodological_Rigor",0)}
+- C3 Interdisciplinary Entropy: {scores_dict.get("C3_Interdisciplinary",0)}
+- C4 Societal Impact: {scores_dict.get("C4_Societal_Impact",0)}
+- C5 Open Science & Repro: {scores_dict.get("C5_Open_Science_Potential",0)}
+- C6 Literature Integration: {scores_dict.get("C6_Literature_Integration",0)}
+- C7 Empirical Density: {scores_dict.get("C7_Empirical_Density",0)}
+- C8 Future Actionability & FAIR: {scores_dict.get("C8_Future_Actionability",0)}
+
+## Cryptographic Proofs & Ledger Seal
+- zk-SNARK: {zk_proof}
+- Tx Hash: {tx_hash}
+"""
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        st.download_button(
+            label=f"Download Research Integrity Dossier ({filename})",
+            data=dossier_content,
+            file_name=f"Dossier_{eval_hash[:10]}.md",
+            mime="text/markdown",
+            key=f"download_dossier_{eval_hash}_{time.time()}",
+        )
+    with col_btn2:
+        if st.button("Generate AI Defense Strategy", key=f"gen_defense_{eval_hash}_{time.time()}"):
+            with st.spinner("Synthesizing adversarial defense strategy..."):
+                rebuttal = generate_rebuttal_strategy(scores_dict)
+                st.session_state[f"defense_{eval_hash}"] = rebuttal
+
+    if f"defense_{eval_hash}" in st.session_state:
+        st.markdown("#### AI Peer Review Defense Rebuttal Strategy")
+        st.markdown(st.session_state[f"defense_{eval_hash}"])
+
 if (
     st.session_state["evaluated_papers_buffer"]
     or st.session_state.get("download_errors")
@@ -1195,64 +1337,6 @@ if (
 
     for item in st.session_state["evaluated_papers_buffer"]:
         render_breakdown_item(item)
-
-st.markdown("---")
-st.markdown(
-    "### AI Peer Review Defense Strategy "
-    + tooltip(
-        "Synthesizes the mathematical assessment array to build a highly"
-        " targeted adversarial rebuttal strategy."
-    ),
-    unsafe_allow_html=True,
-)
-
-conn = get_db_connection()
-try:
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM"
-        " papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50",
-        (current_user,),
-    )
-    user_papers = cursor.fetchall()
-finally:
-    conn.close()
-
-if not user_papers:
-    st.info(
-        "You must assess at least one paper to unlock the AI Defense Strategy"
-        " tool."
-    )
-else:
-    paper_options = {
-        (
-            f"{p[1][:50]}... ({clean_author_name(p[2])})"
-            if len(p[1]) > 50
-            else f"{p[1]} ({clean_author_name(p[2])})"
-        ):
-        p
-        for p in user_papers
-    }
-    selected_super_paper = st.selectbox(
-        "Select an assessed paper to generate a strategic defense:",
-        list(paper_options.keys()),
-    )
-
-    if st.button("Generate Strategy"):
-        paper_data = paper_options[selected_super_paper]
-        scores = {
-            "C1_Originality": paper_data[3],
-            "C2_Methodological_Rigor": paper_data[4],
-            "C3_Interdisciplinary": paper_data[5],
-            "C4_Societal_Impact": paper_data[6],
-            "C5_Open_Science_Potential": paper_data[7],
-            "C6_Literature_Integration": paper_data[8],
-            "C7_Empirical_Density": paper_data[9],
-            "C8_Future_Actionability": paper_data[10],
-        }
-        rebuttal = generate_rebuttal_strategy(scores)
-        st.success("Defense Strategy Generated Successfully.")
-        st.markdown(rebuttal)
 
 st.markdown("---")
 st.markdown(
