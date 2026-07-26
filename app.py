@@ -128,15 +128,6 @@ try:
 finally:
     conn_cnt.close()
 
-st.markdown(
-    f"""
-    <div style="position: absolute; top: 15px; right: 20px; background-color: #2c3e50; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 999;">
-        Analyzed Papers: {total_analyzed_count}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 if "state_restored" not in st.session_state:
     restore_state_from_web3()
     st.session_state["state_restored"] = True
@@ -410,29 +401,45 @@ with st.sidebar.expander("Scilem Accessory Chatbot", expanded=False):
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
         st.rerun()
 
-# --- Helper for Generalizing Scientific Topics ---
-def generalize_topic(s):
+# --- Helper for Refining Subfields and Professional Science Fields ---
+def refine_science_field(s):
     s_lower = s.lower()
-    if any(k in s_lower for k in ["computer", "algorithm", "software", "ai", "machine learning", "blockchain", "data", "cyber", "neural", "deep learning", "information"]):
-        return "Computer Science & IT"
-    elif any(k in s_lower for k in ["physics", "quantum", "optics", "energy", "mechanics", "astronomy"]):
-        return "Physics & Physical Sciences"
-    elif any(k in s_lower for k in ["chemistry", "polymer", "catalysis", "molecule", "chemical"]):
-        return "Chemistry & Chemical Sciences"
-    elif any(k in s_lower for k in ["biology", "genetics", "cellular", "protein", "ecology", "molecular", "gene"]):
-        return "Life & Biological Sciences"
-    elif any(k in s_lower for k in ["medicine", "clinical", "health", "disease", "pharmac", "biomedical", "hospital", "patient"]):
-        return "Medical & Health Sciences"
-    elif any(k in s_lower for k in ["environment", "climate", "earth", "geology", "ocean", "ecosystem", "carbon"]):
-        return "Earth & Environmental Sciences"
-    elif any(k in s_lower for k in ["economics", "finance", "sociology", "psychology", "policy", "social", "management"]):
-        return "Social Sciences & Economics"
-    elif any(k in s_lower for k in ["math", "statistics", "algebra", "calculus", "probability"]):
-        return "Mathematics & Statistics"
-    elif any(k in s_lower for k in ["engineering", "robotics", "materials", "civil", "mechanical", "electrical"]):
-        return "Engineering & Technology"
+    if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
+        return "Computer Science > Blockchain & Distributed Systems"
+    elif any(k in s_lower for k in ["machine learning", "deep learning", "neural", "ai", "artificial intelligence"]):
+        return "Computer Science > Artificial Intelligence & Machine Learning"
+    elif any(k in s_lower for k in ["algorithm", "software", "computation", "cyber", "data"]):
+        return "Computer Science > Algorithms & Software Engineering"
+    elif any(k in s_lower for k in ["quantum", "optics", "photonics"]):
+        return "Physics > Quantum Mechanics & Optics"
+    elif any(k in s_lower for k in ["energy", "mechanics", "thermodynamics"]):
+        return "Physics > Applied Mechanics & Energy Systems"
+    elif any(k in s_lower for k in ["polymer", "catalysis", "molecule", "chemical"]):
+        return "Chemistry > Chemical Synthesis & Molecular Catalysis"
+    elif any(k in s_lower for k in ["genetics", "genomics", "gene"]):
+        return "Life Sciences > Genetics & Genomics"
+    elif any(k in s_lower for k in ["cellular", "protein", "molecular biology"]):
+        return "Life Sciences > Molecular & Cellular Biology"
+    elif any(k in s_lower for k in ["ecology", "ecosystem", "biodiversity"]):
+        return "Life Sciences > Ecology & Evolutionary Biology"
+    elif any(k in s_lower for k in ["clinical", "hospital", "patient", "disease", "pharmac"]):
+        return "Medical Sciences > Clinical Medicine & Pharmacology"
+    elif any(k in s_lower for k in ["biomedical", "neuroscience", "cardiac"]):
+        return "Medical Sciences > Biomedical Research"
+    elif any(k in s_lower for k in ["climate", "carbon", "atmosphere", "meteorology"]):
+        return "Earth Sciences > Climate Science & Meteorology"
+    elif any(k in s_lower for k in ["geology", "earth", "ocean", "seismic"]):
+        return "Earth Sciences > Geology & Earth Systems"
+    elif any(k in s_lower for k in ["economics", "finance", "market"]):
+        return "Social Sciences > Economics & Quantitative Finance"
+    elif any(k in s_lower for k in ["sociology", "psychology", "policy", "management"]):
+        return "Social Sciences > Behavioral & Policy Studies"
+    elif any(k in s_lower for k in ["math", "statistics", "algebra", "probability", "calculus"]):
+        return "Mathematics & Statistics > Applied Mathematics & Statistics"
+    elif any(k in s_lower for k in ["engineering", "robotics", "materials", "civil", "electrical"]):
+        return "Engineering & Technology > Applied Engineering & Materials Science"
     else:
-        return "General Interdisciplinary Science"
+        return f"Interdisciplinary Research > {s.title()}"
 
 # --- Helper for Cartography Render ---
 def render_bubble_chart_clean(target_author):
@@ -469,7 +476,7 @@ def render_bubble_chart_clean(target_author):
             score = float(final_score) if final_score else 50.0
             for rs in raw_subfields:
                 if rs.lower() not in exclude_terms:
-                    s = generalize_topic(rs)
+                    s = refine_science_field(rs)
                     if s not in topic_aggregates:
                         topic_aggregates[s] = {"weight_sum": 0.0, "frequency": 0}
                     topic_aggregates[s]["weight_sum"] += score
@@ -478,7 +485,7 @@ def render_bubble_chart_clean(target_author):
             continue
 
     if not topic_aggregates:
-        topic_aggregates["General Interdisciplinary Science"] = {
+        topic_aggregates["Interdisciplinary Research > General Science"] = {
             "weight_sum": 50.0,
             "frequency": 1,
         }
@@ -561,7 +568,7 @@ def render_bubble_chart_clean(target_author):
     )
 
     table_html = "<style>.table-big { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 6px; text-align: left; } .table-big td { padding: 6px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; } </style>"
-    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>General Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
+    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
     for topic, metrics in sorted(
         topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True
     ):
@@ -1128,30 +1135,62 @@ def more_details_dialog(item):
 - zk-SNARK: {zk_proof}
 - Tx Hash: {tx_hash}
 """
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        st.download_button(
-            label=f"Download Research Integrity Dossier ({filename})",
-            data=dossier_content,
-            file_name=f"Dossier_{eval_hash[:10]}.md",
-            mime="text/markdown",
-            key=f"download_dossier_modal_{eval_hash}_{time.time()}",
-        )
-    with col_btn2:
-        if st.button("Generate AI Defense Strategy", key=f"gen_defense_modal_{eval_hash}_{time.time()}"):
-            with st.spinner("Synthesizing adversarial defense strategy..."):
-                rebuttal = generate_rebuttal_strategy(scores_dict)
-                st.session_state[f"defense_{eval_hash}"] = rebuttal
-
-    if f"defense_{eval_hash}" in st.session_state:
-        st.markdown("#### AI Peer Review Defense Rebuttal Strategy")
-        st.markdown(st.session_state[f"defense_{eval_hash}"])
+    st.download_button(
+        label=f"Download Research Integrity Dossier ({filename})",
+        data=dossier_content,
+        file_name=f"Dossier_{eval_hash[:10]}.md",
+        mime="text/markdown",
+        key=f"download_dossier_modal_{eval_hash}_{time.time()}",
+        use_container_width=True,
+    )
 
 @st.dialog("AI Peer Review Defense Strategy", width="medium")
 def defense_strategy_dialog(scores_dict):
     with st.spinner("Synthesizing adversarial defense strategy..."):
         rebuttal = generate_rebuttal_strategy(scores_dict)
     st.markdown(rebuttal)
+
+@st.dialog("DeSci Peer Attestation & Staking", width="medium")
+def paper_attestation_dialog(item):
+    eval_hash = item["eval_hash"]
+    title = item["title"]
+    st.markdown(f"**Paper:** {title}")
+    current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
+    
+    if not st.session_state.get("is_authenticated", False):
+        st.warning("Please connect your ORCID iD or DID in the sidebar to use the DeSci Peer Attestation feature.")
+        return
+
+    attest_stance = st.radio(
+        "Attestation Stance:",
+        ["Endorse Rigor", "Challenge Anomaly"],
+        horizontal=True,
+        key=f"modal_attest_stance_{eval_hash}"
+    )
+    stake_val = st.slider(
+        "Stake piQ Amount:",
+        min_value=0.1,
+        max_value=10.0,
+        value=1.0,
+        step=0.1,
+        key=f"modal_stake_val_{eval_hash}"
+    )
+
+    if st.button("Submit Attestation On-Chain", key=f"modal_submit_attest_{eval_hash}", use_container_width=True):
+        attest_id = "ATT_" + hashlib.sha256(
+            f"{current_user}:{eval_hash}:{time.time()}".encode()
+        ).hexdigest()[:12]
+        conn_sub = get_db_connection()
+        try:
+            cur_sub = conn_sub.cursor()
+            cur_sub.execute(
+                "INSERT OR REPLACE INTO desci_attestations (attestation_id, eval_hash, attester_id, stake_amount, stance, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                (attest_id, eval_hash, current_user, stake_val, attest_stance, datetime.now().isoformat()),
+            )
+            conn_sub.commit()
+            st.success(f"Attestation recorded! ID: `{attest_id}`")
+        finally:
+            conn_sub.close()
 
 def render_breakdown_item(item, index):
     title = item["title"]
@@ -1162,18 +1201,21 @@ def render_breakdown_item(item, index):
     scores_dict = item["scores_dict"]
 
     with st.container(border=True):
-        col_info, col_actions = st.columns([7, 3])
+        col_info, col_actions = st.columns([6, 4])
         with col_info:
             st.markdown(f"**{title}** — *{author_name}*")
             st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
         with col_actions:
-            c_det, c_strat, c_del = st.columns([2, 2, 1])
+            c_det, c_strat, c_att, c_del = st.columns([2, 2, 2, 1])
             with c_det:
                 if st.button("More Details", key=f"more_det_{index}_{eval_hash}", use_container_width=True):
                     more_details_dialog(item)
             with c_strat:
-                if st.button("Generate Strategy", key=f"gen_strat_{index}_{eval_hash}", use_container_width=True):
+                if st.button("Suggest Defense", key=f"gen_strat_{index}_{eval_hash}", use_container_width=True):
                     defense_strategy_dialog(scores_dict)
+            with c_att:
+                if st.button("Attest & Stake", key=f"attest_btn_{index}_{eval_hash}", use_container_width=True):
+                    paper_attestation_dialog(item)
             with c_del:
                 if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
                     st.session_state["evaluated_papers_buffer"].pop(index)
@@ -1330,7 +1372,19 @@ with top_analytics_col1:
         """)
 
 with top_analytics_col2:
-    st.markdown("### Global Map of Science")
+    map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
+    with map_title_col:
+        st.markdown("### Global Map of Science")
+    with map_badge_col:
+        st.markdown(
+            f"""
+            <div style="background-color: #2c3e50; color: white; padding: 4px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                Total Analyzed Papers: {total_analyzed_count}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     conn_m = get_db_connection()
     try:
         cursor_m = conn_m.cursor()
