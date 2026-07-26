@@ -821,7 +821,7 @@ def get_evolving_system_context():
     return context_str
 
 def harvest_fine_tuning_data(text_chunk, final_json_output, eval_hash):
-    dataset_path = os.path.join(BASE_DIR, "pi_brain_rlhf_dataset.jsonl")
+    dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
     try:
         record = {
             "prompt": f"Extract Pi-Index Variables from this text:\n{text_chunk[:3000]}",
@@ -3235,13 +3235,13 @@ with tab6:
                 with fb_col1:
                     if st.button("👍 Helpful", key=f"thumbs_up_{idx}"):
                         st.toast("Preference recorded: Positive reinforcement logged to RLHF training set.", icon="📈")
-                        dataset_path = os.path.join(BASE_DIR, "pi_brain_rlhf_dataset.jsonl")
+                        dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
                         with open(dataset_path, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"preference": "preferred", "response": message["content"], "timestamp": datetime.now().isoformat()}) + "\n")
                 with fb_col2:
                     if st.button("👎 Flawed", key=f"thumbs_down_{idx}"):
                         st.toast("Preference recorded: Negative penalty logged for model adjustment.", icon="📉")
-                        dataset_path = os.path.join(BASE_DIR, "pi_brain_rlhf_dataset.jsonl")
+                        dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
                         with open(dataset_path, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"preference": "dispreferred", "response": message["content"], "timestamp": datetime.now().isoformat()}) + "\n")
 
@@ -3256,7 +3256,7 @@ with tab6:
             rag_context = ""
             few_shot_examples = ""
             try:
-                dataset_path = os.path.join(BASE_DIR, "pi_brain_rlhf_dataset.jsonl")
+                dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
                 if os.path.exists(dataset_path):
                     with open(dataset_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
@@ -3325,7 +3325,7 @@ with tab6:
                 else:
                     full_response = "Error: Groq API client is not initialized. Please verify your API keys."
             except Exception as e:
-                full_response = f"Error connecting to Scilem inference engine: {str(e)}"
+                full_response = f"Error connecting to Scilm inference engine: {str(e)}"
 
             message_placeholder.markdown(full_response)
         
