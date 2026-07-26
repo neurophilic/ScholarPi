@@ -109,8 +109,10 @@ def rbot(topic_key):
 # Custom JS/CSS for UI Modifications
 custom_ui_code = """
 <style>
-/* Hide Streamlit markdown header anchor link icons globally */
-h1 a, h2 a, h3 a, h4 a, h5 a, h6 a, [data-testid="stMarkdownContainer"] a[href^="#"] {
+/* 1. Hide anchor links globally on markdown headers */
+.stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
+.stMarkdown h4 a, .stMarkdown h5 a, .stMarkdown h6 a,
+[data-testid="stHeaderActionElements"] {
     display: none !important;
 }
 
@@ -134,15 +136,14 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a, [data-testid="stMarkdownContainer"] a[href^=
     margin-right: 20px !important;
 }
 
-/* Larger chat avatars */
+/* 3. Larger Robot Chat Avatars */
 [data-testid="stChatMessageAvatar"] {
-    font-size: 1.8em !important;
-    width: 2.5rem !important;
-    height: 2.5rem !important;
+    transform: scale(1.3);
 }
 
+/* 2. Robot Cursor on Hover */
 .scilm-trigger {
-    cursor: url('image_f69f5e.png'), pointer !important;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size:24px'%3E%3Ctext y='24'%3E🤖%3C/text%3E%3C/svg%3E"), auto !important;
     font-size: 1.4em;
     margin-left: 4px;
     vertical-align: middle;
@@ -158,7 +159,7 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a, [data-testid="stMarkdownContainer"] a[href^=
     color: white;
     padding: 12px;
     font-weight: bold;
-    font-size: 1.1rem;
+    font-size: 16px;
     cursor: grab;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
@@ -171,16 +172,31 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a, [data-testid="stMarkdownContainer"] a[href^=
     cursor: grabbing;
 }
 
+/* 3. Larger Robot Icon in Header */
+#scilem-drag-handle .robot-icon {
+    font-size: 1.5em;
+    margin-right: 8px;
+}
+
 button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
     padding: 0.35rem 0.75rem !important;
     font-size: 14px !important;
     white-space: nowrap !important;
 }
 
-/* Force borderless iframes for the map */
+/* 5. Force borderless iframes for the map */
 iframe {
     border: none !important;
     border-radius: 8px !important;
+    outline: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+}
+[data-testid="stHtml"] {
+    border: none !important;
+    padding: 0 !important;
 }
 </style>
 <script>
@@ -260,7 +276,7 @@ function initUI() {
         }
     }
 
-    // Merge Map Controls on top of Map
+    // 6. Merge Map Controls on top of Map
     const marker = parentDoc.getElementById('map-controls-marker');
     const anchor = parentDoc.getElementById('map-anchor');
     if (marker && anchor) {
@@ -741,18 +757,18 @@ def evaluation_metrics_dialog():
     )
 
     criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = w_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = w_2 \cdot \mathcal{I}_{blinding} + w_2 \cdot \mathcal{I}_{randomization} + w_2 \cdot \mathcal{I}_{power\_calc} + w_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = w_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = w_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = w_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = w_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = w_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = w_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( `w_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} ( `\varpi_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
@@ -1411,7 +1427,7 @@ with top_analytics_col1:
         st.markdown("""
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($w_1$ to $w_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
         """)
 
@@ -1432,7 +1448,7 @@ with top_analytics_col2:
     # --- Container linking the Overlay Map Controls directly to the Map canvas ---
     map_container = st.container()
     with map_container:
-        st.markdown("<div id='map-anchor'></div>", unsafe_allow_html=True)
+        st.markdown("<div id='map-anchor' style='position: relative; width: 750px; height: 750px;'>", unsafe_allow_html=True)
         
         with st.expander("⚙️", expanded=False):
             st.markdown("<div id='map-controls-marker'></div>", unsafe_allow_html=True)
@@ -1485,6 +1501,8 @@ with top_analytics_col2:
             components.html(interactive_html_top, height=750, width=750, scrolling=False)
         else:
             st.info("Awaiting sufficient data for map visualization.")
+            
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
         st.markdown(table_html_top, unsafe_allow_html=True)
@@ -1521,12 +1539,12 @@ if st.session_state.is_authenticated:
         cur_h = conn_hist.cursor()
         cur_h.execute(
             """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                     p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                     b.block_height, b.block_hash
-              FROM papers_assessment p
-              LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-              WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
-              ORDER BY p.timestamp DESC""",
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
+               FROM papers_assessment p
+               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+               WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
+               ORDER BY p.timestamp DESC""",
             (st.session_state.orcid_id,)
         )
         user_history_rows = cur_h.fetchall()
@@ -1577,10 +1595,10 @@ else:
         cur_last = conn_last.cursor()
         cur_last.execute(
             """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                     p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                     p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                     p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                     b.block_height, b.block_hash
+                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
                    FROM papers_assessment p
                    LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                    ORDER BY p.timestamp DESC LIMIT 5"""
@@ -1691,10 +1709,10 @@ try:
                 q_term = f"%{search_query.strip()}%"
                 cursor.execute(
                     """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                             p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                             p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                             p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                             b.block_height, b.block_hash, b.por_proof, b.formulas_hash
+                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                              p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                              p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash
                        FROM papers_assessment p
                        LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                        WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ?
@@ -1786,8 +1804,8 @@ try:
         st.markdown("#### Recent Ledger Proofs & Transactions")
         cursor.execute(
             """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                     p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                     b.block_height, b.block_hash
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
                FROM papers_assessment p
                LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                ORDER BY p.timestamp DESC LIMIT 5"""
@@ -1841,10 +1859,10 @@ def framework_workflow_dialog():
             color = "#34495e";
             fillcolor = "#ecf0f1";
 
-            Auth [label="Researcher Authentication\\n• ORCID iD / W3C DID Verification\\n• ZK-Email Institutional Proof", fillcolor="#aed6f1"];
-            Intake [label="Multi-Source Ingestion Engine\\n• Local Binary PDFs Extraction\\n• Unpaywall DOI Resolver\\n• OpenAlex Topic API Search", fillcolor="#aed6f1"];
-            TempDisk [label="Temp Disk State Management\\n• Streamlit Render Protection\\n• Buffered Binary Writes", fillcolor="#aed6f1", style="dashed,filled"];
-            ZKBlind [label="ZK Double-Blind Assignment\\n• Merkle Tree Non-Membership Proofs\\n• Anonymous Author Shielding", fillcolor="#aed6f1"];
+            Auth [label="Researcher Authentication\n• ORCID iD / W3C DID Verification\n• ZK-Email Institutional Proof", fillcolor="#aed6f1"];
+            Intake [label="Multi-Source Ingestion Engine\n• Local Binary PDFs Extraction\n• Unpaywall DOI Resolver\n• OpenAlex Topic API Search", fillcolor="#aed6f1"];
+            TempDisk [label="Temp Disk State Management\n• Streamlit Render Protection\n• Buffered Binary Writes", fillcolor="#aed6f1", style="dashed,filled"];
+            ZKBlind [label="ZK Double-Blind Assignment\n• Merkle Tree Non-Membership Proofs\n• Anonymous Author Shielding", fillcolor="#aed6f1"];
             
             Auth -> Intake -> TempDisk -> ZKBlind;
         }
@@ -1855,12 +1873,12 @@ def framework_workflow_dialog():
             color = "#27ae60";
             fillcolor = "#e8f8f5";
 
-            PyMuPDF [label="PyMuPDF Layout Sort\\n• Spatial Reading Extraction\\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
-            SciParser [label="Deterministic SciScore API\\n• MDAR Reporting Adherence\\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
-            Retry [label="Groq Fallback Retry Logic\\n• Distributed Concurrency Control\\n• Exponential 429 Backoff", fillcolor="#a3e4d7", style="dashed,filled"];
-            IRTCalib [label="Item Response Theory Calibration\\n• Counterfactual Stress Testing\\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
-            Criteria [label="8 Transparent Criteria Rubrics\\n• C1 Originality to C8 FAIR Actionability\\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
-            Logic [label="Adversarial Logic Integrity Matrix\\n• Premise Validity & Evidence Strength\\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
+            PyMuPDF [label="PyMuPDF Layout Sort\n• Spatial Reading Extraction\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
+            SciParser [label="Deterministic SciScore API\n• MDAR Reporting Adherence\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
+            Retry [label="Groq Fallback Retry Logic\n• Distributed Concurrency Control\n• Exponential 429 Backoff", fillcolor="#a3e4d7", style="dashed,filled"];
+            IRTCalib [label="Item Response Theory Calibration\n• Counterfactual Stress Testing\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
+            Criteria [label="8 Transparent Criteria Rubrics\n• C1 Originality to C8 FAIR Actionability\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
+            Logic [label="Adversarial Logic Integrity Matrix\n• Premise Validity & Evidence Strength\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
             
             PyMuPDF -> SciParser -> Retry -> IRTCalib -> Criteria -> Logic;
         }
@@ -1871,9 +1889,9 @@ def framework_workflow_dialog():
             color = "#8e44ad";
             fillcolor = "#f4ecf7";
 
-            PoR [label="Proof-of-Research (PoR) Validation\\n• Dynamic Epoch Weight Shifting\\n• Formulas Hash Stamping & SHA-256 Block", fillcolor="#d7bde2"];
-            Slashing [label="Anti-Laundering Slashing Guard\\n• Smart Contract piQ Burn for Fraud\\n• Stake Penalty Enforcement", fillcolor="#f5b7b1"];
-            Mint [label="Soulbound Token Minting\\n• Author-Specific Book Address (eth_book)\\n• Shared Paper Address (eval_hash) & Tx Hash", fillcolor="#d7bde2"];
+            PoR [label="Proof-of-Research (PoR) Validation\n• Dynamic Epoch Weight Shifting\n• Formulas Hash Stamping & SHA-256 Block", fillcolor="#d7bde2"];
+            Slashing [label="Anti-Laundering Slashing Guard\n• Smart Contract piQ Burn for Fraud\n• Stake Penalty Enforcement", fillcolor="#f5b7b1"];
+            Mint [label="Soulbound Token Minting\n• Author-Specific Book Address (eth_book)\n• Shared Paper Address (eval_hash) & Tx Hash", fillcolor="#d7bde2"];
             
             PoR -> Slashing -> Mint;
         }
@@ -1884,9 +1902,9 @@ def framework_workflow_dialog():
             color = "#d35400";
             fillcolor = "#fef5e7";
 
-            Dossier [label="CoARA & DORA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
-            Cartography [label="Global Map of Science\\n• Ledger PyVis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
-            PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
+            Dossier [label="CoARA & DORA-Aligned Dossier\n• Markdown Research Integrity Report\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
+            Cartography [label="Global Map of Science\n• Ledger PyVis Network Cartography\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
+            PiBrain [label="Pi-Brain LSTM Meta-Learning\n• PyTorch Temporal Weight Prediction\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
 
         ZKBlind -> PyMuPDF [lhead=cluster_eval, label="Processed Manuscript Text"];
@@ -1921,7 +1939,7 @@ with col_center:
 st.markdown("---")
 scilem_container = st.container()
 with scilem_container:
-    st.markdown("<div id='scilem-drag-handle'>🤖 Scilem Assistant</div>", unsafe_allow_html=True)
+    st.markdown("<div id='scilem-drag-handle'><span class='robot-icon'>🤖</span> Scilem Assistant</div>", unsafe_allow_html=True)
     
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
