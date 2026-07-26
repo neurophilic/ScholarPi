@@ -77,21 +77,25 @@ st.set_page_config(
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Icon-Only Click Function & Layout Adjustments (Bigger Robot Icons)
+# Custom JS/CSS for Scilem Icon-Only Click Function & Narrower Side Cushioning
 custom_ui_code = """
 <style>
-/* Scilem Chat Box Cushioning Reduction & Larger Robot Avatar */
+/* Scilem Chat Box Narrower Side Cushioning */
 [data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
     overflow-x: hidden !important;
     scroll-behavior: smooth;
     padding: 0 !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
     gap: 0.05rem !important;
 }
 [data-testid="stSidebar"] [data-testid="stChatMessage"] {
-    padding: 0.2rem !important;
+    padding: 0.15rem 0.2rem !important;
     background-color: transparent;
     border-radius: 4px;
     margin-bottom: 0.05rem !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
 }
 [data-testid="stSidebar"] [data-testid="stChatMessageAvatar"] {
     width: 1.6rem !important;
@@ -107,21 +111,21 @@ custom_ui_code = """
 .scilem-box {
     border: 1px solid #dcdcdc;
     border-radius: 6px;
-    padding: 2px 4px;
+    padding: 2px 2px !important;
     background-color: #f8f9fa;
 }
 
-/* Larger Robot Icon Trigger Styling */
+/* Robot Icon Trigger Styling */
 .scilm-trigger {
     cursor: pointer !important;
-    font-size: 1.4em;
+    font-size: 1.1em;
     margin-left: 4px;
     vertical-align: middle;
     display: inline-block;
     transition: transform 0.15s ease-in-out;
 }
 .scilm-trigger:hover {
-    transform: scale(1.3);
+    transform: scale(1.25);
 }
 </style>
 <script>
@@ -344,7 +348,6 @@ st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe
 chat_container = st.sidebar.container(height=280)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        # Robot avatar on left for assistant, user bubble on right
         msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
@@ -1737,7 +1740,7 @@ def framework_workflow_dialog():
             fillcolor = "#e8f8f5";
 
             SciParser [label="Deterministic SciScore API\\n• MDAR Reporting Adherence\\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
-            IRTCalib [label="Item Response Theory Calibration\\n• Counterfactual Stress Testing\\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
+            IRTCalip [label="Item Response Theory Calibration\\n• Counterfactual Stress Testing\\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
             Criteria [label="8 Transparent Criteria Rubrics\\n• C1 Originality to C8 FAIR Actionability\\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
             Logic [label="Adversarial Logic Integrity Matrix\\n• Premise Validity & Evidence Strength\\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
             
@@ -1768,7 +1771,7 @@ def framework_workflow_dialog():
             PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
 
-        Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Text"];
+        Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Textict Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Audited Score & Hashes"];
         Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
