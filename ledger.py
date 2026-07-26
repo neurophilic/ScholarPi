@@ -129,7 +129,7 @@ def generate_zk_snark_proof(eval_hash, final_score, logic_score, email_str="None
     circuit_input = (
         f"{eval_hash}:{final_score}:{logic_score}:{email_str}:{time.time()}"
     )
-    return "0x0" + hashlib.sha3_256(circuit_input.encode("utf-8")).hexdigest()
+    return "0x" + hashlib.sha3_256(circuit_input.encode("utf-8")).hexdigest()
 
 def mint_pi_quotient_token(book_address, amount, eval_hash, zk_proof):
     if not w3.is_connected() or book_address == "None" or not book_address or not ETH_ADMIN_PRIVATE_KEY:
