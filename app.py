@@ -667,8 +667,8 @@ def evaluation_metrics_dialog():
             r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
         )
 
-# --- Top Header Layout with Evaluation Metrics Popup Button ---
-col_t1, col_t2 = st.columns([4, 2])
+# --- Top Header Layout with Evaluation Metrics Popup Button Right Next to Title ---
+col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
     st.title(
         "Pi-Index Assessment Engine",
@@ -678,7 +678,6 @@ with col_t1:
         ),
     )
 with col_t2:
-    st.write("")
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
 
