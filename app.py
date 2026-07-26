@@ -199,7 +199,7 @@ if not st.session_state.is_authenticated:
             st.sidebar.error("Invalid ORCID or DID format.")
 
     st.sidebar.markdown("---")
-    st.sidebar.info("Notice: Please connect your ORCID iD or DID above to unlock and use your personal Assessment History and DeSci Peer Attestation features.")
+    st.sidebar.info("Notice: Please connect your ORCID iD or DID above to unlock and use your personal Assessment History features.")
 else:
     st.sidebar.success("Securely Connected")
     st.sidebar.markdown(
@@ -342,7 +342,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
     st.rerun()
 
-# --- Helper for Refining Subfields and Professional Science Fields ---
+# --- Helper for Refining Subfields and Professional Science Fields (No Interdisciplinary Research) ---
 def refine_science_field(s):
     s_lower = s.lower()
     if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
@@ -565,8 +565,7 @@ def evaluation_metrics_dialog():
                 )
         st.markdown("---")
     else:
-        tw1 = 1.001328
-        tw2 = 1.000038
+        tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
@@ -583,60 +582,60 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    st.markdown(
-        f"**C1: Originality ($\varpi_1$ = `{tw1:.6f}`):** "
-        + tooltip(
-            "Semantic distance from literature corpus penalized by generative"
-            " AI laundering heuristics."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
-        r" \times (1 - \lambda_{laundering}) $$"
-    )
+    with st.expander(f"C1: Originality (vapri_1 = {tw1:.6f}):"):
+        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
+        st.markdown(
+            r"$$ C_1 = vapri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+            r" \times (1 - \lambda_{laundering}) $$"
+        )
 
-    with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
+    with st.expander(f"C2: Methodological Rigor (vapri_2 = {tw2:.6f}):"):
         st.markdown(
             "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
         )
         st.markdown(
-            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
-            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
-            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r"$$ C_2 = vapri_2 \cdot \mathcal{I}_{blinding} + vapri_2 \cdot"
+            r" \mathcal{I}_{randomization} + vapri_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + vapri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
             r" \epsilon}\right) $$"
         )
 
-    with st.expander("C3: Interdisciplinary Synergy"):
-        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    with st.expander(f"C3: Interdisciplinary Synergy (vapri_3 = {tw3:.6f}):"):
+        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
+        st.markdown(r"$$ C_3 = vapri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    with st.expander("C4: Societal & Open Infrastructure Impact"):
+    with st.expander(f"C4: Societal & Open Infrastructure Impact (vapri_4 = {tw4:.6f}):"):
+        st.markdown("Evaluates broader societal and open infrastructure contributions.")
         st.markdown(
-            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r"$$ C_4 = vapri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
             r" U_v(\tau, \mathbf{x}) \right] $$"
         )
 
-    with st.expander("C5: Open Science & Executable Reproducibility"):
+    with st.expander(f"C5: Open Science & Executable Reproducibility (vapri_5 = {tw5:.6f}):"):
+        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
         st.markdown(
-            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r"$$ C_5 = vapri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
             r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
         )
 
-    with st.expander("C6: Literature Integration"):
+    with st.expander(f"C6: Literature Integration (vapri_6 = {tw6:.6f}):"):
+        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
         st.markdown(
-            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r"$$ C_6 = vapri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
             r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
         )
 
-    with st.expander("C7: Empirical Density & Validation"):
+    with st.expander(f"C7: Empirical Density & Validation (vapri_7 = {tw7:.6f}):"):
+        st.markdown("Assesses empirical sample strength and baseline variance.")
         st.markdown(
-            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r"$$ C_7 = vapri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
             r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
         )
 
-    with st.expander("C8: Future Actionability & FAIR"):
+    with st.expander(f"C8: Future Actionability & FAIR (vapri_8 = {tw8:.6f}):"):
+        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
         st.markdown(
-            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r"$$ C_8 = vapri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
             r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
         )
 
