@@ -106,7 +106,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Floating Draggable Window & Form Button Fit
+# Custom JS/CSS for Scilem Floating Draggable Window & Clickable Triggers
 custom_ui_code = """
 <style>
 [data-testid="stSidebar"] {
@@ -159,7 +159,6 @@ custom_ui_code = """
     cursor: grabbing;
 }
 
-/* Ensure form submit buttons fit text properly */
 button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
     padding: 0.35rem 0.75rem !important;
     font-size: 14px !important;
@@ -169,6 +168,7 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
 <script>
 const parentDoc = window.parent.document;
 
+// Fully working clickable 🤖 trigger handler
 parentDoc.addEventListener('click', function(e) {
     let trigger = e.target.closest('.scilm-trigger');
     if (!trigger) return; 
@@ -178,16 +178,18 @@ parentDoc.addEventListener('click', function(e) {
     let query = trigger.getAttribute('data-query');
     if (!query) return;
 
-    const textarea = parentDoc.querySelector('[data-testid="stChatInputTextArea"]');
-    if (textarea) {
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-        nativeInputValueSetter.call(textarea, "Explain: " + query);
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    const inputField = parentDoc.querySelector('input[aria-label="Ask Scilem..."]') || parentDoc.querySelector('[data-testid="stChatInputTextArea"]');
+    if (inputField) {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set || Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+        nativeInputValueSetter.call(inputField, "Explain: " + query);
+        inputField.dispatchEvent(new Event('input', { bubbles: true }));
 
-        const enterEvent = new KeyboardEvent('keydown', {
-            bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13
-        });
-        textarea.dispatchEvent(enterEvent);
+        setTimeout(() => {
+            const submitBtn = parentDoc.querySelector('button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"]') || parentDoc.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.click();
+            }
+        }, 150);
     }
 }, true);
 
@@ -562,7 +564,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    # Increased map height to 750px for an even taller map box
+    # Increased map height to 750px
     net = Network(
         height="750px",
         width="100%",
@@ -571,7 +573,6 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         notebook=False,
     )
     
-    # Highly stabilized physics parameters for minimal initial jiggliness
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
@@ -1396,9 +1397,8 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # --- PERMANENT VISIBLE MAP MODULATION CONTROL PANEL WITH EXPANDED SLIDER RANGES ---
-    with st.container(border=True):
-        st.markdown("**🎛️ Map Physics & Display Modulation**")
+    # --- Collapsed Map Physics & Display Modulation Control Panel Merged Here ---
+    with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
         mod_col1, mod_col2 = st.columns(2)
         with mod_col1:
             mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
@@ -1445,8 +1445,8 @@ with top_analytics_col2:
         central_grav=mod_gravity
     )
     if interactive_html_top:
-        # Taller map component height (730px)
-        components.html(interactive_html_top, height=730, scrolling=False)
+        # Taller map component height (750px)
+        components.html(interactive_html_top, height=750, scrolling=False)
     else:
         st.info("Awaiting sufficient data for map visualization.")
 
@@ -1885,7 +1885,7 @@ with col_center:
 st.markdown("---")
 scilem_container = st.container()
 with scilem_container:
-    st.markdown("<div id='scilem-drag-handle'>🤖 Scilem Assistant (Drag me)</div>", unsafe_allow_html=True)
+    st.markdown("<div id='scilem-drag-handle'>🤖 Scilem Assistant</div>", unsafe_allow_html=True)
     
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
