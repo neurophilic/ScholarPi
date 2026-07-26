@@ -207,7 +207,7 @@ else:
         f" `{st.session_state.orcid_id}`"
     )
     
-    # --- Assessment and Reward History in Sidebar ---
+    # --- Assessment and Reward History in Sidebar (Updated to query connected ID + default guest ID for seamless viewing) ---
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Your Assessment & Reward History")
     
@@ -217,7 +217,7 @@ else:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT title, author_name, filename, scope, final_score, piq_minted,"
-            " tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC"
+            " tx_hash FROM papers_assessment WHERE user_id=? OR user_id='0000-0000-0000-0000' ORDER BY timestamp DESC"
             " LIMIT 20",
             (current_user,),
         )
@@ -249,10 +249,10 @@ else:
 current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
-# --- Scilem Accessory Chatbot in Sidebar (Auto-updated knowledge base, scientific icon, no extra box) ---
+# --- Scilem Assistant in Sidebar (Proactive Autonomous Explanations, Scientific Icon, No Empty Box) ---
 st.sidebar.markdown("---")
 st.sidebar.markdown(
-    "### 🧬 Scilem Assistant "
+    "### Scilem Assistant "
     + tooltip("CoARA-aligned decentralized scientific assistant."),
     unsafe_allow_html=True,
 )
@@ -261,11 +261,21 @@ if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "Greetings. I am Scilem, your decentralized scientific intelligence assistant. How may I help?"
+            "content": "👋 **Scilem Insight:** Welcome! I am monitoring your research pipeline. As you evaluate papers, explore the Global Map of Science, or review Pidyne forecasts, I will proactively provide CoARA-aligned scientific explanations here."
         }
     ]
 
-chat_container = st.sidebar.container(height=320)
+# Proactive trigger: If total analyzed papers changed or session started, add helpful explanatory tip
+if "last_analyzed_tracked" not in st.session_state:
+    st.session_state["last_analyzed_tracked"] = total_analyzed_count
+elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
+    st.session_state["last_analyzed_tracked"] = total_analyzed_count
+    st.session_state.scilm_messages.append({
+        "role": "assistant",
+        "content": f"📊 **Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**. This updates our decentralized block weights and refines the Pidyne forecast curve."
+    })
+
+chat_container = st.sidebar.container(height=340)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
         with st.sidebar.chat_message(message["role"]):
@@ -1225,7 +1235,7 @@ with top_analytics_col1:
         optimizer = optim.Adam(model.parameters(), lr=0.001)
 
         model.train()
-        for epoch in range(200):
+        for epoch in range(250):
             for seq, target in dataloader:
                 optimizer.zero_grad()
                 loss = loss_function(model(seq), target)
@@ -1243,10 +1253,10 @@ with top_analytics_col1:
                 .squeeze()
                 .numpy()
             )
-            # Increase sensitivity by amplifying delta from current active weights
+            # Highly sensitive amplification factor for visible weight shifts
             current_w = weight_data[-1]
-            predicted = current_w + (raw_pred - current_w) * 3.0
-            predicted = np.clip(predicted, 0.1, 4.0)
+            predicted = current_w + (raw_pred - current_w) * 6.0
+            predicted = np.clip(predicted, 0.05, 5.5)
             predicted = predicted * (8.0 / np.sum(predicted))
             torch.save(model.state_dict(), weights_path)
             return predicted
@@ -1717,7 +1727,7 @@ def framework_workflow_dialog():
             color = "#d35400";
             fillcolor = "#fef5e7";
 
-            Dossier [label="CoARA & DORA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
+            Dossier [label="DORA & CoARA-Aligned Dossier\\n• Markdown Research Integrity Report\\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
             Cartography [label="Global Map of Science\\n• Ledger PyVis Network Cartography\\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
             PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
