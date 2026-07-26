@@ -77,10 +77,10 @@ st.set_page_config(
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Icon-Only Click Function & Layout Adjustments
+# Custom JS/CSS for Scilem Icon-Only Click Function & Layout Adjustments (Bigger Robot Icons)
 custom_ui_code = """
 <style>
-/* Scilem Chat Box Cushioning Reduction */
+/* Scilem Chat Box Cushioning Reduction & Larger Robot Avatar */
 [data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
     overflow-x: hidden !important;
     scroll-behavior: smooth;
@@ -94,9 +94,10 @@ custom_ui_code = """
     margin-bottom: 0.05rem !important;
 }
 [data-testid="stSidebar"] [data-testid="stChatMessageAvatar"] {
-    width: 1.0rem !important;
-    height: 1.0rem !important;
-    min-width: 1.0rem !important;
+    width: 1.6rem !important;
+    height: 1.6rem !important;
+    min-width: 1.6rem !important;
+    font-size: 1.4rem !important;
 }
 [data-testid="stSidebar"] .stMarkdown p {
     font-size: 0.78rem !important;
@@ -110,17 +111,17 @@ custom_ui_code = """
     background-color: #f8f9fa;
 }
 
-/* Robot Icon Trigger Styling */
+/* Larger Robot Icon Trigger Styling */
 .scilm-trigger {
     cursor: pointer !important;
-    font-size: 1.1em;
+    font-size: 1.4em;
     margin-left: 4px;
     vertical-align: middle;
     display: inline-block;
     transition: transform 0.15s ease-in-out;
 }
 .scilm-trigger:hover {
-    transform: scale(1.25);
+    transform: scale(1.3);
 }
 </style>
 <script>
@@ -343,7 +344,8 @@ st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe
 chat_container = st.sidebar.container(height=280)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = "🤖" if message["role"] == "assistant" else None
+        # Robot avatar on left for assistant, user bubble on right
+        msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
@@ -1277,7 +1279,7 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
-        # Fixed Pidyne Graph: Render historical block weights trend using st.line_chart across epochs/blocks
+        # Fixed Pidyne Graph: Render all 8 historical criteria trends explicitly via st.line_chart
         if len(historical_rows) > 0:
             df_history = pd.DataFrame(
                 historical_rows,
