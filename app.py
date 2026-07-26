@@ -74,7 +74,7 @@ st.set_page_config(
 )
 
 # Invisible JS to capture clicks on plain text and forward them to Scilem Chat Input.
-# BUG FIX: Ignored clicks on buttons, dialogs, and expanders to prevent interrupting popups!
+# Ignored clicks on buttons, dialogs, and expanders to prevent interrupting popups!
 click_tracker_js = """
 <script>
 const parentDoc = window.parent.document;
@@ -461,15 +461,35 @@ def render_bubble_chart_clean(target_author):
 
     unique_topics = list(topic_aggregates.keys())
 
-    def get_color(i, n):
-        h, s, v = i / n if n > 0 else 0, 0.7, 0.9
-        rgb = colorsys.hsv_to_rgb(h, s, v)
-        return "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
+    # Create hierarchical color mapping
+    major_fields_dict = {}
+    for topic in unique_topics:
+        parts = [p.strip() for p in topic.split('>')]
+        major = parts[0]
+        if major not in major_fields_dict:
+            major_fields_dict[major] = []
+        major_fields_dict[major].append(topic)
 
-    color_map = {
-        topic: get_color(i, len(unique_topics))
-        for i, topic in enumerate(unique_topics)
-    }
+    major_keys = sorted(list(major_fields_dict.keys()))
+    color_map = {}
+
+    for i, major in enumerate(major_keys):
+        # Base hue for the major discipline
+        h = i / len(major_keys) if len(major_keys) > 0 else 0
+        subfields = sorted(major_fields_dict[major])
+        n_subs = len(subfields)
+        
+        for j, topic in enumerate(subfields):
+            # Vary saturation and value to create shades mapping hierarchical depth
+            if n_subs <= 1:
+                s, v = 0.7, 0.9
+            else:
+                ratio = j / (n_subs - 1)
+                s = 0.4 + (0.5 * ratio)
+                v = 0.95 - (0.35 * ratio)
+            rgb = colorsys.hsv_to_rgb(h, s, v)
+            color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
+
     net = Network(
         height="450px",
         width="100%",
@@ -1272,15 +1292,15 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
         
-        # Super Exaggeration for Visual Impact (100x Amplified to expose micro-shifts clearly)
+        # Super Exaggeration for Visual Impact (150x Amplified to expose micro-shifts clearly)
         mean_val = np.mean(curr_vals)
-        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 75.0)
-        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 75.0)
+        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 150.0)
+        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 150.0)
 
         df_compare = pd.DataFrame(
             {
-                "Current Active Weights (75x Amplified for Visibility)": exagg_curr,
-                "Predicted Next Epoch (75x Amplified for Visibility)": exagg_pred,
+                "Current Active Weights (150x Amplified for Visibility)": exagg_curr,
+                "Predicted Next Epoch (150x Amplified for Visibility)": exagg_pred,
             },
             index=[
                 "C1: Originality", "C2: Methodological Rigor",
