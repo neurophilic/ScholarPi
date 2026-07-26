@@ -559,18 +559,13 @@ st.title(
         " reproducibility metrics, and multidimensional blockchain consensus."
     ),
 )
-st.markdown(
-    "**Upload papers, define your scope of research, let Pi-Index filter noise"
-    " and yield quantitative results aligned with Responsible Research"
-    " Assessment (RRA).**"
-)
 
 # ==================== COMPACT INTAKE & ASSESSMENT BLOCK ====================
 st.markdown("")
 with st.container(border=True):
     selected_uploaded_files = []
     uploaded_files = st.file_uploader(
-        "1. Upload Local PDF(s)",
+        "Upload Local PDF(s)",
         type=["pdf"],
         accept_multiple_files=True,
         key=f"file_uploader_{st.session_state['reset_token']}",
@@ -1556,10 +1551,11 @@ finally:
     conn.close()
 
 
-# ==================== SYSTEM OVERVIEW & MERGED FOOTER BLOCK ====================
-st.markdown("---")
-with st.expander("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow"):
+# ==================== SYSTEM OVERVIEW & POP-UP WORKFLOW MODAL ====================
+@st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
+def framework_workflow_dialog():
     st.markdown(
+        "Pi-Index filter noise and yield quantitative results aligned with Responsible Research Assessment (RRA).\n\n"
         "### Architecture Flowchart & Whitepaper DOI\n\n"
         "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
         "The enhanced system architecture flow below details the decentralized"
@@ -1641,3 +1637,9 @@ with st.expander("The Pi-Index Framework: Next-Gen Architecture & CoARA Complian
         "<div style='text-align: center; color: gray; font-size: 0.9em; padding-bottom: 5px;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>",
         unsafe_allow_html=True
     )
+
+st.markdown("---")
+col_pad1, col_center, col_pad2 = st.columns([1, 4, 1])
+with col_center:
+    if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
+        framework_workflow_dialog()
