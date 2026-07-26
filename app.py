@@ -271,23 +271,6 @@ function initUI() {
             }
         }
     }
-
-    const anchor = parentDoc.getElementById('map-anchor');
-    if (anchor) {
-        let expander = anchor.querySelector('[data-testid="stExpander"]');
-        if (expander && expander.style.position !== 'absolute') {
-            expander.style.position = 'absolute';
-            expander.style.top = '10px';
-            expander.style.left = '10px';
-            expander.style.zIndex = '100';
-            expander.style.width = '300px';
-            expander.style.background = 'rgba(255, 255, 255, 0.95)';
-            expander.style.backdropFilter = 'blur(4px)';
-            expander.style.border = '1px solid #d0d7de';
-            expander.style.borderRadius = '8px';
-            expander.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-        }
-    }
 }
 setInterval(initUI, 800);
 </script>
@@ -1441,33 +1424,8 @@ with top_analytics_col2:
 
     map_container = st.container()
     with map_container:
-        st.markdown("<div id='map-anchor' style='position: relative; width: 100%; height: 600px;'>", unsafe_allow_html=True)
-
-        st.markdown("""
-        <style>
-        div[data-testid="stExpander"] details summary p {
-            font-size: 14px !important;
-            margin: 0 !important;
-            display: inline-block !important;
-        }
-        div[data-testid="stExpander"] {
-            border: none !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            margin-bottom: 5px !important;
-        }
-        div[data-testid="stExpander"] details {
-            border: 1px solid #d0d7de !important;
-            border-radius: 6px !important;
-            background-color: #f6f8fa !important;
-            padding: 0px 8px !important;
-            width: fit-content !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        with st.expander("⚙️", expanded=False):
+        # Clean inline/floating settings expander directly above the author filter
+        with st.expander("⚙️ Modulators", expanded=False):
             mod_col1, mod_col2 = st.columns(2)
             with mod_col1:
                 mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
@@ -1519,8 +1477,6 @@ with top_analytics_col2:
             st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("Awaiting sufficient data for map visualization.")
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
         st.markdown(table_html_top, unsafe_allow_html=True)
