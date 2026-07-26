@@ -551,144 +551,253 @@ def render_bubble_chart_clean(target_author):
 
     return html_string, table_html
 
-# --- Top Layout with Global Map of Science Permanent Display & Embedded Evaluation Metrics ---
-header_col1, header_col2 = st.columns([1.1, 0.9])
+# --- Top Header Layout ---
+st.title(
+    "Pi-Index Assessment Engine",
+    help=(
+        "Automated peer-review framework powered by neural networks, SciScore"
+        " reproducibility metrics, and multidimensional blockchain consensus."
+    ),
+)
+st.markdown(
+    "**Upload papers, define your scope of research, let Pi-Index filter noise"
+    " and yield quantitative results aligned with Responsible Research"
+    " Assessment (RRA).**"
+)
 
-with header_col1:
-    st.title(
-        "Pi-Index Assessment Engine",
-        help=(
-            "Automated peer-review framework powered by neural networks, SciScore"
-            " reproducibility metrics, and multidimensional blockchain consensus."
+with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
+    st.markdown(
+        r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
+        + tooltip(
+            "Evaluates reasoning structure and penalizes claims unsupported by"
+            " evidence or counterfactual stress failures."
         ),
+        unsafe_allow_html=True,
     )
     st.markdown(
-        "**Upload papers, define your scope of research, let Pi-Index filter noise"
-        " and yield quantitative results aligned with Responsible Research"
-        " Assessment (RRA).**"
+        r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
+        r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
+        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
-        st.markdown(
-            r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
-            + tooltip(
-                "Evaluates reasoning structure and penalizes claims unsupported by"
-                " evidence or counterfactual stress failures."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
-            r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
-            r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
-            r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
+    st.markdown(
+        "**C1: Originality** "
+        + tooltip(
+            "Semantic distance from literature corpus penalized by generative"
+            " AI laundering heuristics."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+        r" \times (1 - \lambda_{laundering}) $$"
+    )
+
+    st.markdown(
+        "**C2: Methodological Rigor** "
+        + tooltip(
+            "Deterministic adherence to MDAR reporting standards and valid RRIDs"
+            " via SciScore."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
+        r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
+        r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+        r" \epsilon}\right) $$"
+    )
+
+    st.markdown(
+        "**C3: Interdisciplinary Synergy** "
+        + tooltip(
+            "Shannon entropy of the verified citation network across diverse"
+            " subfields."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+
+    st.markdown(
+        "**C4: Societal & Open Infrastructure Impact** "
+        + tooltip(
+            "CoARA WG TIER aligned rewards for public datasets, civic policy"
+            " integration, and open science."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+        r" U_v(\tau, \mathbf{x}) \right] $$"
+    )
+
+    st.markdown(
+        "**C5: Open Science & Executable Reproducibility** "
+        + tooltip(
+            "Cryptographic verification of open data/code repositories and"
+            " sandboxed container execution."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+        r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+    )
+
+    st.markdown(
+        "**C6: Literature Integration** "
+        + tooltip(
+            "Citation context polarity classification (supporting vs."
+            " contrasting engagement)."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+        r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+    )
+
+    st.markdown(
+        "**C7: Empirical Density & Validation** "
+        + tooltip(
+            "Deterministic extraction of sample sizes, degrees of freedom, and"
+            " cohort volumes."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+        r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+    )
+
+    st.markdown(
+        "**C8: Future Actionability & FAIR** "
+        + tooltip(
+            "Strict measurement of adherence to FAIR principles for"
+            " downstream research cascade."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+        r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+    )
+
+st.markdown("---")
+
+# ==================== TOP SIDE-BY-SIDE ANALYTICS (PI-BRAIN ON LEFT, GLOBAL MAP ON RIGHT) ====================
+top_analytics_col1, top_analytics_col2 = st.columns(2)
+
+with top_analytics_col1:
+    st.markdown(
+        "### Pi-Brain LSTM Meta-Learning Forecasts "
+        + tooltip(
+            "An LSTM neural network that trains directly on the block weights to"
+            " predict future shifts in algorithmic evaluation standards."
+        ),
+        unsafe_allow_html=True,
+    )
+
+    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+    def train_pibrain_cached(weight_data, actual_lookback):
+        dataset = PiBlockchainDataset(weight_data, actual_lookback)
+        dataloader = DataLoader(
+            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
         )
 
-        st.markdown(
-            "**C1: Originality** "
-            + tooltip(
-                "Semantic distance from literature corpus penalized by generative"
-                " AI laundering heuristics."
-            ),
-            unsafe_allow_html=True,
+        model = PiBrainLSTM()
+        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+        if os.path.exists(weights_path):
+            try:
+                model.load_state_dict(torch.load(weights_path, weights_only=True))
+            except Exception:
+                pass
+
+        loss_function = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(200):
+            for seq, target in dataloader:
+                optimizer.zero_grad()
+                loss = loss_function(model(seq), target)
+                loss.backward()
+                optimizer.step()
+
+        model.eval()
+        with torch.no_grad():
+            predicted = (
+                model(
+                    torch.tensor(
+                        weight_data[-actual_lookback:], dtype=torch.float32
+                    ).unsqueeze(0)
+                )
+                .squeeze()
+                .numpy()
+            )
+            torch.save(model.state_dict(), weights_path)
+            return predicted
+
+    conn_pb = get_db_connection()
+    try:
+        cursor_pb = conn_pb.cursor()
+        cursor_pb.execute(
+            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+            " BY block_height ASC"
         )
+        historical_rows = cursor_pb.fetchall()
+    finally:
+        conn_pb.close()
+
+    min_blocks_required = 2
+    if len(historical_rows) < min_blocks_required:
+        st.warning(
+            f"Not enough blockchain data to train the meta-model. You need at least"
+            f" {min_blocks_required} blocks (Currently on ledger:"
+            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+            " block 2."
+        )
+    else:
+        current_block_count = len(historical_rows)
+        lookback_window = max(1, min(5, current_block_count - 1))
+
+        if (
+            "last_trained_blocks" not in st.session_state
+            or st.session_state.last_trained_blocks != current_block_count
+        ):
+            weight_data = np.array(historical_rows, dtype=np.float32)
+            actual_lookback = min(lookback_window, len(weight_data))
+
+            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+            st.session_state.current_weights = weight_data[-1]
+            st.session_state.last_trained_blocks = current_block_count
+        else:
+            st.info(
+                "Meta-model is cached and up-to-date with the latest blockchain"
+                " ledger."
+            )
+
+        df_compare = pd.DataFrame(
+            {
+                "Current Active Weights": st.session_state.current_weights,
+                "Predicted Next Epoch": st.session_state.predicted_next_weights,
+            },
+            index=[
+                "C1: Originality", "C2: Methodological Rigor",
+                "C3: Interdisciplinary", "C4: Societal Impact",
+                "C5: Open Science", "C6: Literature Integration",
+                "C7: Empirical Density", "C8: Future Actionability",
+            ],
+        )
+        st.bar_chart(df_compare, height=380)
         st.markdown(
-            r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
-            r" \times (1 - \lambda_{laundering}) $$"
+            f"**Mathematical Constraint Check:** Predicted Sum ="
+            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
         )
 
-        st.markdown(
-            "**C2: Methodological Rigor** "
-            + tooltip(
-                "Deterministic adherence to MDAR reporting standards and valid RRIDs"
-                " via SciScore."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
-            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
-            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
-            r" \epsilon}\right) $$"
-        )
-
-        st.markdown(
-            "**C3: Interdisciplinary Synergy** "
-            + tooltip(
-                "Shannon entropy of the verified citation network across diverse"
-                " subfields."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
-
-        st.markdown(
-            "**C4: Societal & Open Infrastructure Impact** "
-            + tooltip(
-                "CoARA WG TIER aligned rewards for public datasets, civic policy"
-                " integration, and open science."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
-            r" U_v(\tau, \mathbf{x}) \right] $$"
-        )
-
-        st.markdown(
-            "**C5: Open Science & Executable Reproducibility** "
-            + tooltip(
-                "Cryptographic verification of open data/code repositories and"
-                " sandboxed container execution."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
-            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
-        )
-
-        st.markdown(
-            "**C6: Literature Integration** "
-            + tooltip(
-                "Citation context polarity classification (supporting vs."
-                " contrasting engagement)."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
-            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
-        )
-
-        st.markdown(
-            "**C7: Empirical Density & Validation** "
-            + tooltip(
-                "Deterministic extraction of sample sizes, degrees of freedom, and"
-                " cohort volumes."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
-            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
-        )
-
-        st.markdown(
-            "**C8: Future Actionability & FAIR** "
-            + tooltip(
-                "Strict measurement of adherence to FAIR principles for"
-                " downstream research cascade."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
-            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
-        )
-
-with header_col2:
-    st.markdown("#### Global Map of Science")
+with top_analytics_col2:
+    st.markdown("### Global Map of Science")
     conn_m = get_db_connection()
     try:
         cursor_m = conn_m.cursor()
@@ -721,7 +830,7 @@ with header_col2:
 
     interactive_html_top, table_html_top = render_bubble_chart_clean(selected_author_top)
     if interactive_html_top:
-        components.html(interactive_html_top, height=430, scrolling=True)
+        components.html(interactive_html_top, height=410, scrolling=True)
     else:
         st.info("Awaiting sufficient data for map visualization.")
 
@@ -751,115 +860,6 @@ with header_col2:
                 st.dataframe(piq_df, use_container_width=True, height=180)
         else:
             st.info("No piQ tokens minted yet.")
-
-st.markdown("---")
-
-# ==================== PI-BRAIN LSTM META-LEARNING FORECASTS (MOVED TO TOP) ====================
-st.markdown(
-    "### Pi-Brain LSTM Meta-Learning Forecasts "
-    + tooltip(
-        "An LSTM neural network that trains directly on the block weights to"
-        " predict future shifts in algorithmic evaluation standards."
-    ),
-    unsafe_allow_html=True,
-)
-
-@st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-def train_pibrain_cached(weight_data, actual_lookback):
-    dataset = PiBlockchainDataset(weight_data, actual_lookback)
-    dataloader = DataLoader(
-        dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-    )
-
-    model = PiBrainLSTM()
-    weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-    if os.path.exists(weights_path):
-        try:
-            model.load_state_dict(torch.load(weights_path, weights_only=True))
-        except Exception:
-            pass
-
-    loss_function = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    model.train()
-    for epoch in range(200):
-        for seq, target in dataloader:
-            optimizer.zero_grad()
-            loss = loss_function(model(seq), target)
-            loss.backward()
-            optimizer.step()
-
-    model.eval()
-    with torch.no_grad():
-        predicted = (
-            model(
-                torch.tensor(
-                    weight_data[-actual_lookback:], dtype=torch.float32
-                ).unsqueeze(0)
-            )
-            .squeeze()
-            .numpy()
-        )
-        torch.save(model.state_dict(), weights_path)
-        return predicted
-
-conn_pb = get_db_connection()
-try:
-    cursor_pb = conn_pb.cursor()
-    cursor_pb.execute(
-        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-        " BY block_height ASC"
-    )
-    historical_rows = cursor_pb.fetchall()
-finally:
-    conn_pb.close()
-
-min_blocks_required = 2
-if len(historical_rows) < min_blocks_required:
-    st.warning(
-        f"Not enough blockchain data to train the meta-model. You need at least"
-        f" {min_blocks_required} blocks (Currently on ledger:"
-        f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-        " block 2."
-    )
-else:
-    current_block_count = len(historical_rows)
-    lookback_window = max(1, min(5, current_block_count - 1))
-
-    if (
-        "last_trained_blocks" not in st.session_state
-        or st.session_state.last_trained_blocks != current_block_count
-    ):
-        weight_data = np.array(historical_rows, dtype=np.float32)
-        actual_lookback = min(lookback_window, len(weight_data))
-
-        st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
-        st.session_state.current_weights = weight_data[-1]
-        st.session_state.last_trained_blocks = current_block_count
-    else:
-        st.info(
-            "Meta-model is cached and up-to-date with the latest blockchain"
-            " ledger."
-        )
-
-    df_compare = pd.DataFrame(
-        {
-            "Current Active Weights": st.session_state.current_weights,
-            "Predicted Next Epoch": st.session_state.predicted_next_weights,
-        },
-        index=[
-            "C1: Originality", "C2: Methodological Rigor",
-            "C3: Interdisciplinary", "C4: Societal Impact",
-            "C5: Open Science", "C6: Literature Integration",
-            "C7: Empirical Density", "C8: Future Actionability",
-        ],
-    )
-    st.bar_chart(df_compare, height=400)
-    st.markdown(
-        f"**Mathematical Constraint Check:** Predicted Sum ="
-        f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
-    )
 
 st.markdown("---")
 
