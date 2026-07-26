@@ -106,7 +106,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Icon, Chat Alignment, and Floating Corner Widget
+# Custom JS/CSS for Scilem Icon, Chat Alignment, and Floating Corner Widget Injector
 custom_ui_code = """
 <style>
 /* Make Sidebar Unscrollable */
@@ -115,20 +115,6 @@ custom_ui_code = """
 }
 [data-testid="stSidebar"] > div:first-child {
     overflow: hidden !important;
-}
-
-/* Floating Corner Chat Bot Styling */
-.scilem-floating-card {
-    position: fixed !important;
-    bottom: 20px !important;
-    right: 20px !important;
-    width: 380px !important;
-    background-color: #ffffff !important;
-    border-radius: 16px !important;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3) !important;
-    z-index: 999999 !important;
-    border: 1px solid #d0d7de !important;
-    padding: 12px !important;
 }
 
 [data-testid="stChatMessage"]:has(div:contains("👤")) {
@@ -181,6 +167,32 @@ parentDoc.addEventListener('click', function(e) {
         textarea.dispatchEvent(enterEvent);
     }
 }, true);
+
+// Dynamically make Scilem Assistant floating in bottom-right corner
+function makeScilemFloating() {
+    const h4s = parentDoc.querySelectorAll('h4');
+    h4s.forEach(el => {
+        if (el.textContent.includes('Scilem Assistant')) {
+            let block = el.closest('[data-testid="stVerticalBlock"]');
+            if (block && !block.classList.contains('scilem-floating-fixed')) {
+                block.classList.add('scilem-floating-fixed');
+                block.style.position = 'fixed';
+                block.style.bottom = '20px';
+                block.style.right = '20px';
+                block.style.width = '380px';
+                block.style.maxHeight = '520px';
+                block.style.backgroundColor = '#ffffff';
+                block.style.borderRadius = '16px';
+                block.style.boxShadow = '0 12px 40px rgba(0,0,0,0.35)';
+                block.style.zIndex = '999999';
+                block.style.border = '1px solid #d0d7de';
+                block.style.padding = '16px';
+                block.style.overflowY = 'auto';
+            }
+        }
+    });
+}
+setInterval(makeScilemFloating, 300);
 </script>
 """
 components.html(custom_ui_code, height=0, width=0)
@@ -247,6 +259,15 @@ if "cancel_requested" not in st.session_state:
 if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
+
+# --- Initialize Scilem Chat State Early ---
+if "scilm_messages" not in st.session_state:
+    st.session_state.scilm_messages = [
+        {
+            "role": "assistant", 
+            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
+        }
+    ]
 
 if "orcid_id" not in st.session_state:
     saved_orcid = st.query_params.get("orcid", "")
@@ -353,14 +374,6 @@ SCILEM_KNOWLEDGE_BASE = {
     "sciscore mdar": "SciScore evaluates adherence to the Materials Design Analysis Reporting (MDAR) framework to ensure rigor.",
     "executable reproducibility score": "An audit metric calculating whether code, data, and software environments (C5 & C7) can reliably execute independent results."
 }
-
-if "scilm_messages" not in st.session_state:
-    st.session_state.scilm_messages = [
-        {
-            "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
-        }
-    ]
 
 if "last_analyzed_tracked" not in st.session_state:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
@@ -502,7 +515,6 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         notebook=False,
     )
     
-    # Increased damping (0.99) and stabilization iterations (1000) to make the map less jiggly on load
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
@@ -1811,9 +1823,8 @@ with col_center:
     if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
         framework_workflow_dialog()
 
-# --- Floating Scilem Corner Chatbot Window (Using st.form + st.text_input for stability) ---
-st.markdown('<div class="scilem-floating-card">', unsafe_allow_html=True)
-st.markdown("<h4 style='margin-bottom:0; color: #2c3e50;'>🤖 Scilem Assistant</h4>", unsafe_allow_html=True)
+# --- Floating Scilem Corner Chatbot Window ---
+st.markdown("<h4>🤖 Scilem Assistant</h4>", unsafe_allow_html=True)
 
 floating_chat_container = st.container(height=240)
 with floating_chat_container:
@@ -1930,5 +1941,3 @@ if submitted_floating and floating_prompt:
 
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
         st.rerun()
-
-st.markdown('</div>', unsafe_allow_html=True)
