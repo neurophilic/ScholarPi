@@ -121,19 +121,24 @@ Output a JSON object with two keys:
 - "Reproducibility_Score": float from 0.0 to 1.0 indicating whether code/data artifacts appear functional and verifiable.
 
 Text: {text_chunk}"""
-    try:
-        response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-        res_json = json.loads(response.choices[0].message.content)
-        return float(res_json.get("Gaming_Penalty", 0.0)), float(
-            res_json.get("Reproducibility_Score", 0.5)
-        )
-    except Exception:
-        return 0.0, 0.5
+    
+    # Retry Logic for Rate Limits
+    for attempt in range(3):
+        try:
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            )
+            res_json = json.loads(response.choices[0].message.content)
+            return float(res_json.get("Gaming_Penalty", 0.0)), float(res_json.get("Reproducibility_Score", 0.5))
+        except Exception as e:
+            if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
+                time.sleep(2 ** attempt)
+            else:
+                break
+    return 0.0, 0.5
 
 def evaluate_scope_alignment(text, scope, model, text_limit):
     if not groq_client: return 0.0
@@ -143,20 +148,23 @@ def evaluate_scope_alignment(text, scope, model, text_limit):
     prompt = f"""You are a research alignment tool. Read the following paper text and evaluate how well it aligns with this specific research scope/keyword: "{scope}"
 Return ONLY a valid JSON object with a single key "Scope_Alignment" containing a float between 0.0 and 100.0.
 Text: {text}"""
-    try:
-        response = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-        return float(
-            json.loads(response.choices[0].message.content).get(
-                "Scope_Alignment", 0.0
+
+    # Retry Logic for Rate Limits
+    for attempt in range(3):
+        try:
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model,
+                temperature=0.0,
+                response_format={"type": "json_object"},
             )
-        )
-    except Exception:
-        return 0.0
+            return float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
+        except Exception as e:
+            if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
+                time.sleep(2 ** attempt)
+            else:
+                break
+    return 0.0
 
 def extract_unpublished_authors_fallback(text):
     first_2k = text[:2500]
@@ -206,26 +214,38 @@ Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Ju
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
 Return ONLY a valid JSON object. Text: {text}"""
 
-    response = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model=model,
-        temperature=0.1, 
-        seed=random.randint(1, 1000),
-        response_format={"type": "json_object"},
-    )
-    result_content = response.choices[0].message.content
-    try:
-        parsed = json.loads(result_content)
-        if isinstance(parsed, dict):
-            harvest_fine_tuning_data(text, parsed, file_hash)
-            return parsed
-        elif isinstance(parsed, str):
-            sub_parsed = json.loads(parsed)
-            if isinstance(sub_parsed, dict):
-                harvest_fine_tuning_data(text, sub_parsed, file_hash)
-                return sub_parsed
-    except Exception:
-        pass
+    # Retry Logic for Rate Limits
+    result_content = None
+    for attempt in range(3):
+        try:
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model,
+                temperature=0.1, 
+                seed=random.randint(1, 1000),
+                response_format={"type": "json_object"},
+            )
+            result_content = response.choices[0].message.content
+            break
+        except Exception as e:
+            if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
+                time.sleep(2 ** attempt)
+            else:
+                break
+
+    if result_content:
+        try:
+            parsed = json.loads(result_content)
+            if isinstance(parsed, dict):
+                harvest_fine_tuning_data(text, parsed, file_hash)
+                return parsed
+            elif isinstance(parsed, str):
+                sub_parsed = json.loads(parsed)
+                if isinstance(sub_parsed, dict):
+                    harvest_fine_tuning_data(text, sub_parsed, file_hash)
+                    return sub_parsed
+        except Exception:
+            pass
         
     return {
         "Extracted_Title": "Parsing Failed",
@@ -437,7 +457,12 @@ def process_single_pdf(
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             pdf_meta_author = doc.metadata.get("author", "").strip()
-            full_text = " ".join([page.get_text() for page in doc])
+            
+            # Robust Spatial Extraction 
+            text_blocks = []
+            for page in doc:
+                text_blocks.append(page.get_text("text", sort=True))
+            full_text = "\n".join(text_blocks)
         except Exception:
             empty_scores = {
                 k: 0.0
