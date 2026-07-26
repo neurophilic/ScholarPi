@@ -73,13 +73,16 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-# Invisible JS to capture clicks on any text and forward them to Scilem Chat Input
+# Invisible JS to capture clicks on plain text and forward them to Scilem Chat Input.
+# BUG FIX: Ignored clicks on buttons, dialogs, and expanders to prevent interrupting popups!
 click_tracker_js = """
 <script>
 const parentDoc = window.parent.document;
 parentDoc.addEventListener('click', function(e) {
     if (e.target.closest('[data-testid="stSidebar"]')) return;
-    if (['INPUT', 'TEXTAREA', 'BUTTON', 'A', 'SELECT', 'OPTION', 'SVG', 'PATH'].includes(e.target.tagName)) return;
+    
+    // Ignore interactive UI elements (buttons, links, inputs, expanders, modals) so popups open safely!
+    if (e.target.closest('button, a, input, textarea, select, [role="button"], [role="tab"], [role="dialog"], [data-testid="stExpander"]')) return;
 
     let text = e.target.innerText || e.target.textContent;
     if (!text) return;
@@ -234,10 +237,8 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
-# --- Scilem Assistant inside Sidebar in a scrollable styled box ---
+# --- Scilem Assistant enclosed in a Bordered Box to prevent full-sidebar scrolling ---
 st.sidebar.markdown("---")
-st.sidebar.markdown("### Scilem Assistant")
-st.sidebar.caption("💡 Click on any text, button, or feature in the app, and I will instantly explain it here.")
 
 SCILEM_KNOWLEDGE_BASE = {
     "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
@@ -262,7 +263,7 @@ if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "Welcome! I am Scilem. Whenever you click on any text, button, or feature in the app, I will explain it right here in this box."
+            "content": "**Welcome! I am Scilem.** If you click on any text, metric, or feature in the main app, I will automatically explain it here."
         }
     ]
 
@@ -277,15 +278,18 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
 
 transparent_pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
-# Enclosing Scilem container inside a scrollable box with fixed height
-chat_container = st.sidebar.container(height=380)
-with chat_container:
-    for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = transparent_pixel if message["role"] == "assistant" else None
-        with st.sidebar.chat_message(message["role"], avatar=msg_avatar):
-            st.sidebar.markdown(message["content"])
+with st.sidebar.container(border=True):
+    st.markdown("### Scilem Assistant")
+    
+    # Internal scrollable container for the chat to prevent pushing sidebar content infinitely down
+    chat_container = st.container(height=380)
+    with chat_container:
+        for idx, message in enumerate(st.session_state.scilm_messages):
+            msg_avatar = transparent_pixel if message["role"] == "assistant" else None
+            with st.chat_message(message["role"], avatar=msg_avatar):
+                st.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     direct_answer = None
@@ -297,7 +301,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
                 break
 
     if direct_answer:
-        st.session_state.scilm_messages.append({"role": "assistant", "content": f"**Scilem Insight:** {direct_answer}"})
+        st.session_state.scilm_messages.append({"role": "assistant", "content": f"{direct_answer}"})
         st.rerun()
     else:
         rag_context = ""
@@ -641,7 +645,6 @@ with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
 
-# ==================== COMPACT INTAKE & ASSESSMENT BLOCK ====================
 st.markdown("")
 with st.container(border=True):
     selected_uploaded_files = []
@@ -1221,7 +1224,7 @@ with top_analytics_col1:
                 .numpy()
             )
             current_w = weight_data[-1]
-            predicted = current_w + (raw_pred - current_w) * 35.0
+            predicted = current_w + (raw_pred - current_w) * 20.0
             predicted = np.clip(predicted, 0.01, 7.9)
             predicted = predicted * (8.0 / np.sum(predicted))
             torch.save(model.state_dict(), weights_path)
@@ -1269,14 +1272,15 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
         
-        # Proper scaling and normalization so weights display correctly around baseline 1.0 without truncation or flatlines
-        exagg_curr = curr_vals
-        exagg_pred = pred_vals
+        # Super Exaggeration for Visual Impact (100x Amplified to expose micro-shifts clearly)
+        mean_val = np.mean(curr_vals)
+        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 75.0)
+        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 75.0)
 
         df_compare = pd.DataFrame(
             {
-                "Current Active Weights": exagg_curr,
-                "Predicted Next Epoch": exagg_pred,
+                "Current Active Weights (75x Amplified for Visibility)": exagg_curr,
+                "Predicted Next Epoch (75x Amplified for Visibility)": exagg_pred,
             },
             index=[
                 "C1: Originality", "C2: Methodological Rigor",
@@ -1287,7 +1291,7 @@ with top_analytics_col1:
         )
         st.bar_chart(df_compare, height=380, use_container_width=True)
         st.markdown(
-            f"**High-Precision Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
+            f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
             f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
             f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
             f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
@@ -1297,14 +1301,6 @@ with top_analytics_col1:
             f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
             f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
         )
-
-    with st.expander("What's Pidyne?", expanded=False):
-        st.markdown("""
-        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
-        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
-        """)
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
