@@ -106,6 +106,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
+# Custom JS/CSS for Scilem Icon, Chat Alignment, and Floating Corner Widget
 custom_ui_code = """
 <style>
 /* Make Sidebar Unscrollable */
@@ -116,13 +117,20 @@ custom_ui_code = """
     overflow: hidden !important;
 }
 
-[data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
-    overflow-x: hidden !important;
-    scroll-behavior: smooth;
-    padding: 0 !important;
+/* Floating Corner Chat Bot Styling */
+.scilem-floating-card {
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    width: 380px !important;
+    background-color: #ffffff !important;
+    border-radius: 16px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3) !important;
+    z-index: 999999 !important;
+    border: 1px solid #d0d7de !important;
+    padding: 12px !important;
 }
 
-/* User Messages: Right Aligned */
 [data-testid="stChatMessage"]:has(div:contains("USER")) {
     flex-direction: row-reverse !important;
     background-color: #e8f0fe !important;
@@ -130,44 +138,10 @@ custom_ui_code = """
     text-align: right !important;
     margin-left: 20px !important;
 }
-/* Assistant Messages: Left Aligned */
 [data-testid="stChatMessage"]:has(div:contains("🤖")) {
     background-color: #f1f3f4 !important;
     border-radius: 0 10px 10px 10px !important;
     margin-right: 20px !important;
-}
-
-[data-testid="stSidebar"] [data-testid="stChatMessage"] {
-    padding: 0.3rem 0.4rem !important;
-    margin-bottom: 0.2rem !important;
-}
-[data-testid="stSidebar"] div[data-testid="stChatMessageContent"] {
-    width: 100% !important;
-    flex-grow: 1 !important;
-    padding: 0 0.2rem !important;
-}
-[data-testid="stSidebar"] [data-testid="stChatMessageAvatar"] {
-    width: 1.6rem !important;
-    height: 1.6rem !important;
-    min-width: 1.6rem !important;
-    font-size: 1.4rem !important;
-    margin: 0 0.2rem !important;
-    background-color: transparent !important;
-}
-[data-testid="stSidebar"] .stMarkdown {
-    width: 100% !important;
-}
-[data-testid="stSidebar"] .stMarkdown p {
-    font-size: 0.85rem !important;
-    line-height: 1.3 !important;
-    margin-bottom: 0 !important;
-    word-break: break-word !important;
-}
-.scilem-box {
-    border: 1px solid #dcdcdc;
-    border-radius: 6px;
-    padding: 2px !important;
-    background-color: #f8f9fa;
 }
 
 .scilm-trigger {
@@ -207,14 +181,6 @@ parentDoc.addEventListener('click', function(e) {
         textarea.dispatchEvent(enterEvent);
     }
 }, true);
-
-const observer = new MutationObserver(() => {
-    const chatContainers = parentDoc.querySelectorAll('[data-testid="stChatMessageContainer"]');
-    chatContainers.forEach(container => {
-        container.scrollTop = container.scrollHeight;
-    });
-});
-observer.observe(parentDoc.body, { childList: true, subtree: true });
 </script>
 """
 components.html(custom_ui_code, height=0, width=0)
@@ -360,161 +326,6 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
-# --- Scilem Assistant enclosed in Sidebar ---
-st.sidebar.markdown("---")
-
-SCILEM_KNOWLEDGE_BASE = {
-    "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
-    "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
-    "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
-    "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
-    "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs. It validates evaluations directly on the blockchain.",
-    "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
-    "c1: originality": "Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
-    "c2: methodological rigor": "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
-    "c3: interdisciplinary synergy": "Measures cross-disciplinary integration and entropy across scientific domains.",
-    "c4: societal impact": "Evaluates broader societal and open infrastructure contributions.",
-    "c5: open science": "Evaluates open data, open code, and containerized reproducibility.",
-    "c6: literature integration": "Evaluates citation polarity and integration with existing foundational literature.",
-    "c7: empirical density": "Assesses empirical sample strength and baseline variance.",
-    "c8: future actionability": "Evaluates future research actionability and adherence to FAIR principles.",
-    "pi-index": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
-    "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights.",
-    "zk-snark": "Zero-Knowledge Succinct Non-Interactive Argument of Knowledge. A cryptographic proof that an evaluation occurred exactly per guidelines without revealing reviewer identity.",
-    "sciscore mdar": "SciScore evaluates adherence to the Materials Design Analysis Reporting (MDAR) framework to ensure rigor.",
-    "executable reproducibility score": "An audit metric calculating whether code, data, and software environments (C5 & C7) can reliably execute independent results."
-}
-
-if "scilm_messages" not in st.session_state:
-    st.session_state.scilm_messages = [
-        {
-            "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
-        }
-    ]
-
-if "last_analyzed_tracked" not in st.session_state:
-    st.session_state["last_analyzed_tracked"] = total_analyzed_count
-elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
-    st.session_state["last_analyzed_tracked"] = total_analyzed_count
-    st.session_state.scilm_messages.append({
-        "role": "assistant",
-        "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
-    })
-
-st.sidebar.markdown('<div class="scilem-box">', unsafe_allow_html=True)
-st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe_allow_html=True)
-    
-chat_container = st.sidebar.container(height=300)
-with chat_container:
-    for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = "🤖" if message["role"] == "assistant" else "USER"
-        with st.chat_message(message["role"], avatar=msg_avatar):
-            st.markdown(message["content"])
-
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input", disabled=st.session_state.get("is_running", False)):
-    st.session_state.scilm_messages.append({"role": "user", "content": prompt})
-    
-    direct_answer = None
-    if prompt.startswith("Explain:"):
-        query_topic = prompt.replace("Explain:", "").strip().lower()
-        for key, explanation in SCILEM_KNOWLEDGE_BASE.items():
-            if key in query_topic:
-                direct_answer = explanation
-                break
-
-    if direct_answer:
-        st.session_state.scilm_messages.append({"role": "assistant", "content": f"{direct_answer}"})
-        st.rerun()
-    else:
-        rag_context = ""
-        few_shot_examples = ""
-        try:
-            dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-            if os.path.exists(dataset_path):
-                with open(dataset_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                    query_terms = set(prompt.lower().split())
-                    relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
-                    if not relevant_lines:
-                        relevant_lines = lines[-5:]
-                    rag_context = "".join(relevant_lines[-5:])
-        except Exception:
-            rag_context = "No decentralized data accessible."
-
-        try:
-            conn_rag = get_db_connection()
-            cur_rag = conn_rag.cursor()
-            cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
-            top_paper = cur_rag.fetchone()
-            conn_rag.close()
-            if top_paper:
-                few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
-        except Exception:
-            pass
-
-        scilm_sys_prompt = (
-            "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
-            "Explain app features clearly and concisely. You just received a user action or query.\n\n"
-            f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
-            f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
-        )
-
-        messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
-            {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
-        ]
-
-        full_response = ""
-        try:
-            from brain import groq_client
-            PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
-            FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
-            if groq_client:
-                add_log("Dispatching query to Scilem AI Engine...")
-                for attempt in range(3):
-                    try:
-                        response = groq_client.chat.completions.create(
-                            model=PRIMARY_MODEL_NAME,
-                            messages=messages_for_api,
-                            temperature=0.15,
-                        )
-                        full_response = response.choices[0].message.content
-                        add_log("Scilem response generated.")
-                        break
-                    except Exception as primary_err:
-                        err_str = str(primary_err).lower()
-                        if any(k in err_str for k in ["413", "rate_limit_exceeded", "tokens", "limit", "429"]):
-                            if attempt < 2:
-                                add_log(f"Rate limit hit. Retrying in {2**attempt}s...")
-                                time.sleep(2 ** attempt)
-                                continue
-                            
-                            trimmed_messages = [messages_for_api[0]] + messages_for_api[-2:]
-                            try:
-                                fallback_response = groq_client.chat.completions.create(
-                                    model=FALLBACK_MODEL_NAME,
-                                    messages=trimmed_messages,
-                                    temperature=0.15,
-                                )
-                                full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
-                                add_log("Scilem fallback model executed successfully.")
-                                break
-                            except Exception as second_err:
-                                full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
-                                add_log("Scilem fallback model failed.")
-                                break
-                        else:
-                            full_response = f"Error: {str(primary_err)}"
-                            break
-            else:
-                full_response = "Error: Groq API client not initialized."
-        except Exception as e:
-            full_response = f"Error connecting to Scilem engine: {str(e)}"
-
-        st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
-        st.rerun()
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
-
 # --- Live System Monitor in Sidebar ---
 st.sidebar.markdown("---")
 with st.sidebar.expander("🖥️ Live System Monitor", expanded=False):
@@ -644,7 +455,6 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         notebook=False,
     )
     
-    # Using net.set_options with JSON to correctly apply physics parameters without signature mismatch
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
@@ -1952,3 +1762,118 @@ col_pad1, col_center, col_pad2 = st.columns([1, 4, 1])
 with col_center:
     if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
         framework_workflow_dialog()
+
+# --- Floating Scilem Corner Chatbot Window ---
+st.markdown('<div class="scilem-floating-card">', unsafe_allow_html=True)
+st.markdown("<h4 style='margin-bottom:0; color: #2c3e50;'>🤖 Scilem Assistant</h4>", unsafe_allow_html=True)
+
+floating_chat_container = st.container(height=280)
+with floating_chat_container:
+    for idx, message in enumerate(st.session_state.scilm_messages):
+        msg_avatar = "🤖" if message["role"] == "assistant" else "USER"
+        with st.chat_message(message["role"], avatar=msg_avatar):
+            st.markdown(message["content"])
+
+if prompt := st.chat_input("Ask Scilem...", key="scilem_floating_input", disabled=st.session_state.get("is_running", False)):
+    st.session_state.scilm_messages.append({"role": "user", "content": prompt})
+    
+    direct_answer = None
+    if prompt.startswith("Explain:"):
+        query_topic = prompt.replace("Explain:", "").strip().lower()
+        for key, explanation in SCILEM_KNOWLEDGE_BASE.items():
+            if key in query_topic:
+                direct_answer = explanation
+                break
+
+    if direct_answer:
+        st.session_state.scilm_messages.append({"role": "assistant", "content": f"{direct_answer}"})
+        st.rerun()
+    else:
+        rag_context = ""
+        few_shot_examples = ""
+        try:
+            dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
+            if os.path.exists(dataset_path):
+                with open(dataset_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    query_terms = set(prompt.lower().split())
+                    relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
+                    if not relevant_lines:
+                        relevant_lines = lines[-5:]
+                    rag_context = "".join(relevant_lines[-5:])
+        except Exception:
+            rag_context = "No decentralized data accessible."
+
+        try:
+            conn_rag = get_db_connection()
+            cur_rag = conn_rag.cursor()
+            cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
+            top_paper = cur_rag.fetchone()
+            conn_rag.close()
+            if top_paper:
+                few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
+        except Exception:
+            pass
+
+        scilm_sys_prompt = (
+            "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
+            "Explain app features clearly and concisely. You just received a user action or query.\n\n"
+            f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
+            f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
+        )
+
+        messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
+            {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
+        ]
+
+        full_response = ""
+        try:
+            from brain import groq_client
+            PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
+            FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
+            if groq_client:
+                add_log("Dispatching query to Scilem AI Engine...")
+                for attempt in range(3):
+                    try:
+                        response = groq_client.chat.completions.create(
+                            model=PRIMARY_MODEL_NAME,
+                            messages=messages_for_api,
+                            temperature=0.15,
+                        )
+                        full_response = response.choices[0].message.content
+                        add_log("Scilem response generated.")
+                        break
+                    except Exception as primary_err:
+                        err_str = str(primary_err).lower()
+                        if any(k in err_str for k in ["413", "rate_limit_exceeded", "tokens", "limit", "429"]):
+                            if attempt < 2:
+                                add_log(f"Rate limit hit. Retrying in {2**attempt}s...")
+                                time.sleep(2 ** attempt)
+                                continue
+                            
+                            trimmed_messages = [messages_for_api[0]] + messages_for_api[-2:]
+                            try:
+                                fallback_response = groq_client.chat.completions.create(
+                                    model=FALLBACK_MODEL_NAME,
+                                    messages=trimmed_messages,
+                                    temperature=0.15,
+                                )
+                                full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
+                                add_log("Scilem fallback model executed successfully.")
+                                break
+                            except Exception as second_err:
+                                full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
+                                add_log("Scilem fallback model failed.")
+                                break
+                        else:
+                            full_response = f"Error: {str(primary_err)}"
+                            break
+            else:
+                full_response = "Error: Groq API client not initialized."
+        except Exception as e:
+            full_response = f"Error connecting to Scilem engine: {str(e)}"
+
+        st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
