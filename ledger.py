@@ -181,22 +181,12 @@ def generate_blockchain_pi(block_height):
         sign *= -1.0
     return pi_approx
 
-def get_ethereum_node_stats():
-    """Fetches connected peer count, client version, and synchronization status from the active Web3 RPC node."""
-    if not w3.is_connected():
-        return {"connected": False, "peer_count": 0, "client_version": "Disconnected", "sync_status": "N/A"}
-    try:
-        res = w3.provider.make_request("net_peerCount", [])
-        peer_count = int(res.get("result", "0x0"), 16) if isinstance(res, dict) and "result" in res else 0
-        
-        client_version = getattr(w3, 'client_version', "Unknown")
-        sync_status = w3.eth.syncing
-        
-        return {
-            "connected": True,
-            "peer_count": peer_count,
-            "client_version": client_version,
-            "sync_status": "Syncing..." if sync_status else "Fully Synced (Block Head Reached)"
-        }
-    except Exception as e:
-        return {"connected": True, "peer_count": 0, "client_version": "Error", "sync_status": str(e)}
+def get_sepolia_explorer_url(identifier, kind="tx"):
+    """Generates direct Sepolia Etherscan URLs for transactions or contract addresses."""
+    if not identifier or identifier in ["None", "Pending", "Not Connected / No Book"]:
+        return None
+    if kind == "tx" and identifier.startswith("0x") and len(identifier) == 66:
+        return f"https://sepolia.etherscan.io/tx/{identifier}"
+    elif kind == "address" and identifier.startswith("0x") and len(identifier) == 42:
+        return f"https://sepolia.etherscan.io/address/{identifier}"
+    return None
