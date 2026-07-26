@@ -679,6 +679,39 @@ with tab1:
                         if metadata and metadata.get("pdf_url"):
                             pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
 
+                                        # Inside your processing loop:
+                    if pdf_bytes:
+                        # Standard PDF processing flow...
+                        pass
+                    else:
+                        # ---------------------------------------------------------
+                        # OPTION 2 FALLBACK: Try CORE API via DOI before failing
+                        # ---------------------------------------------------------
+                        from integrations import fetch_core_text_by_doi, create_virtual_pdf_from_text
+                        
+                        status_text.text(f"Direct download restricted. Querying CORE API fallback for DOI...")
+                        core_text = fetch_core_text_by_doi(p_doi)
+                        
+                        if core_text:
+                            status_text.text(f"CORE text harvested successfully. Generating virtual assessment buffer...")
+                            pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access Manuscript'))
+                    
+                        # If Option 2 succeeds, process it normally through your pipeline:
+                        if pdf_bytes:
+                            (
+                                title, author_name, score, logic_integrity, drift, rec,
+                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                            ) = process_single_pdf(
+                                pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
+                            )
+                            # Append to session buffer as usual...
+                        else:
+                            # Fall back to error handling if CORE also doesn't have it indexed
+                            err_item = {"title": p.get("title", "Unknown Title"), "doi": p_doi, "url": p.get('pdf_url', 'N/A')}
+                            if err_item not in st.session_state["download_errors"]:
+                                st.session_state["download_errors"].append(err_item)
+
                     if pdf_bytes:
                         (
                             title, author_name, score, logic_integrity, drift, rec,
