@@ -356,7 +356,7 @@ with chat_container:
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     direct_answer = None
@@ -423,7 +423,6 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
                     full_response = response.choices[0].message.content
                 except Exception as primary_err:
                     err_str = str(primary_err)
-                    # Robust handling for 413, rate limits, and TPM token limit errors by trimming message history
                     if "413" in err_str or "rate_limit_exceeded" in err_str or "tokens" in err_str or "limit" in err_str or "429" in err_str:
                         trimmed_messages = [messages_for_api[0]] + messages_for_api[-2:]
                         try:
@@ -685,10 +684,10 @@ def evaluation_metrics_dialog():
     else:
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
-    green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
+    green_badge = lambda val: f'apri = {val:.6f}'
 
     st.markdown(
-        f"**Adversarial Logic Gap {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+        f"**Adversarial Logic Gap** {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$): Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
         unsafe_allow_html=True
     )
     st.markdown(
@@ -698,37 +697,25 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    with st.expander(f"C1: Originality {rbot('c1: originality')} &nbsp; {green_badge(tw1)}", expanded=True):
-        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
-        st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
+    criteria_list = [
+        ("C1: Originality", "c1: originality", tw1, "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4: Societal Impact", "c4: societal impact", tw4, "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5: Open Science", "c5: open science", tw5, "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6: Literature Integration", "c6: literature integration", tw6, "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7: Empirical Density", "c7: empirical density", tw7, "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8: Future Actionability", "c8: future actionability", tw8, "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+    ]
 
-    with st.expander(f"C2: Methodological Rigor {rbot('c2: methodological rigor')} &nbsp; {green_badge(tw2)}"):
-        st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
-        st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
-
-    with st.expander(f"C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')} &nbsp; {green_badge(tw3)}"):
-        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
-        st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
-
-    with st.expander(f"C4: Societal Impact {rbot('c4: societal impact')} &nbsp; {green_badge(tw4)}"):
-        st.markdown("Evaluates broader societal and open infrastructure contributions.")
-        st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
-
-    with st.expander(f"C5: Open Science {rbot('c5: open science')} &nbsp; {green_badge(tw5)}"):
-        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
-        st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
-
-    with st.expander(f"C6: Literature Integration {rbot('c6: literature integration')} &nbsp; {green_badge(tw6)}"):
-        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
-        st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
-
-    with st.expander(f"C7: Empirical Density {rbot('c7: empirical density')} &nbsp; {green_badge(tw7)}"):
-        st.markdown("Assesses empirical sample strength and baseline variance.")
-        st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
-
-    with st.expander(f"C8: Future Actionability {rbot('c8: future actionability')} &nbsp; {green_badge(tw8)}"):
-        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
-        st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
+    for title, q_key, weight_val, desc, formula in criteria_list:
+        with st.expander(f"{title} ({green_badge(weight_val)})"):
+            col_lbl, col_bot = st.columns([10, 1])
+            with col_lbl:
+                st.markdown(desc)
+            with col_bot:
+                st.markdown(rbot(q_key), unsafe_allow_html=True)
+            st.markdown(formula)
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
@@ -1724,7 +1711,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
