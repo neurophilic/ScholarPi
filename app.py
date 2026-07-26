@@ -206,37 +206,6 @@ else:
         f"**Researcher:** {st.session_state.orcid_name}\n**ID Vault:**"
         f" `{st.session_state.orcid_id}`"
     )
-    
-    # --- Assessment and Reward History in Sidebar ---
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### Your Assessment & Reward History")
-    
-    current_user = st.session_state.orcid_id
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT title, author_name, filename, scope, final_score, piq_minted,"
-            " tx_hash FROM papers_assessment WHERE user_id=? OR user_id='0000-0000-0000-0000' ORDER BY timestamp DESC"
-            " LIMIT 20",
-            (current_user,),
-        )
-        history_data = cursor.fetchall()
-    finally:
-        conn.close()
-        
-    if history_data:
-        for row in history_data:
-            title, author_name, filename, scope, score, piq, tx_h = row
-            tx_url = safe_get_sepolia_url(tx_h)
-            clean_auth = clean_author_name(author_name)
-            st.sidebar.markdown(f"**{title[:45]}...**")
-            st.sidebar.caption(f"Author: {clean_auth} | Score: **{score:.2f}** | piQ: `{piq}`")
-            if tx_url:
-                st.sidebar.markdown(f"Tx: [`{tx_h[:10]}...`]({tx_url})")
-            st.sidebar.markdown("---")
-    else:
-        st.sidebar.info("No assessment history found for this ID.")
 
     if st.sidebar.button("Disconnect Session"):
         st.session_state.is_authenticated = False
@@ -1254,8 +1223,7 @@ with top_analytics_col1:
                 .numpy()
             )
             current_w = weight_data[-1]
-            # Exaggerate tiny variations significantly so minor shifts are prominent
-            predicted = current_w + (raw_pred - current_w) * 15.0
+            predicted = current_w + (raw_pred - current_w) * 20.0
             predicted = np.clip(predicted, 0.01, 7.9)
             predicted = predicted * (8.0 / np.sum(predicted))
             torch.save(model.state_dict(), weights_path)
@@ -1300,13 +1268,13 @@ with top_analytics_col1:
                 " ledger."
             )
 
-        # Scale differences around baseline 1.0 to exaggerate small decimal variations in the chart
-        base_val = 1.0
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
         
-        exagg_curr = base_val + (curr_vals - base_val) * 12.0
-        exagg_pred = base_val + (pred_vals - base_val) * 12.0
+        # Exaggerate minuscule decimal variations dynamically around the exact mean baseline
+        mean_val = np.mean(curr_vals)
+        exagg_curr = mean_val + (curr_vals - mean_val) * 25.0
+        exagg_pred = mean_val + (pred_vals - mean_val) * 25.0
 
         df_compare = pd.DataFrame(
             {
@@ -1320,7 +1288,7 @@ with top_analytics_col1:
                 "C7: Empirical Density", "C8: Future Actionability",
             ],
         )
-        st.bar_chart(df_compare, height=380)
+        st.bar_chart(df_compare, height=380, use_container_width=True)
         st.markdown(
             f"**High-Precision Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
             f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
@@ -1419,89 +1387,148 @@ with top_analytics_col2:
             st.info("No piQ tokens minted yet.")
 
 st.markdown("---")
-st.markdown(
-    "### Latest Assessed Papers "
-    + tooltip(
-        "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
-    ),
-    unsafe_allow_html=True,
-)
 
-conn_last = get_db_connection()
-try:
-    cur_last = conn_last.cursor()
-    cur_last.execute(
-        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                  b.block_height, b.block_hash
+# ==================== CONDITIONAL DISPLAY: ORCID CONNECTED VS NOT CONNECTED ====================
+if st.session_state.is_authenticated:
+    st.markdown(
+        "### Your Assessment History & Rewards "
+        + tooltip("Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs."),
+        unsafe_allow_html=True,
+    )
+    
+    conn_hist = get_db_connection()
+    try:
+        cur_h = conn_hist.cursor()
+        cur_h.execute(
+            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
                FROM papers_assessment p
                LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               ORDER BY p.timestamp DESC LIMIT 5"""
-    )
-    recent_papers = cur_last.fetchall()
-finally:
-    conn_last.close()
+               WHERE p.user_id = ? OR p.user_id = '0000-0000-0000-0000'
+               ORDER BY p.timestamp DESC""",
+            (st.session_state.orcid_id,)
+        )
+        user_history_rows = cur_h.fetchall()
+    finally:
+        conn_hist.close()
 
-if not recent_papers:
-    st.info("No papers have been assessed in the database yet.")
+    if user_history_rows:
+        for idx, uh in enumerate(user_history_rows):
+            (
+                u_title, u_author, u_filename, u_score, u_logic,
+                u_piq, u_tx, u_zk, u_hash, u_time,
+                u_block_height, u_block_hash
+            ) = uh
+
+            u_author_clean = clean_author_name(u_author)
+            u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
+            u_tx_url = safe_get_sepolia_url(u_tx)
+
+            with st.expander(
+                f"[{idx+1}] {u_title[:65]}... — *{u_author_clean}* (Score: **{u_score:.2f}** | piQ: `{u_piq}` | {u_time[:16]})",
+                expanded=False,
+            ):
+                st.write(f"**Title:** {u_title}")
+                st.write(f"**Author(s):** {u_author_clean}")
+                st.write(f"**Timestamp:** `{u_time}`")
+                st.write(f"**Evaluation Hash (Eval Hash):** `{u_hash}`")
+                st.write(f"**Block Height:** `{u_block_height if u_block_height is not None else 'Pending'}`")
+                st.write(f"**Block Hash:** `{u_block_hash if u_block_hash is not None else 'Pending'}`")
+                st.write(f"**Unique Author Book Address:** `{u_book}`")
+                st.write(f"**piQ Rewards Earned:** `{u_piq} piQ`")
+                st.write(f"**zk-SNARK Proof:** `{u_zk}`")
+                
+                if u_tx_url:
+                    st.markdown(f"**Tx Hash (Etherscan):** [`{u_tx}`]({u_tx_url})")
+                else:
+                    st.write(f"**Tx Hash:** `{u_tx}`")
+    else:
+        st.info("No assessment history or rewards found linked to this authenticated ID.")
 else:
-    for idx, rp in enumerate(recent_papers):
-        (
-            r_title, r_author, r_filename, r_score, r_logic,
-            r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
-            r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
-            r_block_height, r_block_hash
-        ) = rp
+    st.markdown(
+        "### Latest Assessed Papers "
+        + tooltip(
+            "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
+        ),
+        unsafe_allow_html=True,
+    )
 
-        r_author_clean = clean_author_name(r_author)
-        r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
-        r_tx_url = safe_get_sepolia_url(r_tx)
+    conn_last = get_db_connection()
+    try:
+        cur_last = conn_last.cursor()
+        cur_last.execute(
+            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
+                   FROM papers_assessment p
+                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                   ORDER BY p.timestamp DESC LIMIT 5"""
+        )
+        recent_papers = cur_last.fetchall()
+    finally:
+        conn_last.close()
 
-        with st.expander(
-            f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
-            f" **{r_score:.2f}** | {r_time[:16]})",
-            expanded=False,
-        ):
-            st.write(f"**Title:** {r_title}")
-            st.write(f"**Author(s):** {r_author_clean}")
-            st.write(f"**Timestamp:** `{r_time}`")
-            st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
-            st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
-            st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
-            st.write(f"**Unique Author Book Address:** `{r_book}`")
-            st.write(f"**piQ Minted:** `{r_piq}`")
-            st.write(f"**zk-SNARK Proof:** `{r_zk}`")
-            
-            if r_tx_url:
-                st.markdown(f"**Tx Hash (Etherscan):** [`{r_tx}`]({r_tx_url})")
-            else:
-                st.write(f"**Tx Hash:** `{r_tx}`")
+    if not recent_papers:
+        st.info("No papers have been assessed in the database yet.")
+    else:
+        for idx, rp in enumerate(recent_papers):
+            (
+                r_title, r_author, r_filename, r_score, r_logic,
+                r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
+                r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
+                r_block_height, r_block_hash
+            ) = rp
 
-            st.write(
-                f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
-                f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
-                f" `{r_mdar * 100:.1f}%`"
-            )
+            r_author_clean = clean_author_name(r_author)
+            r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
+            r_tx_url = safe_get_sepolia_url(r_tx)
 
-            r_df = pd.DataFrame({
-                "Criterion": [
-                    "C1: Semantic Originality",
-                    "C2: Methodological Rigor (SciScore)",
-                    "C3: Interdisciplinary Entropy",
-                    "C4: Societal Impact",
-                    "C5: Open Science & Repro",
-                    "C6: Literature Integration",
-                    "C7: Empirical Density",
-                    "C8: Future Actionability & FAIR",
-                ],
-                "Score (0-100)": [
-                    r_c1, r_c2, r_c3, r_c4,
-                    r_c5, r_c6, r_c7, r_c8,
-                ],
-            })
-            st.dataframe(r_df, hide_index=True, use_container_width=True)
+            with st.expander(
+                f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
+                f" **{r_score:.2f}** | {r_time[:16]})",
+                expanded=False,
+            ):
+                st.write(f"**Title:** {r_title}")
+                st.write(f"**Author(s):** {r_author_clean}")
+                st.write(f"**Timestamp:** `{r_time}`")
+                st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
+                st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
+                st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
+                st.write(f"**Unique Author Book Address:** `{r_book}`")
+                st.write(f"**piQ Minted:** `{r_piq}`")
+                st.write(f"**zk-SNARK Proof:** `{r_zk}`")
+                
+                if r_tx_url:
+                    st.markdown(f"**Tx Hash (Etherscan):** [`{r_tx}`]({r_tx_url})")
+                else:
+                    st.write(f"**Tx Hash:** `{r_tx}`")
+
+                st.write(
+                    f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
+                    f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
+                    f" `{r_mdar * 100:.1f}%`"
+                )
+
+                r_df = pd.DataFrame({
+                    "Criterion": [
+                        "C1: Semantic Originality",
+                        "C2: Methodological Rigor (SciScore)",
+                        "C3: Interdisciplinary Entropy",
+                        "C4: Societal Impact",
+                        "C5: Open Science & Repro",
+                        "C6: Literature Integration",
+                        "C7: Empirical Density",
+                        "C8: Future Actionability & FAIR",
+                    ],
+                    "Score (0-100)": [
+                        r_c1, r_c2, r_c3, r_c4,
+                        r_c5, r_c6, r_c7, r_c8,
+                    ],
+                })
+                st.dataframe(r_df, hide_index=True, use_container_width=True)
 
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
@@ -1766,3 +1793,4 @@ col_pad1, col_center, col_pad2 = st.columns([1, 4, 1])
 with col_center:
     if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
         framework_workflow_dialog()
+        
