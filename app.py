@@ -32,6 +32,17 @@ from brain import (
     PiBlockchainDataset
 )
 
+def tooltip(text):
+    svg_icon = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16"'
+        ' height="16" fill="none" stroke="#9e9e9e" stroke-width="2"'
+        ' stroke-linecap="round" stroke-linejoin="round" style="vertical-align:'
+        ' -3px; margin-left: 6px; cursor: help;"><circle cx="12" cy="12"'
+        ' r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3'
+        ' 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+    )
+    return f'<span title="{text}">{svg_icon}</span>'
+
 def safe_get_sepolia_url(tx):
     if not tx or not isinstance(tx, str) or not tx.startswith("0x") or len(tx) != 66:
         return None
@@ -73,96 +84,11 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-def rbot(topic_key):
-    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click 🤖 to ask Scilem'>🤖</span>"
-
-# Custom JS/CSS for Scilem Icon-Only Click Function & Layout Adjustments
-custom_ui_code = """
-<style>
-/* Scilem Chat Box Cushioning Reduction */
-[data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
-    overflow-x: hidden !important;
-    scroll-behavior: smooth;
-    padding: 0 !important;
-    gap: 0.1rem !important;
-}
-[data-testid="stSidebar"] [data-testid="stChatMessage"] {
-    padding: 0.3rem !important;
-    background-color: transparent;
-    border-radius: 4px;
-    margin-bottom: 0.1rem !important;
-}
-[data-testid="stSidebar"] [data-testid="stChatMessageAvatar"] {
-    width: 1.1rem !important;
-    height: 1.1rem !important;
-    min-width: 1.1rem !important;
-}
-[data-testid="stSidebar"] .stMarkdown p {
-    font-size: 0.8rem !important;
-    line-height: 1.25 !important;
-    margin-bottom: 0 !important;
-}
-.scilem-box {
-    border: 1px solid #dcdcdc;
-    border-radius: 6px;
-    padding: 4px;
-    background-color: #f8f9fa;
-}
-
-/* Robot Icon Trigger Styling */
-.scilm-trigger {
-    cursor: pointer !important;
-    font-size: 1.0em;
-    margin-left: 4px;
-    vertical-align: middle;
-    transition: transform 0.15s ease-in-out;
-    display: inline-block;
-}
-.scilm-trigger:hover {
-    transform: scale(1.25);
-}
-</style>
-<script>
-const parentDoc = window.parent.document;
-
-parentDoc.addEventListener('click', function(e) {
-    let trigger = e.target.closest('.scilm-trigger');
-    if (!trigger) return; 
-    
-    e.preventDefault();
-    e.stopPropagation();
-
-    let query = trigger.getAttribute('data-query');
-    if (!query) return;
-
-    const textarea = parentDoc.querySelector('[data-testid="stChatInputTextArea"]');
-    if (textarea) {
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-        nativeInputValueSetter.call(textarea, "Explain: " + query);
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-
-        const enterEvent = new KeyboardEvent('keydown', {
-            bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13
-        });
-        textarea.dispatchEvent(enterEvent);
-    }
-}, true);
-
-const observer = new MutationObserver(() => {
-    const chatContainers = parentDoc.querySelectorAll('[data-testid="stChatMessageContainer"]');
-    chatContainers.forEach(container => {
-        container.scrollTop = container.scrollHeight;
-    });
-});
-observer.observe(parentDoc.body, { childList: true, subtree: true });
-</script>
-"""
-components.html(custom_ui_code, height=0, width=0)
-
 st.sidebar.title("System Access")
 
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
+    st.toast("Application initialized successfully.")
 
 client_ip = "127.0.0.1"
 try:
@@ -190,6 +116,7 @@ try:
             (client_ip, datetime.now().isoformat()),
         )
         conn_ip.commit()
+        logging.info(f"New User IP Connected locally logged: {client_ip}")
 finally:
     conn_ip.close()
 
@@ -222,17 +149,25 @@ if "orcid_id" not in st.session_state:
     saved_orcid = st.query_params.get("orcid", "")
     if saved_orcid and (re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", saved_orcid) or "did:" in saved_orcid):
         st.session_state.orcid_id = saved_orcid
-        st.session_state.orcid_name = "Ali Vafadar Yengejeh" if "8050" in saved_orcid else "Verified Decentralized Identity"
+        st.session_state.orcid_name = "Verified Decentralized Identity" if "did:" in saved_orcid else "Verified Researcher (Name Private)"
         st.session_state.is_authenticated = True
     else:
-        st.session_state.orcid_id = "0009-0009-8456-8050"
-        st.session_state.orcid_name = "Ali Vafadar Yengejeh"
+        st.session_state.orcid_id = "0000-0000-0000-0000"
+        st.session_state.orcid_name = ""
         st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown("### Authenticate")
+    st.sidebar.markdown(
+        "### Authenticate "
+        + tooltip(
+            "Connect to your ORCID or DID to securely isolate your assessment"
+            " history. Pi Quotient (piQ) is a Soulbound Token assigned strictly"
+            " to this identity."
+        ),
+        unsafe_allow_html=True,
+    )
     manual_orcid = st.sidebar.text_input(
-        "Enter ORCID iD or W3C DID", placeholder="0009-0009-8456-8050"
+        "Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX"
     )
     remember_user = st.sidebar.checkbox("Remember me", value=True)
 
@@ -244,44 +179,64 @@ if not st.session_state.is_authenticated:
         ):
             with st.sidebar.status("Connecting to Identity Registry..."):
                 if "did:" in clean_orcid:
-                    user_name = "Verified Decentralized Identity"
-                elif "8050" in clean_orcid:
-                    user_name = "Ali Vafadar Yengejeh"
+                    is_valid, user_name = True, "Verified Decentralized Identity"
                 else:
-                    user_name = "Verified Researcher"
-            
-            st.session_state.orcid_id = clean_orcid
-            st.session_state.orcid_name = user_name
-            st.session_state.is_authenticated = True
-            if remember_user:
-                st.query_params["orcid"] = clean_orcid
+                    is_valid, user_name = True, "Verified Researcher (Name Private)"
+            if is_valid:
+                st.session_state.orcid_id = clean_orcid
+                st.session_state.orcid_name = user_name
+                st.session_state.is_authenticated = True
+                st.session_state.inst_email = "None"
+                if remember_user:
+                    st.query_params["orcid"] = clean_orcid
+                else:
+                    if "orcid" in st.query_params:
+                        del st.query_params["orcid"]
+                st.rerun()
             else:
-                if "orcid" in st.query_params:
-                    del st.query_params["orcid"]
-            st.rerun()
+                st.sidebar.error(user_name)
         else:
             st.sidebar.error("Invalid ORCID or DID format.")
 
     st.sidebar.markdown("---")
-    st.sidebar.info("Notice: Please connect your ORCID iD or DID above to unlock and use your personal Assessment History features.")
+    st.sidebar.info("Notice: Please connect your ORCID iD or DID above to unlock and use your personal Assessment History and DeSci Peer Attestation features.")
 else:
     st.sidebar.success("Securely Connected")
-    
-    conn_hist = get_db_connection()
-    total_user_piq = 0.0
-    try:
-        cur_h = conn_hist.cursor()
-        cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE user_id = ? OR user_id = '0009-0009-8456-8050'", (st.session_state.orcid_id,))
-        piq_rows = cur_h.fetchall()
-        total_user_piq = sum(float(r[0]) for r in piq_rows if r[0])
-    finally:
-        conn_hist.close()
-        
     st.sidebar.markdown(
-        f"**Researcher:** {st.session_state.orcid_name}\n\n"
-        f"**ID Vault:** `{st.session_state.orcid_id}`\n\n"
-        f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
+        f"**Researcher:** {st.session_state.orcid_name}\n**ID Vault:**"
+        f" `{st.session_state.orcid_id}`"
     )
+    
+    # --- Assessment and Reward History in Sidebar ---
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Your Assessment & Reward History")
+    
+    current_user = st.session_state.orcid_id
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT title, author_name, filename, scope, final_score, piq_minted,"
+            " tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC"
+            " LIMIT 20",
+            (current_user,),
+        )
+        history_data = cursor.fetchall()
+    finally:
+        conn.close()
+        
+    if history_data:
+        for row in history_data:
+            title, author_name, filename, scope, score, piq, tx_h = row
+            tx_url = safe_get_sepolia_url(tx_h)
+            clean_auth = clean_author_name(author_name)
+            st.sidebar.markdown(f"**{title[:45]}...**")
+            st.sidebar.caption(f"Author: {clean_auth} | Score: **{score:.2f}** | piQ: `{piq}`")
+            if tx_url:
+                st.sidebar.markdown(f"Tx: [`{tx_h[:10]}...`]({tx_url})")
+            st.sidebar.markdown("---")
+    else:
+        st.sidebar.info("No assessment history found for this ID.")
 
     if st.sidebar.button("Disconnect Session"):
         st.session_state.is_authenticated = False
@@ -291,159 +246,103 @@ else:
             del st.query_params["orcid"]
         st.rerun()
 
-current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
+current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
-# --- Scilem Assistant enclosed in a Single Box ---
+# --- Scilem Accessory Chatbot in Sidebar (Prominent, Auto-Updated Knowledge Base) ---
 st.sidebar.markdown("---")
-
-SCILEM_KNOWLEDGE_BASE = {
-    "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
-    "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
-    "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
-    "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
-    "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs. It validates evaluations directly on the blockchain.",
-    "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
-    "c1: originality": "Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
-    "c2: methodological rigor": "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
-    "c3: interdisciplinary synergy": "Measures cross-disciplinary integration and entropy across scientific domains.",
-    "c4: societal impact": "Evaluates broader societal and open infrastructure contributions.",
-    "c5: open science": "Evaluates open data, open code, and containerized reproducibility.",
-    "c6: literature integration": "Evaluates citation polarity and integration with existing foundational literature.",
-    "c7: empirical density": "Assesses empirical sample strength and baseline variance.",
-    "c8: future actionability": "Evaluates future research actionability and adherence to FAIR principles.",
-    "pi-index": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
-    "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights.",
-    "zk-snark": "Zero-Knowledge Succinct Non-Interactive Argument of Knowledge. A cryptographic proof that an evaluation occurred exactly per guidelines without revealing reviewer identity.",
-    "sciscore mdar": "SciScore evaluates adherence to the Materials Design Analysis Reporting (MDAR) framework to ensure rigor.",
-    "executable reproducibility score": "An audit metric calculating whether code, data, and software environments (C5 & C7) can reliably execute independent results."
-}
+st.sidebar.markdown(
+    "### 🔬 Scilem Assistant "
+    + tooltip("CoARA-aligned decentralized scientific assistant."),
+    unsafe_allow_html=True,
+)
 
 if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Click any 🤖 icon next to technical app features or terms to get instant explanations."
+            "content": "Greetings. I am Scilem, your decentralized scientific intelligence assistant. How may I help?"
         }
     ]
 
-if "last_analyzed_tracked" not in st.session_state:
-    st.session_state["last_analyzed_tracked"] = total_analyzed_count
-elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
-    st.session_state["last_analyzed_tracked"] = total_analyzed_count
-    st.session_state.scilm_messages.append({
-        "role": "assistant",
-        "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
-    })
-
-tiny_scilem_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='10' fill='%232c3e50'/%3E%3C/svg%3E"
-
-st.sidebar.markdown('<div class="scilem-box">', unsafe_allow_html=True)
-st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe_allow_html=True)
-    
-chat_container = st.sidebar.container(height=300)
+chat_container = st.sidebar.container(height=320)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = tiny_scilem_avatar if message["role"] == "assistant" else None
-        with st.chat_message(message["role"], avatar=msg_avatar):
-            st.markdown(message["content"])
+        with st.sidebar.chat_message(message["role"]):
+            st.sidebar.markdown(message["content"])
 
 if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
-    direct_answer = None
-    if prompt.startswith("Explain:"):
-        query_topic = prompt.replace("Explain:", "").strip().lower()
-        for key, explanation in SCILEM_KNOWLEDGE_BASE.items():
-            if key in query_topic:
-                direct_answer = explanation
-                break
+    rag_context = ""
+    few_shot_examples = ""
+    try:
+        dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
+        if os.path.exists(dataset_path):
+            with open(dataset_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                query_terms = set(prompt.lower().split())
+                relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
+                if not relevant_lines:
+                    relevant_lines = lines[-5:]
+                rag_context = "".join(relevant_lines[-5:])
+    except Exception:
+        rag_context = "No decentralized data accessible."
 
-    if direct_answer:
-        st.session_state.scilm_messages.append({"role": "assistant", "content": f"{direct_answer}"})
-        st.rerun()
-    else:
-        rag_context = ""
-        few_shot_examples = ""
-        try:
-            dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-            if os.path.exists(dataset_path):
-                with open(dataset_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                    query_terms = set(prompt.lower().split())
-                    relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
-                    if not relevant_lines:
-                        relevant_lines = lines[-5:]
-                    rag_context = "".join(relevant_lines[-5:])
-        except Exception:
-            rag_context = "No decentralized data accessible."
+    try:
+        conn_rag = get_db_connection()
+        cur_rag = conn_rag.cursor()
+        cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
+        top_paper = cur_rag.fetchone()
+        conn_rag.close()
+        if top_paper:
+            few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
+    except Exception:
+        pass
 
-        try:
-            conn_rag = get_db_connection()
-            cur_rag = conn_rag.cursor()
-            cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
-            top_paper = cur_rag.fetchone()
-            conn_rag.close()
-            if top_paper:
-                few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
-        except Exception:
-            pass
+    scilm_sys_prompt = (
+        "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines. "
+        "Be analytical, evidence-driven, and precise.\n\n"
+        f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
+        f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
+    )
 
-        scilm_sys_prompt = (
-            "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
-            "Explain app features clearly and concisely. You just received a user action or query.\n\n"
-            f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
-            f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
-        )
+    messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
+        {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
+    ]
 
-        messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
-            {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
-        ]
-
-        full_response = ""
-        try:
-            from brain import groq_client
-            PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
-            FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
-            if groq_client:
-                try:
-                    response = groq_client.chat.completions.create(
-                        model=PRIMARY_MODEL_NAME,
+    full_response = ""
+    try:
+        from brain import groq_client
+        PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
+        FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
+        if groq_client:
+            try:
+                response = groq_client.chat.completions.create(
+                    model=PRIMARY_MODEL_NAME,
+                    messages=messages_for_api,
+                    temperature=0.15,
+                )
+                full_response = response.choices[0].message.content
+            except Exception as primary_err:
+                if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
+                    fallback_response = groq_client.chat.completions.create(
+                        model=FALLBACK_MODEL_NAME,
                         messages=messages_for_api,
                         temperature=0.15,
                     )
-                    full_response = response.choices[0].message.content
-                except Exception as primary_err:
-                    err_str = str(primary_err)
-                    if "413" in err_str or "rate_limit_exceeded" in err_str or "tokens" in err_str or "limit" in err_str:
-                        trimmed_messages = [messages_for_api[0]] + messages_for_api[-3:]
-                        try:
-                            fallback_response = groq_client.chat.completions.create(
-                                model=FALLBACK_MODEL_NAME,
-                                messages=trimmed_messages,
-                                temperature=0.15,
-                            )
-                            full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
-                        except Exception as second_err:
-                            full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
-                    elif "429" in err_str:
-                        fallback_response = groq_client.chat.completions.create(
-                            model=FALLBACK_MODEL_NAME,
-                            messages=messages_for_api,
-                            temperature=0.15,
-                        )
-                        full_response = fallback_response.choices[0].message.content + "\n\n*(Handled via Fallback Engine).* "
-                    else:
-                        raise primary_err
-            else:
-                full_response = "Error: Groq API client not initialized."
-        except Exception as e:
-            full_response = f"Error connecting to Scilem engine: {str(e)}"
+                    full_response = fallback_response.choices[0].message.content + "\n\n*(Handled via Fallback Engine).* "
+                else:
+                    raise primary_err
+        else:
+            full_response = "Error: Groq API client not initialized."
+    except Exception as e:
+        full_response = f"Error connecting to Scilem engine: {str(e)}"
 
-        st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
-        st.rerun()
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
+    st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+    st.rerun()
 
+# --- Helper for Refining Subfields and Professional Science Fields ---
 def refine_science_field(s):
     s_lower = s.lower()
     if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
@@ -483,6 +382,7 @@ def refine_science_field(s):
     else:
         return f"Engineering & Technology > Applied Technical Research ({s.title()})"
 
+# --- Helper for Cartography Render ---
 def render_bubble_chart_clean(target_author):
     conn = get_db_connection()
     try:
@@ -533,32 +433,15 @@ def render_bubble_chart_clean(target_author):
 
     unique_topics = list(topic_aggregates.keys())
 
-    major_fields_dict = {}
-    for topic in unique_topics:
-        parts = [p.strip() for p in topic.split('>')]
-        major = parts[0]
-        if major not in major_fields_dict:
-            major_fields_dict[major] = []
-        major_fields_dict[major].append(topic)
+    def get_color(i, n):
+        h, s, v = i / n if n > 0 else 0, 0.7, 0.9
+        rgb = colorsys.hsv_to_rgb(h, s, v)
+        return "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    major_keys = sorted(list(major_fields_dict.keys()))
-    color_map = {}
-
-    for i, major in enumerate(major_keys):
-        h = i / len(major_keys) if len(major_keys) > 0 else 0
-        subfields = sorted(major_fields_dict[major])
-        n_subs = len(subfields)
-        
-        for j, topic in enumerate(subfields):
-            if n_subs <= 1:
-                s, v = 0.7, 0.9
-            else:
-                ratio = j / (n_subs - 1)
-                s = 0.4 + (0.5 * ratio)
-                v = 0.95 - (0.35 * ratio)
-            rgb = colorsys.hsv_to_rgb(h, s, v)
-            color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
-
+    color_map = {
+        topic: get_color(i, len(unique_topics))
+        for i, topic in enumerate(unique_topics)
+    }
     net = Network(
         height="450px",
         width="100%",
@@ -641,6 +524,7 @@ def render_bubble_chart_clean(target_author):
 
     return html_string, table_html
 
+# --- Dialog for Evaluation Metrics ---
 @st.dialog("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", width="large")
 def evaluation_metrics_dialog():
     conn_top_ep = get_db_connection()
@@ -681,13 +565,16 @@ def evaluation_metrics_dialog():
                 )
         st.markdown("---")
     else:
-        tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
-
-    green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
+        tw1 = 1.001328
+        tw2 = 1.000038
 
     st.markdown(
-        f"**Adversarial Logic Gap {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
-        unsafe_allow_html=True
+        r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
+        + tooltip(
+            "Evaluates reasoning structure and penalizes claims unsupported by"
+            " evidence or counterfactual stress failures."
+        ),
+        unsafe_allow_html=True,
     )
     st.markdown(
         r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
@@ -696,45 +583,78 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    with st.expander(f"C1: Originality {rbot('c1: originality')} &nbsp; {green_badge(tw1)}"):
-        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
-        st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
+    st.markdown(
+        f"**C1: Originality ($\varpi_1$ = `{tw1:.6f}`):** "
+        + tooltip(
+            "Semantic distance from literature corpus penalized by generative"
+            " AI laundering heuristics."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+        r" \times (1 - \lambda_{laundering}) $$"
+    )
 
-    with st.expander(f"C2: Methodological Rigor {rbot('c2: methodological rigor')} &nbsp; {green_badge(tw2)}"):
-        st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
-        st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
+    with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
+        st.markdown(
+            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
+        )
+        st.markdown(
+            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
+            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r" \epsilon}\right) $$"
+        )
 
-    with st.expander(f"C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')} &nbsp; {green_badge(tw3)}"):
-        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
-        st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    with st.expander("C3: Interdisciplinary Synergy"):
+        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    with st.expander(f"C4: Societal Impact {rbot('c4: societal impact')} &nbsp; {green_badge(tw4)}"):
-        st.markdown("Evaluates broader societal and open infrastructure contributions.")
-        st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
+    with st.expander("C4: Societal & Open Infrastructure Impact"):
+        st.markdown(
+            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r" U_v(\tau, \mathbf{x}) \right] $$"
+        )
 
-    with st.expander(f"C5: Open Science {rbot('c5: open science')} &nbsp; {green_badge(tw5)}"):
-        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
-        st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
+    with st.expander("C5: Open Science & Executable Reproducibility"):
+        st.markdown(
+            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+        )
 
-    with st.expander(f"C6: Literature Integration {rbot('c6: literature integration')} &nbsp; {green_badge(tw6)}"):
-        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
-        st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
+    with st.expander("C6: Literature Integration"):
+        st.markdown(
+            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+        )
 
-    with st.expander(f"C7: Empirical Density {rbot('c7: empirical density')} &nbsp; {green_badge(tw7)}"):
-        st.markdown("Assesses empirical sample strength and baseline variance.")
-        st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
+    with st.expander("C7: Empirical Density & Validation"):
+        st.markdown(
+            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+        )
 
-    with st.expander(f"C8: Future Actionability {rbot('c8: future actionability')} &nbsp; {green_badge(tw8)}"):
-        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
-        st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
+    with st.expander("C8: Future Actionability & FAIR"):
+        st.markdown(
+            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+        )
 
+# --- Top Header Layout with Evaluation Metrics Popup Button Right Next to Title ---
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
-    st.title("Pi-Index Assessment Engine")
+    st.title(
+        "Pi-Index Assessment Engine",
+        help=(
+            "Automated peer-review framework powered by neural networks, SciScore"
+            " reproducibility metrics, and multidimensional blockchain consensus."
+        ),
+    )
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
 
+# ==================== COMPACT INTAKE & ASSESSMENT BLOCK ====================
 st.markdown("")
 with st.container(border=True):
     selected_uploaded_files = []
@@ -835,6 +755,10 @@ with st.container(border=True):
     stake_amount = st.checkbox(
         "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
         value=True,
+        help=(
+            "Staking mechanisms actively filter low-effort, adversarial, or spam"
+            " submissions."
+        ),
         key=f"stake_chk_{st.session_state['reset_token']}",
     )
 
@@ -1064,17 +988,16 @@ def more_details_dialog(item):
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
         st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
         st.write(f"**piQ Minted:** `{piq}`")
-        st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{zk_proof}`", unsafe_allow_html=True)
+        st.write(f"**zk-SNARK:** `{zk_proof}`")
         
         tx_url = safe_get_sepolia_url(tx_hash)
-        tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
         if tx_url:
-            st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({tx_url})")
+            st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
         else:
-            st.write(f"**Tx Hash:** `{tx_disp_val}`")
+            st.write(f"**Tx Hash:** `{tx_hash}`")
 
-        st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
-        st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
+        st.write(f"**Executable Reproducibility Score (C5/C7 audit):** `{repro_score * 100:.1f}%`")
+        st.write(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`")
 
     scope_val = st.session_state.get("snap_scope", "")
     if scope_val.strip() and drift != "N/A" and rec != "N/A":
@@ -1168,6 +1091,48 @@ def defense_strategy_dialog(scores_dict):
         rebuttal = generate_rebuttal_strategy(scores_dict)
     st.markdown(rebuttal)
 
+@st.dialog("DeSci Peer Attestation & Staking", width="medium")
+def paper_attestation_dialog(item):
+    eval_hash = item["eval_hash"]
+    title = item["title"]
+    st.markdown(f"**Paper:** {title}")
+    current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
+    
+    if not st.session_state.get("is_authenticated", False):
+        st.warning("Please connect your ORCID iD or DID in the sidebar to use the DeSci Peer Attestation feature.")
+        return
+
+    attest_stance = st.radio(
+        "Attestation Stance:",
+        ["Endorse Rigor", "Challenge Anomaly"],
+        horizontal=True,
+        key=f"modal_attest_stance_{eval_hash}"
+    )
+    stake_val = st.slider(
+        "Stake piQ Amount:",
+        min_value=0.1,
+        max_value=10.0,
+        value=1.0,
+        step=0.1,
+        key=f"modal_stake_val_{eval_hash}"
+    )
+
+    if st.button("Submit Attestation On-Chain", key=f"modal_submit_attest_{eval_hash}", use_container_width=True):
+        attest_id = "ATT_" + hashlib.sha256(
+            f"{current_user}:{eval_hash}:{time.time()}".encode()
+        ).hexdigest()[:12]
+        conn_sub = get_db_connection()
+        try:
+            cur_sub = conn_sub.cursor()
+            cur_sub.execute(
+                "INSERT OR REPLACE INTO desci_attestations (attestation_id, eval_hash, attester_id, stake_amount, stance, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                (attest_id, eval_hash, current_user, stake_val, attest_stance, datetime.now().isoformat()),
+            )
+            conn_sub.commit()
+            st.success(f"Attestation recorded! ID: `{attest_id}`")
+        finally:
+            conn_sub.close()
+
 def render_breakdown_item(item, index):
     title = item["title"]
     author_name = clean_author_name(item["author_name"])
@@ -1182,13 +1147,16 @@ def render_breakdown_item(item, index):
             st.markdown(f"**{title}** — *{author_name}*")
             st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
         with col_actions:
-            c_det, c_strat, c_del = st.columns([3, 3, 1])
+            c_det, c_strat, c_att, c_del = st.columns([2, 2, 2, 1])
             with c_det:
                 if st.button("More Details", key=f"more_det_{index}_{eval_hash}", use_container_width=True):
                     more_details_dialog(item)
             with c_strat:
                 if st.button("Suggest Defense", key=f"gen_strat_{index}_{eval_hash}", use_container_width=True):
                     defense_strategy_dialog(scores_dict)
+            with c_att:
+                if st.button("Attest & Stake", key=f"attest_btn_{index}_{eval_hash}", use_container_width=True):
+                    paper_attestation_dialog(item)
             with c_del:
                 if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
                     st.session_state["evaluated_papers_buffer"].pop(index)
@@ -1230,12 +1198,14 @@ if (
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
-    col_fc1, col_fc2 = st.columns([3, 1])
-    with col_fc1:
-        st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
-    with col_fc2:
-        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
-        actual_lookback = int(forecast_horizon.split()[0])
+    st.markdown(
+        "### Pidyne Forecast "
+        + tooltip(
+            "An LSTM neural network that trains directly on the block weights to"
+            " predict future shifts in algorithmic evaluation standards."
+        ),
+        unsafe_allow_html=True,
+    )
 
     @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
     def train_pibrain_cached(weight_data, actual_lookback):
@@ -1256,7 +1226,7 @@ with top_analytics_col1:
         optimizer = optim.Adam(model.parameters(), lr=0.001)
 
         model.train()
-        for epoch in range(300):
+        for epoch in range(200):
             for seq, target in dataloader:
                 optimizer.zero_grad()
                 loss = loss_function(model(seq), target)
@@ -1265,7 +1235,7 @@ with top_analytics_col1:
 
         model.eval()
         with torch.no_grad():
-            raw_pred = (
+            predicted = (
                 model(
                     torch.tensor(
                         weight_data[-actual_lookback:], dtype=torch.float32
@@ -1274,10 +1244,6 @@ with top_analytics_col1:
                 .squeeze()
                 .numpy()
             )
-            current_w = weight_data[-1]
-            predicted = current_w + (raw_pred - current_w) * 20.0
-            predicted = np.clip(predicted, 0.01, 7.9)
-            predicted = predicted * (8.0 / np.sum(predicted))
             torch.save(model.state_dict(), weights_path)
             return predicted
 
@@ -1302,32 +1268,28 @@ with top_analytics_col1:
         )
     else:
         current_block_count = len(historical_rows)
-        lookback_window = max(1, min(actual_lookback, current_block_count - 1))
+        lookback_window = max(1, min(5, current_block_count - 1))
 
         if (
             "last_trained_blocks" not in st.session_state
             or st.session_state.last_trained_blocks != current_block_count
-            or st.session_state.get("last_lookback") != lookback_window
         ):
             weight_data = np.array(historical_rows, dtype=np.float32)
+            actual_lookback = min(lookback_window, len(weight_data))
 
-            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, lookback_window)
+            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
             st.session_state.current_weights = weight_data[-1]
             st.session_state.last_trained_blocks = current_block_count
-            st.session_state.last_lookback = lookback_window
-
-        curr_vals = st.session_state.current_weights
-        pred_vals = st.session_state.predicted_next_weights
-
-        # Super Exaggeration for Visual Impact (150x Amplified to expose micro-shifts clearly)
-        mean_val = np.mean(curr_vals)
-        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 150.0)
-        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 150.0)
+        else:
+            st.info(
+                "Meta-model is cached and up-to-date with the latest blockchain"
+                " ledger."
+            )
 
         df_compare = pd.DataFrame(
             {
-                "Current Active Weights (150x Amplified)": exagg_curr,
-                "Predicted Next Epoch (150x Amplified)": exagg_pred,
+                "Current Active Weights": st.session_state.current_weights,
+                "Predicted Next Epoch": st.session_state.predicted_next_weights,
             },
             index=[
                 "C1: Originality", "C2: Methodological Rigor",
@@ -1336,19 +1298,10 @@ with top_analytics_col1:
                 "C7: Empirical Density", "C8: Future Actionability",
             ],
         )
-        
-        st.bar_chart(df_compare, height=350, use_container_width=True)
-
+        st.bar_chart(df_compare, height=380)
         st.markdown(
-            f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
-            f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
-            f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
-            f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
-            f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
-            f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
-            f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
-            f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
-            f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
+            f"**Mathematical Constraint Check:** Predicted Sum ="
+            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
         )
 
     with st.expander("What's Pidyne?", expanded=False):
@@ -1356,13 +1309,13 @@ with top_analytics_col1:
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
         2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-        3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
+        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
         """)
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
     with map_title_col:
-        st.markdown(f"### Global Map of Science {rbot('global map of science')}", unsafe_allow_html=True)
+        st.markdown("### Global Map of Science")
     with map_badge_col:
         st.markdown(
             f"""
@@ -1437,146 +1390,99 @@ with top_analytics_col2:
             st.info("No piQ tokens minted yet.")
 
 st.markdown("---")
+st.markdown(
+    "### Latest Assessed Papers "
+    + tooltip(
+        "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
+    ),
+    unsafe_allow_html=True,
+)
 
-# ==================== CONDITIONAL DISPLAY: ORCID CONNECTED VS NOT CONNECTED ====================
-if st.session_state.is_authenticated:
-    conn_hist = get_db_connection()
-    try:
-        cur_h = conn_hist.cursor()
-        cur_h.execute(
-            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
+conn_last = get_db_connection()
+try:
+    cur_last = conn_last.cursor()
+    cur_last.execute(
+        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                  b.block_height, b.block_hash
                FROM papers_assessment p
                LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
-               ORDER BY p.timestamp DESC""",
-            (st.session_state.orcid_id,)
-        )
-        user_history_rows = cur_h.fetchall()
-    finally:
-        conn_hist.close()
+               ORDER BY p.timestamp DESC LIMIT 5"""
+    )
+    recent_papers = cur_last.fetchall()
+finally:
+    conn_last.close()
 
-    st.markdown("### Your Assessment History & Rewards")
-
-    if user_history_rows:
-        for idx, uh in enumerate(user_history_rows):
-            (
-                u_title, u_author, u_filename, u_score, u_logic,
-                u_piq, u_tx, u_zk, u_hash, u_time,
-                u_block_height, u_block_hash
-            ) = uh
-
-            u_author_clean = clean_author_name(u_author)
-            u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
-            u_tx_url = safe_get_sepolia_url(u_tx)
-            
-            tx_disp_val = u_tx if u_tx and str(u_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
-
-            with st.expander(
-                f"[{idx+1}] {u_title[:65]}... — *{u_author_clean}* (Score: **{u_score:.2f}** | piQ: `{u_piq}` | {u_time[:16]})",
-                expanded=False,
-            ):
-                st.write(f"**Title:** {u_title}")
-                st.write(f"**Author(s):** {u_author_clean}")
-                st.write(f"**Timestamp:** `{u_time}`")
-                st.write(f"**Evaluation Hash (Eval Hash):** `{u_hash}`")
-                st.write(f"**Block Height:** `{u_block_height if u_block_height is not None else 'Pending'}`")
-                st.write(f"**Block Hash:** `{u_block_hash if u_block_hash is not None else 'Pending'}`")
-                st.write(f"**Unique Author Book Address:** `{u_book}`")
-                st.write(f"**piQ Rewards Earned:** `{u_piq} piQ`")
-                st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{u_zk}`", unsafe_allow_html=True)
-                
-                if u_tx_url:
-                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
-                else:
-                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
-    else:
-        st.info("No assessment history or rewards found linked to this authenticated ID.")
+if not recent_papers:
+    st.info("No papers have been assessed in the database yet.")
 else:
-    st.markdown("### Latest Assessed Papers")
+    for idx, rp in enumerate(recent_papers):
+        (
+            r_title, r_author, r_filename, r_score, r_logic,
+            r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
+            r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
+            r_block_height, r_block_hash
+        ) = rp
 
-    conn_last = get_db_connection()
-    try:
-        cur_last = conn_last.cursor()
-        cur_last.execute(
-            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
-                   FROM papers_assessment p
-                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                   ORDER BY p.timestamp DESC LIMIT 5"""
-        )
-        recent_papers = cur_last.fetchall()
-    finally:
-        conn_last.close()
+        r_author_clean = clean_author_name(r_author)
+        r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
+        r_tx_url = safe_get_sepolia_url(r_tx)
 
-    if not recent_papers:
-        st.info("No papers have been assessed in the database yet.")
-    else:
-        for idx, rp in enumerate(recent_papers):
-            (
-                r_title, r_author, r_filename, r_score, r_logic,
-                r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
-                r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
-                r_block_height, r_block_hash
-            ) = rp
-
-            r_author_clean = clean_author_name(r_author)
-            r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
-            r_tx_url = safe_get_sepolia_url(r_tx)
+        with st.expander(
+            f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
+            f" **{r_score:.2f}** | {r_time[:16]})",
+            expanded=False,
+        ):
+            st.write(f"**Title:** {r_title}")
+            st.write(f"**Author(s):** {r_author_clean}")
+            st.write(f"**Timestamp:** `{r_time}`")
+            st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
+            st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
+            st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
+            st.write(f"**Unique Author Book Address:** `{r_book}`")
+            st.write(f"**piQ Minted:** `{r_piq}`")
+            st.write(f"**zk-SNARK Proof:** `{r_zk}`")
             
-            tx_disp_val = r_tx if r_tx and str(r_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
+            if r_tx_url:
+                st.markdown(f"**Tx Hash (Etherscan):** [`{r_tx}`]({r_tx_url})")
+            else:
+                st.write(f"**Tx Hash:** `{r_tx}`")
 
-            with st.expander(
-                f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
-                f" **{r_score:.2f}** | {r_time[:16]})",
-                expanded=False,
-            ):
-                st.write(f"**Title:** {r_title}")
-                st.write(f"**Author(s):** {r_author_clean}")
-                st.write(f"**Timestamp:** `{r_time}`")
-                st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
-                st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
-                st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
-                st.write(f"**Unique Author Book Address:** `{r_book}`")
-                st.write(f"**piQ Minted:** `{r_piq}`")
-                st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{r_zk}`", unsafe_allow_html=True)
-                
-                if r_tx_url:
-                    st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({r_tx_url})")
-                else:
-                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
+            st.write(
+                f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
+                f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
+                f" `{r_mdar * 100:.1f}%`"
+            )
 
-                st.write(
-                    f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
-                    f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
-                    f" `{r_mdar * 100:.1f}%`"
-                )
-
-                r_df = pd.DataFrame({
-                    "Criterion": [
-                        "C1: Semantic Originality",
-                        "C2: Methodological Rigor (SciScore)",
-                        "C3: Interdisciplinary Entropy",
-                        "C4: Societal Impact",
-                        "C5: Open Science & Repro",
-                        "C6: Literature Integration",
-                        "C7: Empirical Density",
-                        "C8: Future Actionability & FAIR",
-                    ],
-                    "Score (0-100)": [
-                        r_c1, r_c2, r_c3, r_c4,
-                        r_c5, r_c6, r_c7, r_c8,
-                    ],
-                })
-                st.dataframe(r_df, hide_index=True, use_container_width=True)
+            r_df = pd.DataFrame({
+                "Criterion": [
+                    "C1: Semantic Originality",
+                    "C2: Methodological Rigor (SciScore)",
+                    "C3: Interdisciplinary Entropy",
+                    "C4: Societal Impact",
+                    "C5: Open Science & Repro",
+                    "C6: Literature Integration",
+                    "C7: Empirical Density",
+                    "C8: Future Actionability & FAIR",
+                ],
+                "Score (0-100)": [
+                    r_c1, r_c2, r_c3, r_c4,
+                    r_c5, r_c6, r_c7, r_c8,
+                ],
+            })
+            st.dataframe(r_df, hide_index=True, use_container_width=True)
 
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
-st.markdown(f"### Proof-of-Research Blockchain Explorer {rbot('proof-of-research')}", unsafe_allow_html=True)
+st.markdown(
+    "### Proof-of-Research Blockchain Explorer "
+    + tooltip(
+        "Manages decentralized consensus, ledger weights, and smart contract audit proofs."
+    ),
+    unsafe_allow_html=True,
+)
 
 conn = get_db_connection()
 try:
@@ -1640,8 +1546,6 @@ try:
                         m_author_clean = clean_author_name(m_author)
                         m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
                         m_tx_url = safe_get_sepolia_url(m_tx)
-                        
-                        tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
                         with st.expander(
                             f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
@@ -1654,16 +1558,16 @@ try:
                             st.write(f"**Evaluation Hash (Eval Hash):** `{m_hash}`")
                             st.write(f"**Block Height:** `{m_block_height if m_block_height is not None else 'Pending'}`")
                             st.write(f"**Block Hash:** `{m_block_hash if m_block_hash is not None else 'Pending'}`")
-                            st.markdown(f"**Proof-of-Research {rbot('proof-of-research')} (PoR):** `{m_por}`", unsafe_allow_html=True)
+                            st.write(f"**Proof-of-Research (PoR):** `{m_por}`")
                             st.write(f"**Formulas State Hash:** `{m_form}`")
                             st.write(f"**Unique Author Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{m_zk}`", unsafe_allow_html=True)
+                            st.write(f"**zk-SNARK Proof:** `{m_zk}`")
                             
                             if m_tx_url:
-                                st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({m_tx_url})")
+                                st.markdown(f"**Tx Hash (Etherscan):** [`{m_tx}`]({m_tx_url})")
                             else:
-                                st.write(f"**Tx Hash:** `{tx_disp_val}`")
+                                st.write(f"**Tx Hash:** `{m_tx}`")
 
                             st.write(
                                 f"**Logic Integrity:** `{m_logic:.1f}%` | **Reproducibility:**"
@@ -1723,8 +1627,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
-                tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
+                tx_disp = f"[{rtx[:10]}...]({tx_url})" if rtx else str(rtx)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
                     "Eval Hash": reval[:10] + "...",
@@ -1740,6 +1643,7 @@ try:
 
 finally:
     conn.close()
+
 
 # ==================== SYSTEM OVERVIEW & POP-UP WORKFLOW MODAL ====================
 @st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
@@ -1825,7 +1729,7 @@ def framework_workflow_dialog():
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: gray; font-size: 0.9em; padding-bottom: 5px;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>",
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
 st.markdown("---")
