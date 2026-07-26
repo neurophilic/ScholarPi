@@ -75,7 +75,7 @@ st.set_page_config(
 )
 
 def rbot(topic_key):
-    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>[🤖 Scilem]</span>"
+    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
 # Custom JS/CSS for Scilem Icon-Only Click Function & Layout Adjustments
 custom_ui_code = """
@@ -110,24 +110,17 @@ custom_ui_code = """
     background-color: #f8f9fa;
 }
 
-/* Text-based Robot Trigger Styling */
+/* Robot Icon Trigger Styling */
 .scilm-trigger {
     cursor: pointer !important;
-    font-size: 0.85em;
-    font-weight: 600;
-    color: #2980b9;
-    background-color: #eaf2f8;
-    border: 1px solid #d4e6f1;
-    border-radius: 4px;
-    padding: 1px 4px;
+    font-size: 1.1em;
     margin-left: 4px;
     vertical-align: middle;
     display: inline-block;
-    transition: all 0.15s ease-in-out;
+    transition: transform 0.15s ease-in-out;
 }
 .scilm-trigger:hover {
-    background-color: #d4e6f1;
-    color: #1b4f72;
+    transform: scale(1.25);
 }
 </style>
 <script>
@@ -331,7 +324,7 @@ if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Click any [🤖 Scilem] button next to technical app features or terms for instant explanations."
+            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
         }
     ]
 
@@ -344,15 +337,13 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
 
-tiny_scilem_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='10' fill='%232c3e50'/%3E%3C/svg%3E"
-
 st.sidebar.markdown('<div class="scilem-box">', unsafe_allow_html=True)
 st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe_allow_html=True)
     
 chat_container = st.sidebar.container(height=280)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = tiny_scilem_avatar if message["role"] == "assistant" else None
+        msg_avatar = "🤖" if message["role"] == "assistant" else None
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
@@ -683,6 +674,8 @@ def evaluation_metrics_dialog():
         st.markdown("---")
     else:
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+
+    green_badge = lambda sym, val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">{sym} = {val:.6f}</span>'
 
     st.markdown(
         f"**Adversarial Logic Gap {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
