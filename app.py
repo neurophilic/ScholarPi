@@ -43,6 +43,14 @@ def tooltip(text):
     )
     return f'<span title="{text}">{svg_icon}</span>'
 
+def safe_get_sepolia_url(tx):
+    if not tx or not isinstance(tx, str) or not tx.startswith("0x") or len(tx) != 66:
+        return None
+    try:
+        return get_sepolia_explorer_url(tx, "tx")
+    except Exception:
+        return None
+
 def get_author_piq_dict():
     conn = get_db_connection()
     try:
@@ -229,7 +237,7 @@ else:
     if history_data:
         for row in history_data:
             title, author_name, filename, scope, score, piq, tx_h = row
-            tx_url = get_sepolia_explorer_url(tx_h, "tx")
+            tx_url = safe_get_sepolia_url(tx_h)
             clean_auth = clean_author_name(author_name)
             st.sidebar.markdown(f"**{title[:45]}...**")
             st.sidebar.caption(f"Author: {clean_auth} | Score: **{score:.2f}** | piQ: `{piq}`")
@@ -746,6 +754,115 @@ with header_col2:
 
 st.markdown("---")
 
+# ==================== PI-BRAIN LSTM META-LEARNING FORECASTS (MOVED TO TOP) ====================
+st.markdown(
+    "### Pi-Brain LSTM Meta-Learning Forecasts "
+    + tooltip(
+        "An LSTM neural network that trains directly on the block weights to"
+        " predict future shifts in algorithmic evaluation standards."
+    ),
+    unsafe_allow_html=True,
+)
+
+@st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+def train_pibrain_cached(weight_data, actual_lookback):
+    dataset = PiBlockchainDataset(weight_data, actual_lookback)
+    dataloader = DataLoader(
+        dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+    )
+
+    model = PiBrainLSTM()
+    weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+    if os.path.exists(weights_path):
+        try:
+            model.load_state_dict(torch.load(weights_path, weights_only=True))
+        except Exception:
+            pass
+
+    loss_function = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    model.train()
+    for epoch in range(200):
+        for seq, target in dataloader:
+            optimizer.zero_grad()
+            loss = loss_function(model(seq), target)
+            loss.backward()
+            optimizer.step()
+
+    model.eval()
+    with torch.no_grad():
+        predicted = (
+            model(
+                torch.tensor(
+                    weight_data[-actual_lookback:], dtype=torch.float32
+                ).unsqueeze(0)
+            )
+            .squeeze()
+            .numpy()
+        )
+        torch.save(model.state_dict(), weights_path)
+        return predicted
+
+conn_pb = get_db_connection()
+try:
+    cursor_pb = conn_pb.cursor()
+    cursor_pb.execute(
+        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+        " BY block_height ASC"
+    )
+    historical_rows = cursor_pb.fetchall()
+finally:
+    conn_pb.close()
+
+min_blocks_required = 2
+if len(historical_rows) < min_blocks_required:
+    st.warning(
+        f"Not enough blockchain data to train the meta-model. You need at least"
+        f" {min_blocks_required} blocks (Currently on ledger:"
+        f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+        " block 2."
+    )
+else:
+    current_block_count = len(historical_rows)
+    lookback_window = max(1, min(5, current_block_count - 1))
+
+    if (
+        "last_trained_blocks" not in st.session_state
+        or st.session_state.last_trained_blocks != current_block_count
+    ):
+        weight_data = np.array(historical_rows, dtype=np.float32)
+        actual_lookback = min(lookback_window, len(weight_data))
+
+        st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+        st.session_state.current_weights = weight_data[-1]
+        st.session_state.last_trained_blocks = current_block_count
+    else:
+        st.info(
+            "Meta-model is cached and up-to-date with the latest blockchain"
+            " ledger."
+        )
+
+    df_compare = pd.DataFrame(
+        {
+            "Current Active Weights": st.session_state.current_weights,
+            "Predicted Next Epoch": st.session_state.predicted_next_weights,
+        },
+        index=[
+            "C1: Originality", "C2: Methodological Rigor",
+            "C3: Interdisciplinary", "C4: Societal Impact",
+            "C5: Open Science", "C6: Literature Integration",
+            "C7: Empirical Density", "C8: Future Actionability",
+        ],
+    )
+    st.bar_chart(df_compare, height=400)
+    st.markdown(
+        f"**Mathematical Constraint Check:** Predicted Sum ="
+        f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
+    )
+
+st.markdown("---")
+
 # ==================== ASSESSMENT & DOSSIER SECTION ====================
 st.markdown(
     "### Unified Multi-Source Intake & Custom Topic Search"
@@ -921,7 +1038,7 @@ def render_breakdown_item(item):
         st.write(f"**piQ Minted:** `{piq}`")
         st.write(f"**zk-SNARK:** `{zk_proof}`")
         
-        tx_url = get_sepolia_explorer_url(tx_hash, "tx")
+        tx_url = safe_get_sepolia_url(tx_hash)
         if tx_url:
             st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
         else:
@@ -1344,7 +1461,7 @@ else:
         bh_val = rp[21] if rp[21] is not None else "Pending"
         bhash_val = rp[22] if rp[22] is not None else "Pending"
         tx_h = rp[14]
-        tx_url = get_sepolia_explorer_url(tx_h, "tx")
+        tx_url = safe_get_sepolia_url(tx_h)
         tx_display = f"[{tx_h[:10]}...]({tx_url})" if tx_url else str(tx_h)
         formatted_hashes.append((
             str(bh_val),
@@ -1377,7 +1494,7 @@ else:
 
         r_author_clean = clean_author_name(r_author)
         r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
-        r_tx_url = get_sepolia_explorer_url(r_tx, "tx")
+        r_tx_url = safe_get_sepolia_url(r_tx)
 
         with st.expander(
             f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
@@ -1427,15 +1544,15 @@ else:
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
 st.markdown(
-    "### Pinamic: Active Epoch, DeSci Staking & Pi-Brain Neural Network "
+    "### Pinamic: Active Epoch & Proof-of-Research Blockchain Explorer "
     + tooltip(
-        "Manages decentralized consensus, ledger weights, DeSci peer attestations, and PyTorch LSTM meta-learning forecasts."
+        "Manages decentralized consensus, ledger weights, and smart contract audit proofs."
     ),
     unsafe_allow_html=True,
 )
 
 with st.expander(
-    "Detailed Guide: How Pinamic Works (Ledger Consensus, Staking & Pi-Brain)",
+    "Detailed Guide: How Pinamic Works (Ledger Consensus & Staking)",
     expanded=False,
 ):
     st.markdown("""
@@ -1443,7 +1560,6 @@ with st.expander(
     1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
     2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
     3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
-    4. **Pi-Brain Meta-Learning LSTM**: An on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks to forecast future criterion shifts.
     """)
 
 conn = get_db_connection()
@@ -1498,10 +1614,9 @@ try:
                 )
 
         st.markdown(
-            "### Proof-of-Research Blockchain Explorer "
+            "### Proof-of-Research Blockchain Explorer & Sepolia Contract Verification "
             + tooltip(
-                "Search the ledger to mathematically verify if a specific research"
-                " document has been authentically graded and permanently sealed."
+                "Search the ledger to mathematically verify if a specific research document has been authentically graded, and inspect live deployed smart contracts on Sepolia Etherscan."
             ),
             unsafe_allow_html=True,
         )
@@ -1517,12 +1632,13 @@ try:
         explore_col1, explore_col2 = st.columns([3, 1])
         with explore_col1:
             search_query = st.text_input(
-                "Enter Document Evaluation Hash or Block Hash to verify ledger record..."
+                "Enter Document Evaluation Hash or Block Hash to verify ledger record...",
+                key="pinamic_ledger_search_query"
             )
         with explore_col2:
             st.write("")
             st.write("")
-            search_btn = st.button("Verify Record")
+            search_btn = st.button("Verify Record", key="pinamic_verify_record_btn")
 
         if search_btn and search_query:
             try:
@@ -1555,14 +1671,7 @@ try:
                 st.error("Error reading database schema. Try refreshing the app.")
 
         st.markdown("---")
-        st.markdown(
-            "### View Data on Ethereum Explorer (Sepolia Etherscan) "
-            + tooltip(
-                "Direct links to inspect deployed smart contracts and live assessment transaction records on Sepolia Etherscan."
-            ),
-            unsafe_allow_html=True,
-        )
-        
+        st.markdown("#### Deployed Smart Contracts on Sepolia Etherscan")
         col_ex1, col_ex2 = st.columns(2)
         with col_ex1:
             piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
@@ -1574,112 +1683,43 @@ try:
             else:
                 st.markdown("**Registry Contract:** `Not Configured`")
 
+        # --- Recent Ledger Proofs Summary Table integrated inside Pinamic ---
         st.markdown("---")
-        st.markdown(
-            "### Pi-Brain LSTM Meta-Learning Forecasts "
-            + tooltip(
-                "An LSTM neural network that trains directly on the block weights to"
-                " predict future shifts in algorithmic evaluation standards."
-            ),
-            unsafe_allow_html=True,
-        )
-
-        @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-        def train_pibrain_cached(weight_data, actual_lookback):
-            dataset = PiBlockchainDataset(weight_data, actual_lookback)
-            dataloader = DataLoader(
-                dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-            )
-
-            model = PiBrainLSTM()
-            weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-            if os.path.exists(weights_path):
-                try:
-                    model.load_state_dict(torch.load(weights_path, weights_only=True))
-                except Exception:
-                    pass
-
-            loss_function = nn.MSELoss()
-            optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-            model.train()
-            for epoch in range(200):
-                for seq, target in dataloader:
-                    optimizer.zero_grad()
-                    loss = loss_function(model(seq), target)
-                    loss.backward()
-                    optimizer.step()
-
-            model.eval()
-            with torch.no_grad():
-                predicted = (
-                    model(
-                        torch.tensor(
-                            weight_data[-actual_lookback:], dtype=torch.float32
-                        ).unsqueeze(0)
-                    )
-                    .squeeze()
-                    .numpy()
-                )
-                torch.save(model.state_dict(), weights_path)
-                return predicted
-
+        st.markdown("#### Recent Ledger Proofs Summary & Transaction Ledger")
+        
         cursor.execute(
-            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-            " BY block_height ASC"
+            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
+               FROM papers_assessment p
+               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+               ORDER BY p.timestamp DESC LIMIT 5"""
         )
-        historical_rows = cursor.fetchall()
-
-        min_blocks_required = 2
-        if len(historical_rows) < min_blocks_required:
-            st.warning(
-                f"Not enough blockchain data to train the meta-model. You need at least"
-                f" {min_blocks_required} blocks (Currently on ledger:"
-                f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-                " block 2."
-            )
+        recent_ledger_rows = cursor.fetchall()
+        if recent_ledger_rows:
+            table_data = []
+            for rrow in recent_ledger_rows:
+                rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
+                tx_url = safe_get_sepolia_url(rtx)
+                tx_disp = f"[{rtx[:10]}...]({tx_url})" if tx_url else str(rtx)
+                table_data.append({
+                    "Block Height": rbh if rbh is not None else "Pending",
+                    "Eval Hash": reval[:10] + "...",
+                    "Block Hash": rbhash[:10] + "..." if rbhash else "Pending",
+                    "zk-SNARK": rzk[:10] + "..." if rzk else "N/A",
+                    "piQ": rpiq,
+                    "Tx Hash (Etherscan)": tx_disp,
+                    "Timestamp": rts[:19] if rts else ""
+                })
+            st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
         else:
-            current_block_count = len(historical_rows)
-            lookback_window = max(1, min(5, current_block_count - 1))
+            st.info("No ledger transaction proofs recorded yet.")
 
-            if (
-                "last_trained_blocks" not in st.session_state
-                or st.session_state.last_trained_blocks != current_block_count
-            ):
-                weight_data = np.array(historical_rows, dtype=np.float32)
-                actual_lookback = min(lookback_window, len(weight_data))
-
-                st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
-                st.session_state.current_weights = weight_data[-1]
-                st.session_state.last_trained_blocks = current_block_count
-            else:
-                st.info(
-                    "Meta-model is cached and up-to-date with the latest blockchain"
-                    " ledger."
-                )
-
-            df_compare = pd.DataFrame(
-                {
-                    "Current Active Weights": st.session_state.current_weights,
-                    "Predicted Next Epoch": st.session_state.predicted_next_weights,
-                },
-                index=[
-                    "C1: Originality", "C2: Methodological Rigor",
-                    "C3: Interdisciplinary", "C4: Societal Impact",
-                    "C5: Open Science", "C6: Literature Integration",
-                    "C7: Empirical Density", "C8: Future Actionability",
-                ],
-            )
-            st.bar_chart(df_compare, height=400)
-            st.markdown(
-                f"**Mathematical Constraint Check:** Predicted Sum ="
-                f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
-            )
 finally:
     conn.close()
 
 
-# ==================== SYSTEM OVERVIEW & ARCHITECTURE FLOWCHART ====================
+# ==================== SYSTEM OVERVIEW & MERGED FOOTER BLOCK ====================
 st.markdown("---")
 with st.expander("🏗️ The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow"):
     st.markdown(
@@ -1759,10 +1799,8 @@ with st.expander("🏗️ The Pi-Index Framework: Next-Gen Architecture & CoARA 
     }
     """)
 
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: gray; font-size: 0.8em;'>Framework"
-    " Author: Ali Vafadar Yengejeh | Universita degli Studi di"
-    " Milano-Bicocca</div>",
-    unsafe_allow_html=True,
-)
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: gray; font-size: 0.9em; padding-bottom: 5px;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>",
+        unsafe_allow_html=True
+    )
