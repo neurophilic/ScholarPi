@@ -1172,110 +1172,113 @@ if (
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
-    with st.expander("Pidyne Forecast", expanded=True):
-        st.markdown(
+    st.markdown(
+        "### Pidyne Forecast "
+        + tooltip(
             "An LSTM neural network that trains directly on the block weights to"
             " predict future shifts in algorithmic evaluation standards."
+        ),
+        unsafe_allow_html=True,
+    )
+
+    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+    def train_pibrain_cached(weight_data, actual_lookback):
+        dataset = PiBlockchainDataset(weight_data, actual_lookback)
+        dataloader = DataLoader(
+            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
         )
 
-        @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-        def train_pibrain_cached(weight_data, actual_lookback):
-            dataset = PiBlockchainDataset(weight_data, actual_lookback)
-            dataloader = DataLoader(
-                dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-            )
+        model = PiBrainLSTM()
+        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+        if os.path.exists(weights_path):
+            try:
+                model.load_state_dict(torch.load(weights_path, weights_only=True))
+            except Exception:
+                pass
 
-            model = PiBrainLSTM()
-            weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-            if os.path.exists(weights_path):
-                try:
-                    model.load_state_dict(torch.load(weights_path, weights_only=True))
-                except Exception:
-                    pass
+        loss_function = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-            loss_function = nn.MSELoss()
-            optimizer = optim.Adam(model.parameters(), lr=0.001)
+        model.train()
+        for epoch in range(200):
+            for seq, target in dataloader:
+                optimizer.zero_grad()
+                loss = loss_function(model(seq), target)
+                loss.backward()
+                optimizer.step()
 
-            model.train()
-            for epoch in range(200):
-                for seq, target in dataloader:
-                    optimizer.zero_grad()
-                    loss = loss_function(model(seq), target)
-                    loss.backward()
-                    optimizer.step()
-
-            model.eval()
-            with torch.no_grad():
-                predicted = (
-                    model(
-                        torch.tensor(
-                            weight_data[-actual_lookback:], dtype=torch.float32
-                        ).unsqueeze(0)
-                    )
-                    .squeeze()
-                    .numpy()
+        model.eval()
+        with torch.no_grad():
+            predicted = (
+                model(
+                    torch.tensor(
+                        weight_data[-actual_lookback:], dtype=torch.float32
+                    ).unsqueeze(0)
                 )
-                torch.save(model.state_dict(), weights_path)
-                return predicted
-
-        conn_pb = get_db_connection()
-        try:
-            cursor_pb = conn_pb.cursor()
-            cursor_pb.execute(
-                "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-                " BY block_height ASC"
+                .squeeze()
+                .numpy()
             )
-            historical_rows = cursor_pb.fetchall()
-        finally:
-            conn_pb.close()
+            torch.save(model.state_dict(), weights_path)
+            return predicted
 
-        min_blocks_required = 2
-        if len(historical_rows) < min_blocks_required:
-            st.warning(
-                f"Not enough blockchain data to train the meta-model. You need at least"
-                f" {min_blocks_required} blocks (Currently on ledger:"
-                f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-                " block 2."
-            )
+    conn_pb = get_db_connection()
+    try:
+        cursor_pb = conn_pb.cursor()
+        cursor_pb.execute(
+            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+            " BY block_height ASC"
+        )
+        historical_rows = cursor_pb.fetchall()
+    finally:
+        conn_pb.close()
+
+    min_blocks_required = 2
+    if len(historical_rows) < min_blocks_required:
+        st.warning(
+            f"Not enough blockchain data to train the meta-model. You need at least"
+            f" {min_blocks_required} blocks (Currently on ledger:"
+            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+            " block 2."
+        )
+    else:
+        current_block_count = len(historical_rows)
+        lookback_window = max(1, min(5, current_block_count - 1))
+
+        if (
+            "last_trained_blocks" not in st.session_state
+            or st.session_state.last_trained_blocks != current_block_count
+        ):
+            weight_data = np.array(historical_rows, dtype=np.float32)
+            actual_lookback = min(lookback_window, len(weight_data))
+
+            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+            st.session_state.current_weights = weight_data[-1]
+            st.session_state.last_trained_blocks = current_block_count
         else:
-            current_block_count = len(historical_rows)
-            lookback_window = max(1, min(5, current_block_count - 1))
-
-            if (
-                "last_trained_blocks" not in st.session_state
-                or st.session_state.last_trained_blocks != current_block_count
-            ):
-                weight_data = np.array(historical_rows, dtype=np.float32)
-                actual_lookback = min(lookback_window, len(weight_data))
-
-                st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
-                st.session_state.current_weights = weight_data[-1]
-                st.session_state.last_trained_blocks = current_block_count
-            else:
-                st.info(
-                    "Meta-model is cached and up-to-date with the latest blockchain"
-                    " ledger."
-                )
-
-            df_compare = pd.DataFrame(
-                {
-                    "Current Active Weights": st.session_state.current_weights,
-                    "Predicted Next Epoch": st.session_state.predicted_next_weights,
-                },
-                index=[
-                    "C1: Originality", "C2: Methodological Rigor",
-                    "C3: Interdisciplinary", "C4: Societal Impact",
-                    "C5: Open Science", "C6: Literature Integration",
-                    "C7: Empirical Density", "C8: Future Actionability",
-                ],
-            )
-            st.bar_chart(df_compare, height=380)
-            st.markdown(
-                f"**Mathematical Constraint Check:** Predicted Sum ="
-                f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
+            st.info(
+                "Meta-model is cached and up-to-date with the latest blockchain"
+                " ledger."
             )
 
-        st.markdown("---")
+        df_compare = pd.DataFrame(
+            {
+                "Current Active Weights": st.session_state.current_weights,
+                "Predicted Next Epoch": st.session_state.predicted_next_weights,
+            },
+            index=[
+                "C1: Originality", "C2: Methodological Rigor",
+                "C3: Interdisciplinary", "C4: Societal Impact",
+                "C5: Open Science", "C6: Literature Integration",
+                "C7: Empirical Density", "C8: Future Actionability",
+            ],
+        )
+        st.bar_chart(df_compare, height=380)
+        st.markdown(
+            f"**Mathematical Constraint Check:** Predicted Sum ="
+            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
+        )
+
+    with st.expander("Pidyne", expanded=False):
         st.markdown("""
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
@@ -1558,7 +1561,7 @@ try:
             except Exception as e:
                 st.error(f"Error reading database: {str(e)}")
 
-        st.markdown("#### Deployed Smart Contracts on Sepolia Etherscan")
+        st.markdown("**Deployed Smart Contracts on Sepolia Etherscan:**")
         col_ex1, col_ex2 = st.columns(2)
         with col_ex1:
             piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
