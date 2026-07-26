@@ -32,17 +32,6 @@ from brain import (
     PiBlockchainDataset
 )
 
-def tooltip(text):
-    svg_icon = (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16"'
-        ' height="16" fill="none" stroke="#9e9e9e" stroke-width="2"'
-        ' stroke-linecap="round" stroke-linejoin="round" style="vertical-align:'
-        ' -3px; margin-left: 6px; cursor: help;"><circle cx="12" cy="12"'
-        ' r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3'
-        ' 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
-    )
-    return f'<span title="{text}">{svg_icon}</span>'
-
 def safe_get_sepolia_url(tx):
     if not tx or not isinstance(tx, str) or not tx.startswith("0x") or len(tx) != 66:
         return None
@@ -157,15 +146,7 @@ if "orcid_id" not in st.session_state:
         st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown(
-        "### Authenticate "
-        + tooltip(
-            "Connect to your ORCID or DID to securely isolate your assessment"
-            " history. Pi Quotient (piQ) is a Soulbound Token assigned strictly"
-            " to this identity."
-        ),
-        unsafe_allow_html=True,
-    )
+    st.sidebar.markdown("### Authenticate")
     manual_orcid = st.sidebar.text_input(
         "Enter ORCID iD or W3C DID", placeholder="XXXX-XXXX-XXXX-XXXX"
     )
@@ -218,19 +199,15 @@ else:
 current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
-# --- Scilem Assistant in Sidebar (Proactive Autonomous Explanations, Scientific Icon, No Empty Box) ---
+# --- Scilem Assistant in Sidebar (Fixed layout, clean chat display without empty container box) ---
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    "### Scilem Assistant "
-    + tooltip("CoARA-aligned decentralized scientific assistant."),
-    unsafe_allow_html=True,
-)
+st.sidebar.markdown("### 🔬 Scilem Assistant")
 
 if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "👋 **Scilem Insight:** Welcome! I am monitoring your research pipeline. As you evaluate papers, explore the Global Map of Science, or review Pidyne forecasts, I will proactively provide CoARA-aligned scientific explanations here."
+            "content": "👋 **Scilem Insight:** Welcome! I am monitoring your research pipeline. Click any feature or ask me questions to get instant CoARA-aligned scientific explanations."
         }
     ]
 
@@ -244,13 +221,11 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
         "content": f"📊 **Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**. This updates our decentralized block weights and refines the Pidyne forecast curve."
     })
 
-chat_container = st.sidebar.container(height=340)
-with chat_container:
-    for idx, message in enumerate(st.session_state.scilm_messages):
-        with st.sidebar.chat_message(message["role"]):
-            st.sidebar.markdown(message["content"])
+for message in st.session_state.scilm_messages:
+    with st.sidebar.chat_message(message["role"]):
+        st.sidebar.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
+if prompt := st.sidebar.chat_input("Ask Scilem or click app features...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     rag_context = ""
@@ -280,8 +255,8 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
         pass
 
     scilm_sys_prompt = (
-        "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines. "
-        "Be analytical, evidence-driven, and precise.\n\n"
+        "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
+        "Explain app features (C1-C8 criteria, Pidyne forecast, Global Map of Science, PoR blockchain consensus, ZK identity) clearly and precisely.\n\n"
         f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
         f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
     )
@@ -319,6 +294,19 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
         full_response = f"Error connecting to Scilem engine: {str(e)}"
 
     st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+    st.rerun()
+
+# Quick-explain buttons for users to click any feature to get Scilem explanation automatically
+st.sidebar.markdown("---")
+st.sidebar.markdown("##### 💡 Instant Feature Explanations")
+col_ex1, col_ex2 = st.sidebar.columns(2)
+if col_ex1.button("Explain C1-C8", use_container_width=True):
+    st.session_state.scilm_messages.append({"role": "user", "content": "Explain the 8 evaluation criteria (C1-C8) and apri weights."})
+    st.session_state.scilm_messages.append({"role": "assistant", "content": "📋 **C1-C8 Evaluation Criteria & Apri Weights:**\n- **C1 (apri_1)**: Semantic Originality (penalizing AI laundering).\n- **C2 (apri_2)**: Methodological Rigor (SciScore & MDAR compliance).\n- **C3 (apri_3)**: Interdisciplinary Entropy.\n- **C4 (apri_4)**: Societal & Open Infrastructure Impact.\n- **C5 (apri_5)**: Executable Reproducibility (code/data/containers).\n- **C6 (apri_6)**: Literature Integration.\n- **C7 (apri_7)**: Empirical Density & Validation.\n- **C8 (apri_8)**: Future Actionability & FAIR principles."})
+    st.rerun()
+if col_ex2.button("Explain Pidyne", use_container_width=True):
+    st.session_state.scilm_messages.append({"role": "user", "content": "Explain Pidyne Forecast."})
+    st.session_state.scilm_messages.append({"role": "assistant", "content": "📈 **Pidyne Forecast:** An LSTM neural network trained directly on blockchain block weights to predict future shifts in algorithmic evaluation standards across epochs."})
     st.rerun()
 
 # --- Helper for Refining Subfields and Professional Science Fields ---
@@ -503,7 +491,7 @@ def render_bubble_chart_clean(target_author):
 
     return html_string, table_html
 
-# --- Dialog for Evaluation Metrics ---
+# --- Dialog for Evaluation Metrics (with green badge styling for apri_1 to apri_8) ---
 @st.dialog("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", width="large")
 def evaluation_metrics_dialog():
     conn_top_ep = get_db_connection()
@@ -546,13 +534,10 @@ def evaluation_metrics_dialog():
     else:
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
+    green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
+
     st.markdown(
-        r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
-        + tooltip(
-            "Evaluates reasoning structure and penalizes claims unsupported by"
-            " evidence or counterfactual stress failures."
-        ),
-        unsafe_allow_html=True,
+        r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures."
     )
     st.markdown(
         r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
@@ -561,73 +546,42 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    with st.expander(f"C1: Originality (apri_1 = {tw1:.6f}):"):
-        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
-        st.markdown(
-            r"$$ C_1 = apri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
-            r" \times (1 - \lambda_{laundering}) $$"
-        )
+    st.markdown(f"**C1: Originality** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
+    st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
+    st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
 
-    with st.expander(f"C2: Methodological Rigor (apri_2 = {tw2:.6f}):"):
-        st.markdown(
-            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
-        )
-        st.markdown(
-            r"$$ C_2 = apri_2 \cdot \mathcal{I}_{blinding} + apri_2 \cdot"
-            r" \mathcal{I}_{randomization} + apri_2 \cdot \mathcal{I}_{power\_calc}"
-            r" + apri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
-            r" \epsilon}\right) $$"
-        )
+    st.markdown(f"**C2: Methodological Rigor** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
+    st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
+    st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
 
-    with st.expander(f"C3: Interdisciplinary Synergy (apri_3 = {tw3:.6f}):"):
-        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
-        st.markdown(r"$$ C_3 = apri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    st.markdown(f"**C3: Interdisciplinary Synergy** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
+    st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
+    st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    with st.expander(f"C4: Societal & Open Infrastructure Impact (apri_4 = {tw4:.6f}):"):
-        st.markdown("Evaluates broader societal and open infrastructure contributions.")
-        st.markdown(
-            r"$$ C_4 = apri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
-            r" U_v(\tau, \mathbf{x}) \right] $$"
-        )
+    st.markdown(f"**C4: Societal & Open Infrastructure Impact** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
+    st.markdown("Evaluates broader societal and open infrastructure contributions.")
+    st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
 
-    with st.expander(f"C5: Open Science & Executable Reproducibility (apri_5 = {tw5:.6f}):"):
-        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
-        st.markdown(
-            r"$$ C_5 = apri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
-            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
-        )
+    st.markdown(f"**C5: Open Science & Executable Reproducibility** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
+    st.markdown("Evaluates open data, open code, and containerized reproducibility.")
+    st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
 
-    with st.expander(f"C6: Literature Integration (apri_6 = {tw6:.6f}):"):
-        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
-        st.markdown(
-            r"$$ C_6 = apri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
-            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
-        )
+    st.markdown(f"**C6: Literature Integration** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
+    st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
+    st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
 
-    with st.expander(f"C7: Empirical Density & Validation (apri_7 = {tw7:.6f}):"):
-        st.markdown("Assesses empirical sample strength and baseline variance.")
-        st.markdown(
-            r"$$ C_7 = apri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
-            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
-        )
+    st.markdown(f"**C7: Empirical Density & Validation** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
+    st.markdown("Assesses empirical sample strength and baseline variance.")
+    st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
 
-    with st.expander(f"C8: Future Actionability & FAIR (apri_8 = {tw8:.6f}):"):
-        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
-        st.markdown(
-            r"$$ C_8 = apri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
-            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
-        )
+    st.markdown(f"**C8: Future Actionability & FAIR** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
+    st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
+    st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
 
-# --- Top Header Layout with Evaluation Metrics Popup Button Right Next to Title ---
+# --- Top Header Layout ---
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
-    st.title(
-        "Pi-Index Assessment Engine",
-        help=(
-            "Automated peer-review framework powered by neural networks, SciScore"
-            " reproducibility metrics, and multidimensional blockchain consensus."
-        ),
-    )
+    st.title("Pi-Index Assessment Engine")
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
@@ -733,10 +687,6 @@ with st.container(border=True):
     stake_amount = st.checkbox(
         "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
         value=True,
-        help=(
-            "Staking mechanisms actively filter low-effort, adversarial, or spam"
-            " submissions."
-        ),
         key=f"stake_chk_{st.session_state['reset_token']}",
     )
 
@@ -1176,14 +1126,7 @@ if (
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
-    st.markdown(
-        "### Pidyne Forecast "
-        + tooltip(
-            "An LSTM neural network that trains directly on the block weights to"
-            " predict future shifts in algorithmic evaluation standards."
-        ),
-        unsafe_allow_html=True,
-    )
+    st.markdown("### Pidyne Forecast")
 
     @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
     def train_pibrain_cached(weight_data, actual_lookback):
@@ -1271,7 +1214,6 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
         
-        # Exaggerate minuscule decimal variations dynamically around the exact mean baseline
         mean_val = np.mean(curr_vals)
         exagg_curr = mean_val + (curr_vals - mean_val) * 25.0
         exagg_pred = mean_val + (pred_vals - mean_val) * 25.0
@@ -1390,11 +1332,7 @@ st.markdown("---")
 
 # ==================== CONDITIONAL DISPLAY: ORCID CONNECTED VS NOT CONNECTED ====================
 if st.session_state.is_authenticated:
-    st.markdown(
-        "### Your Assessment History & Rewards "
-        + tooltip("Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs."),
-        unsafe_allow_html=True,
-    )
+    st.markdown("### Your Assessment History & Rewards")
     
     conn_hist = get_db_connection()
     try:
@@ -1446,13 +1384,7 @@ if st.session_state.is_authenticated:
     else:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
 else:
-    st.markdown(
-        "### Latest Assessed Papers "
-        + tooltip(
-            "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
-        ),
-        unsafe_allow_html=True,
-    )
+    st.markdown("### Latest Assessed Papers")
 
     conn_last = get_db_connection()
     try:
@@ -1532,13 +1464,7 @@ else:
 
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
-st.markdown(
-    "### Proof-of-Research Blockchain Explorer "
-    + tooltip(
-        "Manages decentralized consensus, ledger weights, and smart contract audit proofs."
-    ),
-    unsafe_allow_html=True,
-)
+st.markdown("### Proof-of-Research Blockchain Explorer")
 
 conn = get_db_connection()
 try:
@@ -1793,4 +1719,3 @@ col_pad1, col_center, col_pad2 = st.columns([1, 4, 1])
 with col_center:
     if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
         framework_workflow_dialog()
-        
