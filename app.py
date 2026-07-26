@@ -109,6 +109,11 @@ def rbot(topic_key):
 # Custom JS/CSS for UI Modifications
 custom_ui_code = """
 <style>
+/* Hide Streamlit markdown header anchor link icons globally */
+h1 a, h2 a, h3 a, h4 a, h5 a, h6 a, [data-testid="stMarkdownContainer"] a[href^="#"] {
+    display: none !important;
+}
+
 [data-testid="stSidebar"] {
     overflow: hidden !important;
 }
@@ -129,6 +134,13 @@ custom_ui_code = """
     margin-right: 20px !important;
 }
 
+/* Larger chat avatars */
+[data-testid="stChatMessageAvatar"] {
+    font-size: 1.8em !important;
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+}
+
 .scilm-trigger {
     cursor: url('image_f69f5e.png'), pointer !important;
     font-size: 1.4em;
@@ -146,7 +158,7 @@ custom_ui_code = """
     color: white;
     padding: 12px;
     font-weight: bold;
-    font-size: 16px;
+    font-size: 1.1rem;
     cursor: grab;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
@@ -729,18 +741,18 @@ def evaluation_metrics_dialog():
     )
 
     criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = w_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = w_2 \cdot \mathcal{I}_{blinding} + w_2 \cdot \mathcal{I}_{randomization} + w_2 \cdot \mathcal{I}_{power\_calc} + w_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = w_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = w_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = w_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = w_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = w_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = w_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( `arpi_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} ( `w_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
@@ -1399,7 +1411,7 @@ with top_analytics_col1:
         st.markdown("""
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($w_1$ to $w_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
         """)
 
@@ -1509,12 +1521,12 @@ if st.session_state.is_authenticated:
         cur_h = conn_hist.cursor()
         cur_h.execute(
             """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
-               FROM papers_assessment p
-               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
-               ORDER BY p.timestamp DESC""",
+                     p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                     b.block_height, b.block_hash
+              FROM papers_assessment p
+              LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+              WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
+              ORDER BY p.timestamp DESC""",
             (st.session_state.orcid_id,)
         )
         user_history_rows = cur_h.fetchall()
@@ -1565,10 +1577,10 @@ else:
         cur_last = conn_last.cursor()
         cur_last.execute(
             """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
+                     p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                     p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                     p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                     b.block_height, b.block_hash
                    FROM papers_assessment p
                    LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                    ORDER BY p.timestamp DESC LIMIT 5"""
@@ -1679,10 +1691,10 @@ try:
                 q_term = f"%{search_query.strip()}%"
                 cursor.execute(
                     """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                              p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                              p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash
+                             p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                             p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                             p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                             b.block_height, b.block_hash, b.por_proof, b.formulas_hash
                        FROM papers_assessment p
                        LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                        WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ?
@@ -1774,8 +1786,8 @@ try:
         st.markdown("#### Recent Ledger Proofs & Transactions")
         cursor.execute(
             """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
+                     p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                     b.block_height, b.block_hash
                FROM papers_assessment p
                LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                ORDER BY p.timestamp DESC LIMIT 5"""
@@ -2025,4 +2037,4 @@ with scilem_container:
                 full_response = f"Error connecting to Scilem engine: {str(e)}"
 
             st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
-            st.rerun()
+           st.rerun()
