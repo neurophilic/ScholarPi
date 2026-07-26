@@ -989,7 +989,8 @@ with st.container(border=True):
                 st.session_state["cancel_requested"] = False
                 st.rerun()
 
-def render_breakdown_item(item, index):
+@st.dialog("Detailed Research Integrity Dossier", width="large")
+def more_details_dialog(item):
     title = item["title"]
     author_name = clean_author_name(item["author_name"])
     score = item["score"]
@@ -1008,18 +1009,9 @@ def render_breakdown_item(item, index):
     filename = item["filename"]
     author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
-    st.markdown("---")
-    col_hdr_title, col_hdr_close = st.columns([10, 1])
-    with col_hdr_title:
-        st.subheader(f"{title} by {author_name}")
-    with col_hdr_close:
-        if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
-            st.session_state["evaluated_papers_buffer"].pop(index)
-            st.rerun()
+    st.subheader(f"{title} by {author_name}")
 
-    with st.expander(
-        f"Ledger Data & Dossier Details ({filename})", expanded=False
-    ):
+    with st.expander(f"Ledger Data & Dossier Details ({filename})", expanded=True):
         st.write(f"**File Name:** `{filename}`")
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
         st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
@@ -1032,14 +1024,8 @@ def render_breakdown_item(item, index):
         else:
             st.write(f"**Tx Hash:** `{tx_hash}`")
 
-        st.write(
-            f"**Executable Reproducibility Score (C5/C7 audit):**"
-            f" `{repro_score * 100:.1f}%`"
-        )
-        st.write(
-            f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid"
-            f" RRIDs:** `{rrid_count}`"
-        )
+        st.write(f"**Executable Reproducibility Score (C5/C7 audit):** `{repro_score * 100:.1f}%`")
+        st.write(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`")
 
     scope_val = st.session_state.get("snap_scope", "")
     if scope_val.strip() and drift != "N/A" and rec != "N/A":
@@ -1125,10 +1111,10 @@ def render_breakdown_item(item, index):
             data=dossier_content,
             file_name=f"Dossier_{eval_hash[:10]}.md",
             mime="text/markdown",
-            key=f"download_dossier_{eval_hash}_{time.time()}",
+            key=f"download_dossier_modal_{eval_hash}_{time.time()}",
         )
     with col_btn2:
-        if st.button("Generate AI Defense Strategy", key=f"gen_defense_{eval_hash}_{time.time()}"):
+        if st.button("Generate AI Defense Strategy", key=f"gen_defense_modal_{eval_hash}_{time.time()}"):
             with st.spinner("Synthesizing adversarial defense strategy..."):
                 rebuttal = generate_rebuttal_strategy(scores_dict)
                 st.session_state[f"defense_{eval_hash}"] = rebuttal
@@ -1137,11 +1123,38 @@ def render_breakdown_item(item, index):
         st.markdown("#### AI Peer Review Defense Rebuttal Strategy")
         st.markdown(st.session_state[f"defense_{eval_hash}"])
 
+def render_breakdown_item(item, index):
+    title = item["title"]
+    author_name = clean_author_name(item["author_name"])
+    score = item["score"]
+    eval_hash = item["eval_hash"]
+    piq = item["piq"]
+    tx_hash = item["tx_hash"]
+    filename = item["filename"]
+
+    with st.container(border=True):
+        col_info, col_actions = st.columns([7, 2])
+        with col_info:
+            st.markdown(f"**{title}** — *{author_name}*")
+            tx_url = safe_get_sepolia_url(tx_hash)
+            tx_snippet = f"[`{tx_hash[:10]}...`]({tx_url})" if tx_url else f"`{tx_hash[:10]}...`"
+            st.caption(f"Score: **{score:.2f}** | piQ: `{piq}` | Tx: {tx_snippet} | File: `{filename}`")
+        with col_actions:
+            c_det, c_del = st.columns([3, 1])
+            with c_det:
+                if st.button("More Details", key=f"more_det_{index}_{eval_hash}", use_container_width=True):
+                    more_details_dialog(item)
+            with c_del:
+                if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
+                    st.session_state["evaluated_papers_buffer"].pop(index)
+                    st.rerun()
+
 if (
     st.session_state["evaluated_papers_buffer"]
     or st.session_state.get("download_errors")
 ):
     st.markdown("### Active Session Assessment Results")
+    st.markdown("")
 
     if st.session_state.get("download_errors"):
         st.markdown("#### Publisher Access & Download Restrictions")
@@ -1278,7 +1291,7 @@ with top_analytics_col1:
             f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
         )
 
-    with st.expander("Pidyne", expanded=False):
+    with st.expander("What's Pidyne?", expanded=False):
         st.markdown("""
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
@@ -1561,18 +1574,6 @@ try:
             except Exception as e:
                 st.error(f"Error reading database: {str(e)}")
 
-        st.markdown("**Deployed Smart Contracts on Sepolia Etherscan:**")
-        col_ex1, col_ex2 = st.columns(2)
-        with col_ex1:
-            piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-            st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
-        with col_ex2:
-            reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-            if REGISTRY_CONTRACT_ADDRESS:
-                st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
-            else:
-                st.markdown("**Registry Contract:** `Not Configured`")
-
         st.info(
             f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
             f" sealed to block `{block_hash}`."
@@ -1582,7 +1583,11 @@ try:
             " grading mathematical constants cannot be tampered with)."
         )
 
-        st.markdown("#### Recent Ledger Proofs Summary & Transaction Ledger")
+        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+
+        st.markdown("#### Recent Ledger Proofs & Transactions")
         cursor.execute(
             """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
                       p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
