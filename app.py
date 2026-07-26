@@ -543,7 +543,7 @@ def render_bubble_chart_clean(target_author):
 
     return html_string, table_html
 
-# --- Top Layout with Global Map of Science Permanent Display ---
+# --- Top Layout with Global Map of Science Permanent Display & Embedded Evaluation Metrics ---
 header_col1, header_col2 = st.columns([1.1, 0.9])
 
 with header_col1:
@@ -560,85 +560,7 @@ with header_col1:
         " Assessment (RRA).**"
     )
 
-with header_col2:
-    st.markdown("#### 🌐 Global Map of Science (Live Cartography)")
-    conn_m = get_db_connection()
-    try:
-        cursor_m = conn_m.cursor()
-        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
-        all_global_authors = []
-        for row in cursor_m.fetchall():
-            if row[0]:
-                cleaned = clean_author_name(row[0])
-                for a in cleaned.split(","):
-                    if a.strip() and not is_likely_institution(a.strip()):
-                        all_global_authors.append(a.strip())
-    finally:
-        conn_m.close()
-    all_global_authors = sorted(list(set(all_global_authors)))
-
-    selected_author_top = None
-    piq_dict, book_dict = get_author_piq_dict()
-
-    if all_global_authors:
-        filter_choice_top = st.selectbox(
-            "Filter Map by Author:",
-            ["All Authors"] + all_global_authors,
-            key=f"top_author_filter_{st.session_state['assessment_update_token']}",
-            format_func=lambda x: (
-                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
-            ),
-        )
-        if filter_choice_top != "All Authors":
-            selected_author_top = filter_choice_top
-
-    interactive_html_top, table_html_top = render_bubble_chart_clean(selected_author_top)
-    if interactive_html_top:
-        components.html(interactive_html_top, height=430, scrolling=True)
-    else:
-        st.info("Awaiting sufficient data for map visualization.")
-
-    with st.expander("🔍 View Map Legend, Frequency Metrics & Leaderboard"):
-        st.markdown(table_html_top, unsafe_allow_html=True)
-        st.markdown("---")
-        st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
-        search_query_top = st.text_input(
-            "Search Explorer by Author or Book Address:",
-            placeholder="Enter author name or 0x...",
-            key="top_search_query_input"
-        )
-        if piq_dict:
-            leaderboard_data = []
-            for author, piq in piq_dict.items():
-                leaderboard_data.append({
-                    "Contributing Author": author,
-                    "Unique Author Book Address": book_dict.get(author, "None"),
-                    "Total piQ Earned": round(piq, 2),
-                })
-            piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
-            if search_query_top:
-                q_clean = search_query_top.strip().lower()
-                filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
-                st.dataframe(filtered_df, use_container_width=True, height=180)
-            else:
-                st.dataframe(piq_df, use_container_width=True, height=180)
-        else:
-            st.info("No piQ tokens minted yet.")
-
-st.markdown("---")
-
-# --- Restored Full-Width Grading Criteria & Formulations Expander ---
-with st.expander(
-    "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)",
-    expanded=False,
-):
-    st.subheader(
-        "Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine"
-    )
-    st.markdown("---")
-
-    col1, col2 = st.columns(2)
-    with col1:
+    with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
         st.markdown(
             r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
             + tooltip(
@@ -704,7 +626,7 @@ with st.expander(
             r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
             r" U_v(\tau, \mathbf{x}) \right] $$"
         )
-    with col2:
+
         st.markdown(
             "**C5: Open Science & Executable Reproducibility** "
             + tooltip(
@@ -756,6 +678,71 @@ with st.expander(
             r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
             r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
         )
+
+with header_col2:
+    st.markdown("#### 🌐 Global Map of Science (Live Cartography)")
+    conn_m = get_db_connection()
+    try:
+        cursor_m = conn_m.cursor()
+        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
+        all_global_authors = []
+        for row in cursor_m.fetchall():
+            if row[0]:
+                cleaned = clean_author_name(row[0])
+                for a in cleaned.split(","):
+                    if a.strip() and not is_likely_institution(a.strip()):
+                        all_global_authors.append(a.strip())
+    finally:
+        conn_m.close()
+    all_global_authors = sorted(list(set(all_global_authors)))
+
+    selected_author_top = None
+    piq_dict, book_dict = get_author_piq_dict()
+
+    if all_global_authors:
+        filter_choice_top = st.selectbox(
+            "Filter Map by Author:",
+            ["All Authors"] + all_global_authors,
+            key=f"top_author_filter_{st.session_state['assessment_update_token']}",
+            format_func=lambda x: (
+                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
+            ),
+        )
+        if filter_choice_top != "All Authors":
+            selected_author_top = filter_choice_top
+
+    interactive_html_top, table_html_top = render_bubble_chart_clean(selected_author_top)
+    if interactive_html_top:
+        components.html(interactive_html_top, height=430, scrolling=True)
+    else:
+        st.info("Awaiting sufficient data for map visualization.")
+
+    with st.expander("🔍 View Map Legend, Frequency Metrics & Leaderboard"):
+        st.markdown(table_html_top, unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
+        search_query_top = st.text_input(
+            "Search Explorer by Author or Book Address:",
+            placeholder="Enter author name or 0x...",
+            key="top_search_query_input"
+        )
+        if piq_dict:
+            leaderboard_data = []
+            for author, piq in piq_dict.items():
+                leaderboard_data.append({
+                    "Contributing Author": author,
+                    "Unique Author Book Address": book_dict.get(author, "None"),
+                    "Total piQ Earned": round(piq, 2),
+                })
+            piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
+            if search_query_top:
+                q_clean = search_query_top.strip().lower()
+                filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
+                st.dataframe(filtered_df, use_container_width=True, height=180)
+            else:
+                st.dataframe(piq_df, use_container_width=True, height=180)
+        else:
+            st.info("No piQ tokens minted yet.")
 
 st.markdown("---")
 
@@ -1341,9 +1328,9 @@ try:
                   p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
                   p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
                   b.block_height, b.block_hash
-           FROM papers_assessment p
-           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-           ORDER BY p.timestamp DESC LIMIT 5"""
+               FROM papers_assessment p
+               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+               ORDER BY p.timestamp DESC LIMIT 5"""
     )
     recent_papers = cur_last.fetchall()
 finally:
