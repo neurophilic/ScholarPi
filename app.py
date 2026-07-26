@@ -759,253 +759,248 @@ with st.expander(
 
 st.markdown("---")
 
-tab1, tab2 = st.tabs([
-    "Assessment and Dossier",
-    "Pinamic"
-])
+# ==================== ASSESSMENT & DOSSIER SECTION ====================
+st.markdown(
+    "### Unified Multi-Source Intake & Custom Topic Search"
+    + tooltip(
+        "Define your scope, upload local files, or query OpenAlex"
+        " to maximize evaluation precision."
+    ),
+    unsafe_allow_html=True,
+)
 
-with tab1:
-    st.markdown(
-        "### Unified Multi-Source Intake & Custom Topic Search"
-        + tooltip(
-            "Define your scope, upload local files, or query OpenAlex"
-            " to maximize evaluation precision."
-        ),
-        unsafe_allow_html=True,
-    )
-
-    selected_uploaded_files = []
-    uploaded_files = st.file_uploader(
-        "1. Upload Local PDF(s)",
-        type=["pdf"],
-        accept_multiple_files=True,
-        key=f"file_uploader_{st.session_state['reset_token']}",
-    )
-    if uploaded_files:
-        st.markdown("**Tick local files to include:**")
-        for i, file in enumerate(uploaded_files):
-            if st.checkbox(
-                f"Local File: {file.name}",
-                value=True,
-                key=f"up_chk_{i}_{st.session_state['reset_token']}",
-            ):
-                selected_uploaded_files.append(file)
-
-    st.markdown("")
-    research_scope = ""
-    doi_input = ""
-    include_doi = False
-
-    with st.expander(
-        "More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)",
-        expanded=False,
-    ):
-        research_scope = st.text_input(
-            "Define your specific Research Topic / Scope (Optional)",
-            placeholder="e.g., Application of deep learning in vascular imaging...",
-            key=f"research_scope_input_{st.session_state['reset_token']}",
-        )
-
-        st.markdown("---")
-        doi_input = st.text_input(
-            "2. Import via Unpaywall (DOI)",
-            placeholder="10.1038/s41586-020-2649-2",
-            key=f"doi_input_{st.session_state['reset_token']}",
-        )
-        if doi_input.strip():
-            include_doi = st.checkbox(
-                "Include this DOI in assessment",
-                value=True,
-                key=f"doi_chk_{st.session_state['reset_token']}",
-            )
-
-        st.markdown("")
-        st.markdown("**3. OpenAlex Topic Search**")
-        alex_topic_input = st.text_input(
-            "Custom OpenAlex Topic Search",
-            placeholder="e.g., structural integrity, neural networks, oncology",
-            key=f"alex_topic_{st.session_state['reset_token']}",
-        )
-        search_alex_btn = st.button("Search OpenAlex Papers")
-
-    if "alex_visible_count" not in st.session_state:
-        st.session_state.alex_visible_count = 10
-
-    if "search_alex_btn" in locals() and search_alex_btn:
-        st.session_state.alex_visible_count = 10
-        with st.spinner("Querying OpenAlex..."):
-            alex_results = []
-            if alex_topic_input.strip():
-                custom_res = search_openalex_topics(alex_topic_input.strip(), limit=50)
-                alex_results.extend(custom_res)
-
-            if alex_results:
-                st.session_state["alex_search_results"] = alex_results
-                st.success(
-                    f"Successfully harvested {len(alex_results)} papers from OpenAlex."
-                )
-            else:
-                st.warning("No Open Access papers found matching criteria.")
-
-    selected_alex_papers = []
-    if (
-        "alex_search_results" in st.session_state
-        and st.session_state["alex_search_results"]
-    ):
-        st.markdown("---")
-
-        col_res_header, col_close_btn = st.columns([5, 1])
-        with col_res_header:
-            st.markdown("#### OpenAlex Harvested Results")
-        with col_close_btn:
-            if st.button(
-                "Close", key=f"close_alex_{st.session_state['reset_token']}"
-            ):
-                del st.session_state["alex_search_results"]
-                st.rerun()
-
-        def toggle_all_alex():
-            is_all = st.session_state.get(
-                f"select_all_alex_{st.session_state['reset_token']}", False
-            )
-            for i in range(st.session_state.alex_visible_count):
-                st.session_state[f"alex_chk_{i}_{st.session_state['reset_token']}"] = (
-                    is_all
-                )
-
-        select_all_alex = st.checkbox(
-            "Select All Visible OpenAlex Results",
-            key=f"select_all_alex_{st.session_state['reset_token']}",
-            on_change=toggle_all_alex,
-        )
-
-        visible_results = st.session_state["alex_search_results"][
-            : st.session_state.alex_visible_count
-        ]
-        for idx, p in enumerate(visible_results):
-            is_selected = st.checkbox(
-                f"OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*",
-                key=f"alex_chk_{idx}_{st.session_state['reset_token']}",
-            )
-            if is_selected:
-                selected_alex_papers.append(p)
-
-        if st.session_state.alex_visible_count < len(
-            st.session_state["alex_search_results"]
+selected_uploaded_files = []
+uploaded_files = st.file_uploader(
+    "1. Upload Local PDF(s)",
+    type=["pdf"],
+    accept_multiple_files=True,
+    key=f"file_uploader_{st.session_state['reset_token']}",
+)
+if uploaded_files:
+    st.markdown("**Tick local files to include:**")
+    for i, file in enumerate(uploaded_files):
+        if st.checkbox(
+            f"Local File: {file.name}",
+            value=True,
+            key=f"up_chk_{i}_{st.session_state['reset_token']}",
         ):
-            if st.button("Show More OpenAlex Results"):
-                st.session_state.alex_visible_count += 10
-                st.rerun()
+            selected_uploaded_files.append(file)
+
+st.markdown("")
+research_scope = ""
+doi_input = ""
+include_doi = False
+
+with st.expander(
+    "More Options: Research Scope & Advanced Ingestion (DOI / OpenAlex)",
+    expanded=False,
+):
+    research_scope = st.text_input(
+        "Define your specific Research Topic / Scope (Optional)",
+        placeholder="e.g., Application of deep learning in vascular imaging...",
+        key=f"research_scope_input_{st.session_state['reset_token']}",
+    )
 
     st.markdown("---")
-    stake_amount = st.checkbox(
-        "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
-        value=True,
-        help=(
-            "Staking mechanisms actively filter low-effort, adversarial, or spam"
-            " submissions."
-        ),
-        key=f"stake_chk_{st.session_state['reset_token']}",
+    doi_input = st.text_input(
+        "2. Import via Unpaywall (DOI)",
+        placeholder="10.1038/s41586-020-2649-2",
+        key=f"doi_input_{st.session_state['reset_token']}",
+    )
+    if doi_input.strip():
+        include_doi = st.checkbox(
+            "Include this DOI in assessment",
+            value=True,
+            key=f"doi_chk_{st.session_state['reset_token']}",
+        )
+
+    st.markdown("")
+    st.markdown("**3. OpenAlex Topic Search**")
+    alex_topic_input = st.text_input(
+        "Custom OpenAlex Topic Search",
+        placeholder="e.g., structural integrity, neural networks, oncology",
+        key=f"alex_topic_{st.session_state['reset_token']}",
+    )
+    search_alex_btn = st.button("Search OpenAlex Papers")
+
+if "alex_visible_count" not in st.session_state:
+    st.session_state.alex_visible_count = 10
+
+if "search_alex_btn" in locals() and search_alex_btn:
+    st.session_state.alex_visible_count = 10
+    with st.spinner("Querying OpenAlex..."):
+        alex_results = []
+        if alex_topic_input.strip():
+            custom_res = search_openalex_topics(alex_topic_input.strip(), limit=50)
+            alex_results.extend(custom_res)
+
+        if alex_results:
+            st.session_state["alex_search_results"] = alex_results
+            st.success(
+                f"Successfully harvested {len(alex_results)} papers from OpenAlex."
+            )
+        else:
+            st.warning("No Open Access papers found matching criteria.")
+
+selected_alex_papers = []
+if (
+    "alex_search_results" in st.session_state
+    and st.session_state["alex_search_results"]
+):
+    st.markdown("---")
+
+    col_res_header, col_close_btn = st.columns([5, 1])
+    with col_res_header:
+        st.markdown("#### OpenAlex Harvested Results")
+    with col_close_btn:
+        if st.button(
+            "Close", key=f"close_alex_{st.session_state['reset_token']}"
+        ):
+            del st.session_state["alex_search_results"]
+            st.rerun()
+
+    def toggle_all_alex():
+        is_all = st.session_state.get(
+            f"select_all_alex_{st.session_state['reset_token']}", False
+        )
+        for i in range(st.session_state.alex_visible_count):
+            st.session_state[f"alex_chk_{i}_{st.session_state['reset_token']}"] = (
+                is_all
+            )
+
+    select_all_alex = st.checkbox(
+        "Select All Visible OpenAlex Results",
+        key=f"select_all_alex_{st.session_state['reset_token']}",
+        on_change=toggle_all_alex,
     )
 
-    def render_breakdown_item(item):
-        title = item["title"]
-        author_name = clean_author_name(item["author_name"])
-        score = item["score"]
-        logic_integrity = item["logic_integrity"]
-        scores_dict = item["scores_dict"]
-        used_weights = item["used_weights"]
-        eval_hash = item["eval_hash"]
-        piq = item["piq"]
-        tx_hash = item["tx_hash"]
-        zk_proof = item["zk_proof"]
-        drift = item["drift"]
-        rec = item["rec"]
-        mdar_score = item["h_idx"]
-        rrid_count = item["i10_idx"]
-        repro_score = item["repro_score"]
-        filename = item["filename"]
-        author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
-
-        st.markdown("---")
-        st.subheader(f"{title} by {author_name}")
-
-        with st.expander(
-            f"Ledger Data & Dossier Details ({filename})", expanded=False
-        ):
-            st.write(f"**File Name:** `{filename}`")
-            st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
-            st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
-            st.write(f"**piQ Minted:** `{piq}`")
-            st.write(f"**zk-SNARK:** `{zk_proof}`")
-            
-            tx_url = get_sepolia_explorer_url(tx_hash, "tx")
-            if tx_url:
-                st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
-            else:
-                st.write(f"**Tx Hash:** `{tx_hash}`")
-
-            st.write(
-                f"**Executable Reproducibility Score (C5/C7 audit):**"
-                f" `{repro_score * 100:.1f}%`"
-            )
-            st.write(
-                f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid"
-                f" RRIDs:** `{rrid_count}`"
-            )
-
-        scope_val = st.session_state.get("snap_scope", "")
-        if scope_val.strip() and drift != "N/A" and rec != "N/A":
-            st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
-            st.markdown(f"**Recommendation Tier:** `{rec}`")
-
-        breakdown_df = pd.DataFrame({
-            "Criterion": [
-                "C1: Semantic Originality",
-                "C2: Methodological Rigor (SciScore)",
-                "C3: Interdisciplinary Entropy",
-                "C4: Societal Impact",
-                "C5: Open Science & Repro",
-                "C6: Literature Integration",
-                "C7: Empirical Density",
-                "C8: Future Actionability & FAIR",
-            ],
-            "Score Extracted (0-100)": [
-                scores_dict.get("C1_Originality", 0),
-                scores_dict.get("C2_Methodological_Rigor", 0),
-                scores_dict.get("C3_Interdisciplinary", 0),
-                scores_dict.get("C4_Societal_Impact", 0),
-                scores_dict.get("C5_Open_Science_Potential", 0),
-                scores_dict.get("C6_Literature_Integration", 0),
-                scores_dict.get("C7_Empirical_Density", 0),
-                scores_dict.get("C8_Future_Actionability", 0),
-            ],
-            "Epoch Weight": used_weights,
-            "Weighted Value": [
-                scores_dict.get(k, 0) * used_weights[i]
-                for i, k in enumerate([
-                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                    "C7_Empirical_Density", "C8_Future_Actionability",
-                ])
-            ],
-        })
-        st.dataframe(breakdown_df, hide_index=True)
-        raw_base = sum(breakdown_df["Weighted Value"]) / 8.0
-        logic_multiplier = 0.7 + (logic_integrity / 333.3)
-        st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
-        st.markdown(
-            f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from"
-            f" {logic_integrity:.1f}% raw logic score)"
+    visible_results = st.session_state["alex_search_results"][
+        : st.session_state.alex_visible_count
+    ]
+    for idx, p in enumerate(visible_results):
+        is_selected = st.checkbox(
+            f"OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*",
+            key=f"alex_chk_{idx}_{st.session_state['reset_token']}",
         )
-        st.markdown(
-            f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}`"
-            f" &nbsp;|&nbsp; **MDAR Adherence:** `{mdar_score * 100:.1f}%`"
-            f" &nbsp;|&nbsp; **Valid RRIDs:** `{rrid_count}` &nbsp;|&nbsp; **File:**"
-            f" `{filename}`"
+        if is_selected:
+            selected_alex_papers.append(p)
+
+    if st.session_state.alex_visible_count < len(
+        st.session_state["alex_search_results"]
+    ):
+        if st.button("Show More OpenAlex Results"):
+            st.session_state.alex_visible_count += 10
+            st.rerun()
+
+st.markdown("---")
+stake_amount = st.checkbox(
+    "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
+    value=True,
+    help=(
+        "Staking mechanisms actively filter low-effort, adversarial, or spam"
+        " submissions."
+    ),
+    key=f"stake_chk_{st.session_state['reset_token']}",
+)
+
+def render_breakdown_item(item):
+    title = item["title"]
+    author_name = clean_author_name(item["author_name"])
+    score = item["score"]
+    logic_integrity = item["logic_integrity"]
+    scores_dict = item["scores_dict"]
+    used_weights = item["used_weights"]
+    eval_hash = item["eval_hash"]
+    piq = item["piq"]
+    tx_hash = item["tx_hash"]
+    zk_proof = item["zk_proof"]
+    drift = item["drift"]
+    rec = item["rec"]
+    mdar_score = item["h_idx"]
+    rrid_count = item["i10_idx"]
+    repro_score = item["repro_score"]
+    filename = item["filename"]
+    author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
+
+    st.markdown("---")
+    st.subheader(f"{title} by {author_name}")
+
+    with st.expander(
+        f"Ledger Data & Dossier Details ({filename})", expanded=False
+    ):
+        st.write(f"**File Name:** `{filename}`")
+        st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
+        st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
+        st.write(f"**piQ Minted:** `{piq}`")
+        st.write(f"**zk-SNARK:** `{zk_proof}`")
+        
+        tx_url = get_sepolia_explorer_url(tx_hash, "tx")
+        if tx_url:
+            st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
+        else:
+            st.write(f"**Tx Hash:** `{tx_hash}`")
+
+        st.write(
+            f"**Executable Reproducibility Score (C5/C7 audit):**"
+            f" `{repro_score * 100:.1f}%`"
+        )
+        st.write(
+            f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid"
+            f" RRIDs:** `{rrid_count}`"
         )
 
-        dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (CoARA & DORA-Aligned)
+    scope_val = st.session_state.get("snap_scope", "")
+    if scope_val.strip() and drift != "N/A" and rec != "N/A":
+        st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
+        st.markdown(f"**Recommendation Tier:** `{rec}`")
+
+    breakdown_df = pd.DataFrame({
+        "Criterion": [
+            "C1: Semantic Originality",
+            "C2: Methodological Rigor (SciScore)",
+            "C3: Interdisciplinary Entropy",
+            "C4: Societal Impact",
+            "C5: Open Science & Repro",
+            "C6: Literature Integration",
+            "C7: Empirical Density",
+            "C8: Future Actionability & FAIR",
+        ],
+        "Score Extracted (0-100)": [
+            scores_dict.get("C1_Originality", 0),
+            scores_dict.get("C2_Methodological_Rigor", 0),
+            scores_dict.get("C3_Interdisciplinary", 0),
+            scores_dict.get("C4_Societal_Impact", 0),
+            scores_dict.get("C5_Open_Science_Potential", 0),
+            scores_dict.get("C6_Literature_Integration", 0),
+            scores_dict.get("C7_Empirical_Density", 0),
+            scores_dict.get("C8_Future_Actionability", 0),
+        ],
+        "Epoch Weight": used_weights,
+        "Weighted Value": [
+            scores_dict.get(k, 0) * used_weights[i]
+            for i, k in enumerate([
+                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
+                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
+                "C7_Empirical_Density", "C8_Future_Actionability",
+            ])
+        ],
+    })
+    st.dataframe(breakdown_df, hide_index=True)
+    raw_base = sum(breakdown_df["Weighted Value"]) / 8.0
+    logic_multiplier = 0.7 + (logic_integrity / 333.3)
+    st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
+    st.markdown(
+        f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from"
+        f" {logic_integrity:.1f}% raw logic score)"
+    )
+    st.markdown(
+        f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}`"
+        f" &nbsp;|&nbsp; **MDAR Adherence:** `{mdar_score * 100:.1f}%`"
+        f" &nbsp;|&nbsp; **Valid RRIDs:** `{rrid_count}` &nbsp;|&nbsp; **File:**"
+        f" `{filename}`"
+    )
+
+    dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (CoARA & DORA-Aligned)
 **Title:** {title}
 **Author:** {author_name}
 **File Name:** {filename}
@@ -1031,126 +1026,66 @@ with tab1:
 - zk-SNARK: {zk_proof}
 - Tx Hash: {tx_hash}
 """
-        st.download_button(
-            label=f"Download CoARA-Aligned Research Integrity Dossier ({filename})",
-            data=dossier_content,
-            file_name=f"Dossier_{eval_hash[:10]}.md",
-            mime="text/markdown",
-            key=f"download_dossier_{eval_hash}_{time.time()}",
-        )
+    st.download_button(
+        label=f"Download CoARA-Aligned Research Integrity Dossier ({filename})",
+        data=dossier_content,
+        file_name=f"Dossier_{eval_hash[:10]}.md",
+        mime="text/markdown",
+        key=f"download_dossier_{eval_hash}_{time.time()}",
+    )
 
-    if st.session_state["is_running"]:
-        col_run, col_stop = st.columns([4, 1])
-        with col_run:
-            st.button("Working...", type="primary", use_container_width=True, disabled=True)
-        with col_stop:
-            if st.button("Stop", type="secondary", use_container_width=True):
-                st.session_state["is_running"] = False
-                st.session_state["cancel_requested"] = True
-                st.info("Pipeline operation cancelled by user.")
-                st.rerun()
+if st.session_state["is_running"]:
+    col_run, col_stop = st.columns([4, 1])
+    with col_run:
+        st.button("Working...", type="primary", use_container_width=True, disabled=True)
+    with col_stop:
+        if st.button("Stop", type="secondary", use_container_width=True):
+            st.session_state["is_running"] = False
+            st.session_state["cancel_requested"] = True
+            st.info("Pipeline operation cancelled by user.")
+            st.rerun()
 
-        progress_bar, status_text = st.progress(0), st.empty()
-        scope_val = st.session_state.get("snap_scope", "")
-        snap_files = st.session_state.get("snap_files", [])
-        snap_alex = st.session_state.get("snap_alex", [])
-        include_doi_snap = st.session_state.get("snap_include_doi", False)
-        doi_snap = st.session_state.get("snap_doi", "")
+    progress_bar, status_text = st.progress(0), st.empty()
+    scope_val = st.session_state.get("snap_scope", "")
+    snap_files = st.session_state.get("snap_files", [])
+    snap_alex = st.session_state.get("snap_alex", [])
+    include_doi_snap = st.session_state.get("snap_include_doi", False)
+    doi_snap = st.session_state.get("snap_doi", "")
 
-        try:
-            if snap_alex and not st.session_state["cancel_requested"]:
-                for p in snap_alex:
-                    if st.session_state["cancel_requested"]:
-                        break
-                    status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
-                    pdf_bytes = None
-                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
-                    p_doi = p.get("doi", "None")
-
-                    if p.get("pdf_url"):
-                        pdf_bytes = download_pdf_from_url(p["pdf_url"])
-                    if not pdf_bytes and (p.get("title") or p.get("doi")):
-                        s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
-                        if s2_url:
-                            pdf_bytes = download_pdf_from_url(s2_url)
-                    if not pdf_bytes and p.get("doi"):
-                        metadata = fetch_doi_metadata(p["doi"])
-                        if metadata and metadata.get("pdf_url"):
-                            pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-
-                    if not pdf_bytes and p_doi:
-                        status_text.text("Direct download restricted. Querying CORE API fallback...")
-                        core_text = fetch_core_text_by_doi(p_doi)
-                        if core_text:
-                            pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
-
-                    if pdf_bytes:
-                        (
-                            title, author_name, score, logic_integrity, drift, rec,
-                            fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
-                        ) = process_single_pdf(
-                            pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
-                        )
-                        eval_record = {
-                            "title": title, "author_name": clean_author_name(author_name),
-                            "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                            "rec": rec, "fields": fields, "subfields": subfields,
-                            "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                            "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                            "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname,
-                        }
-                        st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                    else:
-                        clean_doi = (
-                            p_doi.replace("https://doi.org/", "").strip()
-                            if p_doi
-                            else "None"
-                        )
-                        doi_url = (
-                            f"https://doi.org/{clean_doi}"
-                            if clean_doi and clean_doi != "None"
-                            else (p.get("pdf_url") or "N/A")
-                        )
-                        err_item = {
-                            "title": p.get("title", "Unknown Title"),
-                            "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
-                            "url": doi_url,
-                        }
-                        if err_item not in st.session_state["download_errors"]:
-                            st.session_state["download_errors"].append(err_item)
-
-            if (
-                include_doi_snap
-                and doi_snap.strip()
-                and not st.session_state["cancel_requested"]
-            ):
-                status_text.text(f"Resolving DOI: {doi_snap}...")
-                metadata = fetch_doi_metadata(doi_snap)
-                fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
+    try:
+        if snap_alex and not st.session_state["cancel_requested"]:
+            for p in snap_alex:
+                if st.session_state["cancel_requested"]:
+                    break
+                status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
                 pdf_bytes = None
-                if metadata and metadata.get("pdf_url"):
-                    pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-                if not pdf_bytes:
-                    s2_url = fetch_semantic_scholar_pdf(doi_snap)
+                fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                p_doi = p.get("doi", "None")
+
+                if p.get("pdf_url"):
+                    pdf_bytes = download_pdf_from_url(p["pdf_url"])
+                if not pdf_bytes and (p.get("title") or p.get("doi")):
+                    s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
                     if s2_url:
                         pdf_bytes = download_pdf_from_url(s2_url)
-                
-                if not pdf_bytes:
-                    core_text = fetch_core_text_by_doi(doi_snap)
+                if not pdf_bytes and p.get("doi"):
+                    metadata = fetch_doi_metadata(p["doi"])
+                    if metadata and metadata.get("pdf_url"):
+                        pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+
+                if not pdf_bytes and p_doi:
+                    status_text.text("Direct download restricted. Querying CORE API fallback...")
+                    core_text = fetch_core_text_by_doi(p_doi)
                     if core_text:
-                        pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
+                        pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
 
                 if pdf_bytes:
-                    status_text.text("Assessing document from resolved source...")
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
                     ) = process_single_pdf(
-                        pdf_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
+                        pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                     )
                     eval_record = {
                         "title": title, "author_name": clean_author_name(author_name),
@@ -1164,537 +1099,600 @@ with tab1:
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
                 else:
-                    clean_doi = doi_snap.replace("https://doi.org/", "").strip()
-                    doi_url = f"https://doi.org/{clean_doi}"
+                    clean_doi = (
+                        p_doi.replace("https://doi.org/", "").strip()
+                        if p_doi
+                        else "None"
+                    )
+                    doi_url = (
+                        f"https://doi.org/{clean_doi}"
+                        if clean_doi and clean_doi != "None"
+                        else (p.get("pdf_url") or "N/A")
+                    )
                     err_item = {
-                        "title": f"DOI Input: {clean_doi}",
-                        "doi": clean_doi,
+                        "title": p.get("title", "Unknown Title"),
+                        "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
                         "url": doi_url,
                     }
                     if err_item not in st.session_state["download_errors"]:
                         st.session_state["download_errors"].append(err_item)
 
-            if snap_files and not st.session_state["cancel_requested"]:
-                total_files = len(snap_files)
-                for i, (fname, file_bytes) in enumerate(snap_files):
-                    if st.session_state["cancel_requested"]:
-                        break
-                    status_text.text(
-                        f"Analyzing uploaded file {i+1} of {total_files}: {fname}..."
-                    )
-                    (
-                        title, author_name, score, logic_integrity, drift, rec,
-                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
-                    ) = process_single_pdf(
-                        file_bytes, fname, scope_val, current_user, "None", current_email, "None",
-                    )
-                    eval_record = {
-                        "title": title, "author_name": clean_author_name(author_name),
-                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                        "rec": rec, "fields": fields, "subfields": subfields,
-                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname,
-                    }
-                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                    progress_bar.progress((i + 1) / total_files)
+        if (
+            include_doi_snap
+            and doi_snap.strip()
+            and not st.session_state["cancel_requested"]
+        ):
+            status_text.text(f"Resolving DOI: {doi_snap}...")
+            metadata = fetch_doi_metadata(doi_snap)
+            fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
+            pdf_bytes = None
+            if metadata and metadata.get("pdf_url"):
+                pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+            if not pdf_bytes:
+                s2_url = fetch_semantic_scholar_pdf(doi_snap)
+                if s2_url:
+                    pdf_bytes = download_pdf_from_url(s2_url)
+            
+            if not pdf_bytes:
+                core_text = fetch_core_text_by_doi(doi_snap)
+                if core_text:
+                    pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
 
-            if st.session_state["cancel_requested"]:
-                st.warning("Pipeline operation was stopped.")
-            else:
-                status_text.success("Pipeline processing complete.")
-                time.sleep(1)
-        finally:
-            st.session_state["is_running"] = False
-            st.session_state["cancel_requested"] = False
-            st.session_state["reset_token"] += 1
-            st.session_state["assessment_update_token"] = time.time()
-
-    else:
-        if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
-            if not stake_amount:
-                st.error(
-                    "You must agree to the piQ micro-stake to execute the assessment"
-                    " pipeline."
+            if pdf_bytes:
+                status_text.text("Assessing document from resolved source...")
+                (
+                    title, author_name, score, logic_integrity, drift, rec,
+                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                ) = process_single_pdf(
+                    pdf_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                 )
-            elif (
-                not selected_uploaded_files
-                and not (include_doi and doi_input.strip())
-                and not selected_alex_papers
-            ):
-                st.warning("Please tick at least one paper or input source to assess.")
+                eval_record = {
+                    "title": title, "author_name": clean_author_name(author_name),
+                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                    "rec": rec, "fields": fields, "subfields": subfields,
+                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                    "filename": fname,
+                }
+                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
             else:
-                st.session_state["snap_files"] = [
-                    (f.name, f.read()) for f in selected_uploaded_files
-                ]
-                st.session_state["snap_scope"] = research_scope
-                st.session_state["snap_doi"] = doi_input
-                st.session_state["snap_include_doi"] = include_doi
-                st.session_state["snap_alex"] = selected_alex_papers
-                st.session_state["is_running"] = True
-                st.session_state["cancel_requested"] = False
-                st.rerun()
+                clean_doi = doi_snap.replace("https://doi.org/", "").strip()
+                doi_url = f"https://doi.org/{clean_doi}"
+                err_item = {
+                    "title": f"DOI Input: {clean_doi}",
+                    "doi": clean_doi,
+                    "url": doi_url,
+                }
+                if err_item not in st.session_state["download_errors"]:
+                    st.session_state["download_errors"].append(err_item)
 
-    if (
-        st.session_state["evaluated_papers_buffer"]
-        or st.session_state.get("download_errors")
-    ):
-        st.markdown("---")
-        st.markdown("### Active Session Assessment Results")
+        if snap_files and not st.session_state["cancel_requested"]:
+            total_files = len(snap_files)
+            for i, (fname, file_bytes) in enumerate(snap_files):
+                if st.session_state["cancel_requested"]:
+                    break
+                status_text.text(
+                    f"Analyzing uploaded file {i+1} of {total_files}: {fname}..."
+                )
+                (
+                    title, author_name, score, logic_integrity, drift, rec,
+                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                ) = process_single_pdf(
+                    file_bytes, fname, scope_val, current_user, "None", current_email, "None",
+                )
+                eval_record = {
+                    "title": title, "author_name": clean_author_name(author_name),
+                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                    "rec": rec, "fields": fields, "subfields": subfields,
+                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                    "filename": fname,
+                }
+                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                progress_bar.progress((i + 1) / total_files)
 
-        if st.session_state.get("download_errors"):
-            st.markdown("#### Publisher Access & Download Restrictions")
-            for err_idx, err_data in enumerate(
-                st.session_state["download_errors"]
-            ):
-                err_col1, err_col2 = st.columns([6, 1])
-                with err_col1:
-                    st.warning(
-                        f"**Could not directly download PDF for '{err_data['title']}':**"
-                        f" Publishers restrict direct binary access.\n\n- **DOI:**"
-                        f" `{err_data['doi']}`\n- **PDF URL Link:**"
-                        f" [{err_data['url']}]({err_data['url']})"
-                    )
-                with err_col2:
-                    if st.button(
-                        "Close",
-                        key=f"close_err_{err_idx}_{st.session_state['reset_token']}",
-                    ):
-                        st.session_state["download_errors"].pop(err_idx)
-                        st.rerun()
-            st.markdown("")
-
-        for item in st.session_state["evaluated_papers_buffer"]:
-            render_breakdown_item(item)
-
-    st.markdown("---")
-    st.markdown(
-        "### AI Peer Review Defense Strategy "
-        + tooltip(
-            "Synthesizes the mathematical assessment array to build a highly"
-            " targeted adversarial rebuttal strategy."
-        ),
-        unsafe_allow_html=True,
-    )
-
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM"
-            " papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50",
-            (current_user,),
-        )
-        user_papers = cursor.fetchall()
+        if st.session_state["cancel_requested"]:
+            st.warning("Pipeline operation was stopped.")
+        else:
+            status_text.success("Pipeline processing complete.")
+            time.sleep(1)
     finally:
-        conn.close()
+        st.session_state["is_running"] = False
+        st.session_state["cancel_requested"] = False
+        st.session_state["reset_token"] += 1
+        st.session_state["assessment_update_token"] = time.time()
 
-    if not user_papers:
-        st.info(
-            "You must assess at least one paper to unlock the AI Defense Strategy"
-            " tool."
-        )
-    else:
-        paper_options = {
-            (
-                f"{p[1][:50]}... ({clean_author_name(p[2])})"
-                if len(p[1]) > 50
-                else f"{p[1]} ({clean_author_name(p[2])})"
-            ):
-            p
-            for p in user_papers
-        }
-        selected_super_paper = st.selectbox(
-            "Select an assessed paper to generate a strategic defense:",
-            list(paper_options.keys()),
-        )
+else:
+    if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
+        if not stake_amount:
+            st.error(
+                "You must agree to the piQ micro-stake to execute the assessment"
+                " pipeline."
+            )
+        elif (
+            not selected_uploaded_files
+            and not (include_doi and doi_input.strip())
+            and not selected_alex_papers
+        ):
+            st.warning("Please tick at least one paper or input source to assess.")
+        else:
+            st.session_state["snap_files"] = [
+                (f.name, f.read()) for f in selected_uploaded_files
+            ]
+            st.session_state["snap_scope"] = research_scope
+            st.session_state["snap_doi"] = doi_input
+            st.session_state["snap_include_doi"] = include_doi
+            st.session_state["snap_alex"] = selected_alex_papers
+            st.session_state["is_running"] = True
+            st.session_state["cancel_requested"] = False
+            st.rerun()
 
-        if st.button("Generate Strategy"):
-            paper_data = paper_options[selected_super_paper]
-            scores = {
-                "C1_Originality": paper_data[3],
-                "C2_Methodological_Rigor": paper_data[4],
-                "C3_Interdisciplinary": paper_data[5],
-                "C4_Societal_Impact": paper_data[6],
-                "C5_Open_Science_Potential": paper_data[7],
-                "C6_Literature_Integration": paper_data[8],
-                "C7_Empirical_Density": paper_data[9],
-                "C8_Future_Actionability": paper_data[10],
-            }
-            rebuttal = generate_rebuttal_strategy(scores)
-            st.success("Defense Strategy Generated Successfully.")
-            st.markdown(rebuttal)
-
+if (
+    st.session_state["evaluated_papers_buffer"]
+    or st.session_state.get("download_errors")
+):
     st.markdown("---")
-    st.markdown(
-        "### Last 5 Assessed Papers & Blockchain Ledger Proofs"
-        + tooltip(
-            "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
-        ),
-        unsafe_allow_html=True,
-    )
+    st.markdown("### Active Session Assessment Results")
 
-    conn_last = get_db_connection()
-    try:
-        cur_last = conn_last.cursor()
-        cur_last.execute(
-            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
-               FROM papers_assessment p
-               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               ORDER BY p.timestamp DESC LIMIT 5"""
-        )
-        recent_papers = cur_last.fetchall()
-    finally:
-        conn_last.close()
-
-    if not recent_papers:
-        st.info("No papers have been assessed in the database yet.")
-    else:
-        formatted_hashes = []
-        for rp in recent_papers:
-            bh_val = rp[21] if rp[21] is not None else "Pending"
-            bhash_val = rp[22] if rp[22] is not None else "Pending"
-            tx_h = rp[14]
-            tx_url = get_sepolia_explorer_url(tx_h, "tx")
-            tx_display = f"[{tx_h[:10]}...]({tx_url})" if tx_url else str(tx_h)
-            formatted_hashes.append((
-                str(bh_val),
-                rp[19][:10] + "...",
-                str(bhash_val)[:10] + "..." if bhash_val != "Pending" else "Pending",
-                rp[15][:10] + "..." if rp[15] else "N/A",
-                rp[13],
-                tx_display,
-                rp[20]
-            ))
-        
-        df_hashes = pd.DataFrame(
-            formatted_hashes,
-            columns=[
-                "Block Height", "Eval Hash", "Block Hash",
-                "zk-SNARK", "piQ", "Tx Hash (Etherscan)", "Timestamp",
-            ],
-        )
-        st.markdown("**Recent Ledger Proofs Summary Table:**")
-        st.markdown(df_hashes.to_markdown(index=False), unsafe_allow_html=True)
+    if st.session_state.get("download_errors"):
+        st.markdown("#### Publisher Access & Download Restrictions")
+        for err_idx, err_data in enumerate(
+            st.session_state["download_errors"]
+        ):
+            err_col1, err_col2 = st.columns([6, 1])
+            with err_col1:
+                st.warning(
+                    f"**Could not directly download PDF for '{err_data['title']}':**"
+                    f" Publishers restrict direct binary access.\n\n- **DOI:**"
+                    f" `{err_data['doi']}`\n- **PDF URL Link:**"
+                    f" [{err_data['url']}]({err_data['url']})"
+                )
+            with err_col2:
+                if st.button(
+                    "Close",
+                    key=f"close_err_{err_idx}_{st.session_state['reset_token']}",
+                ):
+                    st.session_state["download_errors"].pop(err_idx)
+                    st.rerun()
         st.markdown("")
 
-        for idx, rp in enumerate(recent_papers):
-            (
-                r_title, r_author, r_filename, r_score, r_logic,
-                r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
-                r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
-                r_block_height, r_block_hash
-            ) = rp
+    for item in st.session_state["evaluated_papers_buffer"]:
+        render_breakdown_item(item)
 
-            r_author_clean = clean_author_name(r_author)
-            r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
-            r_tx_url = get_sepolia_explorer_url(r_tx, "tx")
+st.markdown("---")
+st.markdown(
+    "### AI Peer Review Defense Strategy "
+    + tooltip(
+        "Synthesizes the mathematical assessment array to build a highly"
+        " targeted adversarial rebuttal strategy."
+    ),
+    unsafe_allow_html=True,
+)
 
-            with st.expander(
-                f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
-                f" **{r_score:.2f}** | {r_time[:16]})",
-                expanded=False,
-            ):
-                st.write(f"**Title:** {r_title}")
-                st.write(f"**Author(s):** {r_author_clean}")
-                st.write(f"**Timestamp:** `{r_time}`")
-                st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
-                st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
-                st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
-                st.write(f"**Unique Author Book Address:** `{r_book}`")
-                st.write(f"**piQ Minted:** `{r_piq}`")
-                st.write(f"**zk-SNARK Proof:** `{r_zk}`")
-                
-                if r_tx_url:
-                    st.markdown(f"**Tx Hash (Etherscan):** [`{r_tx}`]({r_tx_url})")
-                else:
-                    st.write(f"**Tx Hash:** `{r_tx}`")
+conn = get_db_connection()
+try:
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT eval_hash, title, author_name, c1, c2, c3, c4, c5, c6, c7, c8 FROM"
+        " papers_assessment WHERE user_id=? ORDER BY timestamp DESC LIMIT 50",
+        (current_user,),
+    )
+    user_papers = cursor.fetchall()
+finally:
+    conn.close()
 
-                st.write(
-                    f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
-                    f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
-                    f" `{r_mdar * 100:.1f}%`"
-                )
-
-                r_df = pd.DataFrame({
-                    "Criterion": [
-                        "C1: Semantic Originality",
-                        "C2: Methodological Rigor (SciScore)",
-                        "C3: Interdisciplinary Entropy",
-                        "C4: Societal Impact",
-                        "C5: Open Science & Repro",
-                        "C6: Literature Integration",
-                        "C7: Empirical Density",
-                        "C8: Future Actionability & FAIR",
-                    ],
-                    "Score (0-100)": [
-                        r_c1, r_c2, r_c3, r_c4,
-                        r_c5, r_c6, r_c7, r_c8,
-                    ],
-                })
-                st.dataframe(r_df, hide_index=True, use_container_width=True)
-
-with tab2:
-    st.markdown(
-        "### Pinamic: Active Epoch, DeSci Staking & Pi-Brain Neural Network "
-        + tooltip(
-            "Manages decentralized consensus, ledger weights, DeSci peer attestations, and PyTorch LSTM meta-learning forecasts."
-        ),
-        unsafe_allow_html=True,
+if not user_papers:
+    st.info(
+        "You must assess at least one paper to unlock the AI Defense Strategy"
+        " tool."
+    )
+else:
+    paper_options = {
+        (
+            f"{p[1][:50]}... ({clean_author_name(p[2])})"
+            if len(p[1]) > 50
+            else f"{p[1]} ({clean_author_name(p[2])})"
+        ):
+        p
+        for p in user_papers
+    }
+    selected_super_paper = st.selectbox(
+        "Select an assessed paper to generate a strategic defense:",
+        list(paper_options.keys()),
     )
 
-    with st.expander(
-        "Detailed Guide: How Pinamic Works (Ledger Consensus, Staking & Pi-Brain)",
-        expanded=False,
-    ):
-        st.markdown("""
-        Pinamic integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
-        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
-        4. **Pi-Brain Meta-Learning LSTM**: An on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks to forecast future criterion shifts.
-        """)
+    if st.button("Generate Strategy"):
+        paper_data = paper_options[selected_super_paper]
+        scores = {
+            "C1_Originality": paper_data[3],
+            "C2_Methodological_Rigor": paper_data[4],
+            "C3_Interdisciplinary": paper_data[5],
+            "C4_Societal_Impact": paper_data[6],
+            "C5_Open_Science_Potential": paper_data[7],
+            "C6_Literature_Integration": paper_data[8],
+            "C7_Empirical_Density": paper_data[9],
+            "C8_Future_Actionability": paper_data[10],
+        }
+        rebuttal = generate_rebuttal_strategy(scores)
+        st.success("Defense Strategy Generated Successfully.")
+        st.markdown(rebuttal)
 
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used,"
-                " eval_hash, block_hash, por_proof, formulas_hash FROM"
-                " blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
-            )
-            epoch_data = cursor.fetchone()
-        except Exception:
-            epoch_data = None
+st.markdown("---")
+st.markdown(
+    "### Last 5 Assessed Papers & Blockchain Ledger Proofs"
+    + tooltip(
+        "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
+    ),
+    unsafe_allow_html=True,
+)
 
-        if epoch_data:
-            (
-                block_height, weights, model_used, eval_hash,
-                block_hash, por_proof, formulas_hash,
-            ) = (
-                epoch_data[0], epoch_data[1:9], epoch_data[9],
-                epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
-            )
-            cursor.execute(
-                "SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE"
-                " eval_hash != 'genesis'"
-            )
-            total_papers_processed = cursor.fetchone()[0]
+conn_last = get_db_connection()
+try:
+    cur_last = conn_last.cursor()
+    cur_last.execute(
+        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                  b.block_height, b.block_hash
+           FROM papers_assessment p
+           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+           ORDER BY p.timestamp DESC LIMIT 5"""
+    )
+    recent_papers = cur_last.fetchall()
+finally:
+    conn_last.close()
 
-            current_pi_accuracy = generate_blockchain_pi(block_height)
+if not recent_papers:
+    st.info("No papers have been assessed in the database yet.")
+else:
+    formatted_hashes = []
+    for rp in recent_papers:
+        bh_val = rp[21] if rp[21] is not None else "Pending"
+        bhash_val = rp[22] if rp[22] is not None else "Pending"
+        tx_h = rp[14]
+        tx_url = get_sepolia_explorer_url(tx_h, "tx")
+        tx_display = f"[{tx_h[:10]}...]({tx_url})" if tx_url else str(tx_h)
+        formatted_hashes.append((
+            str(bh_val),
+            rp[19][:10] + "...",
+            str(bhash_val)[:10] + "..." if bhash_val != "Pending" else "Pending",
+            rp[15][:10] + "..." if rp[15] else "N/A",
+            rp[13],
+            tx_display,
+            rp[20]
+        ))
+    
+    df_hashes = pd.DataFrame(
+        formatted_hashes,
+        columns=[
+            "Block Height", "Eval Hash", "Block Hash",
+            "zk-SNARK", "piQ", "Tx Hash (Etherscan)", "Timestamp",
+        ],
+    )
+    st.markdown("**Recent Ledger Proofs Summary Table:**")
+    st.markdown(df_hashes.to_markdown(index=False), unsafe_allow_html=True)
+    st.markdown("")
 
-            st.markdown(
-                f"**Processed:** `{total_papers_processed}` | **Block Size:**"
-                f" `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:**"
-                f" `{block_height}` | **Pi Algorithmic Precision:**"
-                f" `{current_pi_accuracy}`"
-            )
+    for idx, rp in enumerate(recent_papers):
+        (
+            r_title, r_author, r_filename, r_score, r_logic,
+            r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
+            r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
+            r_block_height, r_block_hash
+        ) = rp
 
-            cols = st.columns(4)
-            labels = [
-                ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
-                ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
-                ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
-                ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
-            ]
-            for i, col in enumerate(cols * 2):
-                if i < 8:
-                    col.markdown(f"**{labels[i][0]} ({labels[i][1]})**")
-                    col.markdown(
-                        f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>",
-                        unsafe_allow_html=True,
-                    )
+        r_author_clean = clean_author_name(r_author)
+        r_book = "0x" + hashlib.sha256(r_author_clean.encode()).hexdigest()[:40]
+        r_tx_url = get_sepolia_explorer_url(r_tx, "tx")
 
-            st.markdown(
-                "### Proof-of-Research Blockchain Explorer "
-                + tooltip(
-                    "Search the ledger to mathematically verify if a specific research"
-                    " document has been authentically graded and permanently sealed."
-                ),
-                unsafe_allow_html=True,
-            )
-            st.info(
-                f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
-                f" sealed to block `{block_hash}`."
-            )
-            st.caption(
-                f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
-                " grading mathematical constants cannot be tampered with)."
-            )
-
-            explore_col1, explore_col2 = st.columns([3, 1])
-            with explore_col1:
-                search_query = st.text_input(
-                    "Enter Document Evaluation Hash or Block Hash to verify ledger record..."
-                )
-            with explore_col2:
-                st.write("")
-                st.write("")
-                search_btn = st.button("Verify Record")
-
-            if search_btn and search_query:
-                try:
-                    cursor.execute(
-                        "SELECT * FROM blockchain_por_weights WHERE block_hash=? OR"
-                        " eval_hash=?",
-                        (search_query, search_query),
-                    )
-                    record = cursor.fetchone()
-                    if record:
-                        st.success("Valid Block Found on Ledger")
-                        st.json({
-                            "Block Height": record[0],
-                            "Timestamp": record[9],
-                            "Model Used": record[14],
-                            "Validator Node": record[11],
-                            "Block Hash": record[12],
-                            "Evaluation Hash": record[13],
-                            "PoR Signature": record[15],
-                            "Formulas Hash": record[16],
-                            "Weights": dict(
-                                zip([f"w{i+1}" for i in range(8)], record[1:9])
-                            ),
-                        })
-                    else:
-                        st.error(
-                            "No block matching that signature was found on the ledger."
-                        )
-                except:
-                    st.error("Error reading database schema. Try refreshing the app.")
-
-            st.markdown("---")
-            st.markdown(
-                "### View Data on Ethereum Explorer (Sepolia Etherscan) "
-                + tooltip(
-                    "Direct links to inspect deployed smart contracts and live assessment transaction records on Sepolia Etherscan."
-                ),
-                unsafe_allow_html=True,
-            )
+        with st.expander(
+            f"[{idx+1}] {r_title[:65]}... — *{r_author_clean}* (Score:"
+            f" **{r_score:.2f}** | {r_time[:16]})",
+            expanded=False,
+        ):
+            st.write(f"**Title:** {r_title}")
+            st.write(f"**Author(s):** {r_author_clean}")
+            st.write(f"**Timestamp:** `{r_time}`")
+            st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
+            st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
+            st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
+            st.write(f"**Unique Author Book Address:** `{r_book}`")
+            st.write(f"**piQ Minted:** `{r_piq}`")
+            st.write(f"**zk-SNARK Proof:** `{r_zk}`")
             
-            col_ex1, col_ex2 = st.columns(2)
-            with col_ex1:
-                piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-                st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
-            with col_ex2:
-                reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-                if REGISTRY_CONTRACT_ADDRESS:
-                    st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
-                else:
-                    st.markdown("**Registry Contract:** `Not Configured`")
-
-            st.markdown("---")
-            st.markdown(
-                "### Pi-Brain LSTM Meta-Learning Forecasts "
-                + tooltip(
-                    "An LSTM neural network that trains directly on the block weights to"
-                    " predict future shifts in algorithmic evaluation standards."
-                ),
-                unsafe_allow_html=True,
-            )
-
-            @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-            def train_pibrain_cached(weight_data, actual_lookback):
-                dataset = PiBlockchainDataset(weight_data, actual_lookback)
-                dataloader = DataLoader(
-                    dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-                )
-
-                model = PiBrainLSTM()
-                weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-                if os.path.exists(weights_path):
-                    try:
-                        model.load_state_dict(torch.load(weights_path, weights_only=True))
-                    except Exception:
-                        pass
-
-                loss_function = nn.MSELoss()
-                optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-                model.train()
-                for epoch in range(200):
-                    for seq, target in dataloader:
-                        optimizer.zero_grad()
-                        loss = loss_function(model(seq), target)
-                        loss.backward()
-                        optimizer.step()
-
-                model.eval()
-                with torch.no_grad():
-                    predicted = (
-                        model(
-                            torch.tensor(
-                                weight_data[-actual_lookback:], dtype=torch.float32
-                            ).unsqueeze(0)
-                        )
-                        .squeeze()
-                        .numpy()
-                    )
-                    torch.save(model.state_dict(), weights_path)
-                    return predicted
-
-            cursor.execute(
-                "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-                " BY block_height ASC"
-            )
-            historical_rows = cursor.fetchall()
-
-            min_blocks_required = 2
-            if len(historical_rows) < min_blocks_required:
-                st.warning(
-                    f"Not enough blockchain data to train the meta-model. You need at least"
-                    f" {min_blocks_required} blocks (Currently on ledger:"
-                    f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-                    " block 2."
-                )
+            if r_tx_url:
+                st.markdown(f"**Tx Hash (Etherscan):** [`{r_tx}`]({r_tx_url})")
             else:
-                current_block_count = len(historical_rows)
-                lookback_window = max(1, min(5, current_block_count - 1))
+                st.write(f"**Tx Hash:** `{r_tx}`")
 
-                if (
-                    "last_trained_blocks" not in st.session_state
-                    or st.session_state.last_trained_blocks != current_block_count
-                ):
-                    weight_data = np.array(historical_rows, dtype=np.float32)
-                    actual_lookback = min(lookback_window, len(weight_data))
+            st.write(
+                f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
+                f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
+                f" `{r_mdar * 100:.1f}%`"
+            )
 
-                    st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
-                    st.session_state.current_weights = weight_data[-1]
-                    st.session_state.last_trained_blocks = current_block_count
+            r_df = pd.DataFrame({
+                "Criterion": [
+                    "C1: Semantic Originality",
+                    "C2: Methodological Rigor (SciScore)",
+                    "C3: Interdisciplinary Entropy",
+                    "C4: Societal Impact",
+                    "C5: Open Science & Repro",
+                    "C6: Literature Integration",
+                    "C7: Empirical Density",
+                    "C8: Future Actionability & FAIR",
+                ],
+                "Score (0-100)": [
+                    r_c1, r_c2, r_c3, r_c4,
+                    r_c5, r_c6, r_c7, r_c8,
+                ],
+            })
+            st.dataframe(r_df, hide_index=True, use_container_width=True)
+
+
+# ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
+st.markdown("---")
+st.markdown(
+    "### Pinamic: Active Epoch, DeSci Staking & Pi-Brain Neural Network "
+    + tooltip(
+        "Manages decentralized consensus, ledger weights, DeSci peer attestations, and PyTorch LSTM meta-learning forecasts."
+    ),
+    unsafe_allow_html=True,
+)
+
+with st.expander(
+    "Detailed Guide: How Pinamic Works (Ledger Consensus, Staking & Pi-Brain)",
+    expanded=False,
+):
+    st.markdown("""
+    Pinamic integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+    1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+    2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+    3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
+    4. **Pi-Brain Meta-Learning LSTM**: An on-chain predictive neural network built with PyTorch (`PiBrainLSTM`) that learns how evaluation weight standards evolve across blocks to forecast future criterion shifts.
+    """)
+
+conn = get_db_connection()
+try:
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used,"
+            " eval_hash, block_hash, por_proof, formulas_hash FROM"
+            " blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+        )
+        epoch_data = cursor.fetchone()
+    except Exception:
+        epoch_data = None
+
+    if epoch_data:
+        (
+            block_height, weights, model_used, eval_hash,
+            block_hash, por_proof, formulas_hash,
+        ) = (
+            epoch_data[0], epoch_data[1:9], epoch_data[9],
+            epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
+        )
+        cursor.execute(
+            "SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE"
+            " eval_hash != 'genesis'"
+        )
+        total_papers_processed = cursor.fetchone()[0]
+
+        current_pi_accuracy = generate_blockchain_pi(block_height)
+
+        st.markdown(
+            f"**Processed:** `{total_papers_processed}` | **Block Size:**"
+            f" `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:**"
+            f" `{block_height}` | **Pi Algorithmic Precision:**"
+            f" `{current_pi_accuracy}`"
+        )
+
+        cols = st.columns(4)
+        labels = [
+            ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
+            ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
+            ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
+            ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
+        ]
+        for i, col in enumerate(cols * 2):
+            if i < 8:
+                col.markdown(f"**{labels[i][0]} ({labels[i][1]})**")
+                col.markdown(
+                    f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown(
+            "### Proof-of-Research Blockchain Explorer "
+            + tooltip(
+                "Search the ledger to mathematically verify if a specific research"
+                " document has been authentically graded and permanently sealed."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.info(
+            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
+            f" sealed to block `{block_hash}`."
+        )
+        st.caption(
+            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
+            " grading mathematical constants cannot be tampered with)."
+        )
+
+        explore_col1, explore_col2 = st.columns([3, 1])
+        with explore_col1:
+            search_query = st.text_input(
+                "Enter Document Evaluation Hash or Block Hash to verify ledger record..."
+            )
+        with explore_col2:
+            st.write("")
+            st.write("")
+            search_btn = st.button("Verify Record")
+
+        if search_btn and search_query:
+            try:
+                cursor.execute(
+                    "SELECT * FROM blockchain_por_weights WHERE block_hash=? OR"
+                    " eval_hash=?",
+                    (search_query, search_query),
+                )
+                record = cursor.fetchone()
+                if record:
+                    st.success("Valid Block Found on Ledger")
+                    st.json({
+                        "Block Height": record[0],
+                        "Timestamp": record[9],
+                        "Model Used": record[14],
+                        "Validator Node": record[11],
+                        "Block Hash": record[12],
+                        "Evaluation Hash": record[13],
+                        "PoR Signature": record[15],
+                        "Formulas Hash": record[16],
+                        "Weights": dict(
+                            zip([f"w{i+1}" for i in range(8)], record[1:9])
+                        ),
+                    })
                 else:
-                    st.info(
-                        "Meta-model is cached and up-to-date with the latest blockchain"
-                        " ledger."
+                    st.error(
+                        "No block matching that signature was found on the ledger."
                     )
+            except:
+                st.error("Error reading database schema. Try refreshing the app.")
 
-                df_compare = pd.DataFrame(
-                    {
-                        "Current Active Weights": st.session_state.current_weights,
-                        "Predicted Next Epoch": st.session_state.predicted_next_weights,
-                    },
-                    index=[
-                        "C1: Originality", "C2: Methodological Rigor",
-                        "C3: Interdisciplinary", "C4: Societal Impact",
-                        "C5: Open Science", "C6: Literature Integration",
-                        "C7: Empirical Density", "C8: Future Actionability",
-                    ],
-                )
-                st.bar_chart(df_compare, height=400)
-                st.markdown(
-                    f"**Mathematical Constraint Check:** Predicted Sum ="
-                    f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
-                )
-    finally:
-        conn.close()
+        st.markdown("---")
+        st.markdown(
+            "### View Data on Ethereum Explorer (Sepolia Etherscan) "
+            + tooltip(
+                "Direct links to inspect deployed smart contracts and live assessment transaction records on Sepolia Etherscan."
+            ),
+            unsafe_allow_html=True,
+        )
+        
+        col_ex1, col_ex2 = st.columns(2)
+        with col_ex1:
+            piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+            st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
+        with col_ex2:
+            reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+            if REGISTRY_CONTRACT_ADDRESS:
+                st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+            else:
+                st.markdown("**Registry Contract:** `Not Configured`")
 
-# --- System Overview, Architecture Flowchart & Whitepaper Expander at Bottom ---
+        st.markdown("---")
+        st.markdown(
+            "### Pi-Brain LSTM Meta-Learning Forecasts "
+            + tooltip(
+                "An LSTM neural network that trains directly on the block weights to"
+                " predict future shifts in algorithmic evaluation standards."
+            ),
+            unsafe_allow_html=True,
+        )
+
+        @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+        def train_pibrain_cached(weight_data, actual_lookback):
+            dataset = PiBlockchainDataset(weight_data, actual_lookback)
+            dataloader = DataLoader(
+                dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+            )
+
+            model = PiBrainLSTM()
+            weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+            if os.path.exists(weights_path):
+                try:
+                    model.load_state_dict(torch.load(weights_path, weights_only=True))
+                except Exception:
+                    pass
+
+            loss_function = nn.MSELoss()
+            optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+            model.train()
+            for epoch in range(200):
+                for seq, target in dataloader:
+                    optimizer.zero_grad()
+                    loss = loss_function(model(seq), target)
+                    loss.backward()
+                    optimizer.step()
+
+            model.eval()
+            with torch.no_grad():
+                predicted = (
+                    model(
+                        torch.tensor(
+                            weight_data[-actual_lookback:], dtype=torch.float32
+                        ).unsqueeze(0)
+                    )
+                    .squeeze()
+                    .numpy()
+                )
+                torch.save(model.state_dict(), weights_path)
+                return predicted
+
+        cursor.execute(
+            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+            " BY block_height ASC"
+        )
+        historical_rows = cursor.fetchall()
+
+        min_blocks_required = 2
+        if len(historical_rows) < min_blocks_required:
+            st.warning(
+                f"Not enough blockchain data to train the meta-model. You need at least"
+                f" {min_blocks_required} blocks (Currently on ledger:"
+                f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+                " block 2."
+            )
+        else:
+            current_block_count = len(historical_rows)
+            lookback_window = max(1, min(5, current_block_count - 1))
+
+            if (
+                "last_trained_blocks" not in st.session_state
+                or st.session_state.last_trained_blocks != current_block_count
+            ):
+                weight_data = np.array(historical_rows, dtype=np.float32)
+                actual_lookback = min(lookback_window, len(weight_data))
+
+                st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+                st.session_state.current_weights = weight_data[-1]
+                st.session_state.last_trained_blocks = current_block_count
+            else:
+                st.info(
+                    "Meta-model is cached and up-to-date with the latest blockchain"
+                    " ledger."
+                )
+
+            df_compare = pd.DataFrame(
+                {
+                    "Current Active Weights": st.session_state.current_weights,
+                    "Predicted Next Epoch": st.session_state.predicted_next_weights,
+                },
+                index=[
+                    "C1: Originality", "C2: Methodological Rigor",
+                    "C3: Interdisciplinary", "C4: Societal Impact",
+                    "C5: Open Science", "C6: Literature Integration",
+                    "C7: Empirical Density", "C8: Future Actionability",
+                ],
+            )
+            st.bar_chart(df_compare, height=400)
+            st.markdown(
+                f"**Mathematical Constraint Check:** Predicted Sum ="
+                f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
+            )
+finally:
+    conn.close()
+
+
+# ==================== SYSTEM OVERVIEW & ARCHITECTURE FLOWCHART ====================
 st.markdown("---")
 with st.expander("🏗️ The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow"):
     st.markdown(
