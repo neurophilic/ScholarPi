@@ -104,7 +104,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
     return pdf_bytes
 
 def rbot(topic_key):
-    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
+    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
 # Custom JS/CSS for UI Modifications
 custom_ui_code = """
@@ -142,7 +142,7 @@ custom_ui_code = """
 }
 
 /* 2. Robot Cursor on Hover */
-.scilm-trigger {
+.scilem-trigger {
     cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size:24px'%3E%3Ctext y='24'%3E🤖%3C/text%3E%3C/svg%3E"), auto !important;
     font-size: 1.4em;
     margin-left: 4px;
@@ -150,7 +150,7 @@ custom_ui_code = """
     display: inline-block;
     transition: transform 0.15s ease-in-out;
 }
-.scilm-trigger:hover {
+.scilem-trigger:hover {
     transform: scale(1.3);
 }
 
@@ -194,7 +194,7 @@ iframe {
     padding: 0 !important;
 }
 
-/* Strict compact square PyVis Map Iframe (450px by 450px to match Pidyne perfectly) */
+/* Strict compact square PyVis Map Iframe (450px by 450px to match Pinamic perfectly) */
 .pyvis-map-wrapper iframe {
     width: 450px !important;
     height: 450px !important;
@@ -206,7 +206,7 @@ const parentDoc = window.parent.document;
 
 // 1. Robot Auto-Trigger Handler
 parentDoc.addEventListener('click', function(e) {
-    let trigger = e.target.closest('.scilm-trigger');
+    let trigger = e.target.closest('.scilem-trigger');
     if (!trigger) return; 
     e.preventDefault();
     e.stopPropagation();
@@ -364,8 +364,8 @@ if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 
-if "scilm_messages" not in st.session_state:
-    st.session_state.scilm_messages = [
+if "scilem_messages" not in st.session_state:
+    st.session_state.scilem_messages = [
         {
             "role": "assistant", 
             "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
@@ -458,7 +458,7 @@ with st.sidebar.expander("🖥️ Live System Monitor", expanded=False):
 SCILEM_KNOWLEDGE_BASE = {
     "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
     "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
-    "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
+    "pinamic forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
     "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
     "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs. It validates evaluations directly on the blockchain.",
     "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
@@ -481,7 +481,7 @@ if "last_analyzed_tracked" not in st.session_state:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
 elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
-    st.session_state.scilm_messages.append({
+    st.session_state.scilem_messages.append({
         "role": "assistant",
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
@@ -609,7 +609,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    # Strictly squared 450x450 compact layout matching Pidyne
+    # Strictly squared 450x450 compact layout matching Pinamic
     net = Network(
         height="450px",
         width="450px",
@@ -1299,15 +1299,15 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-# --- Top Analytics Section: Side-by-Side Pidyne Forecast & Global Map of Science ---
-top_analytics_col1, top_analytics_col2 = st.columns(2)
+# --- Top Analytics Section: Organized via Tabs per Request ---
+tab_desci, tab_map = st.tabs(["DeSci (Pinamic)", "Global Map of Science"])
 
-with top_analytics_col1:
+with tab_desci:
     col_fc1, col_fc2 = st.columns([3, 1])
     with col_fc1:
-        st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
+        st.markdown(f"### Pinamic Forecast {rbot('pinamic forecast')}", unsafe_allow_html=True)
     with col_fc2:
-        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
+        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pinamic_lookback_dropdown")
         actual_lookback = int(forecast_horizon.split()[0])
 
     @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
@@ -1427,15 +1427,15 @@ with top_analytics_col1:
             f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
         )
 
-    with st.expander("What's Pidyne?", expanded=False):
+    with st.expander("What's Pinamic?", expanded=False):
         st.markdown("""
-        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        Pinamic integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
         2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
         """)
 
-with top_analytics_col2:
+with tab_map:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
     with map_title_col:
         st.markdown(f"### Global Map of Science {rbot('global map of science')}", unsafe_allow_html=True)
@@ -1820,7 +1820,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
@@ -1946,7 +1946,7 @@ with scilem_container:
     
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
-        for idx, message in enumerate(st.session_state.scilm_messages):
+        for idx, message in enumerate(st.session_state.scilem_messages):
             msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
@@ -1959,7 +1959,7 @@ with scilem_container:
             submitted_floating = st.form_submit_button("Send")
 
     if submitted_floating and floating_prompt:
-        st.session_state.scilm_messages.append({"role": "user", "content": floating_prompt})
+        st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
         
         direct_answer = None
         if floating_prompt.startswith("Explain:"):
@@ -1970,13 +1970,13 @@ with scilem_container:
                     break
 
         if direct_answer:
-            st.session_state.scilm_messages.append({"role": "assistant", "content": f"{direct_answer}"})
+            st.session_state.scilem_messages.append({"role": "assistant", "content": f"{direct_answer}"})
             st.rerun()
         else:
             rag_context = ""
             few_shot_examples = ""
             try:
-                dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
+                dataset_path = os.path.join(BASE_DIR, "scilem rlhf_dataset.jsonl")
                 if os.path.exists(dataset_path):
                     with open(dataset_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
@@ -1999,15 +1999,15 @@ with scilem_container:
             except Exception:
                 pass
 
-            scilm_sys_prompt = (
+            scilem_sys_prompt = (
                 "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
                 "Explain app features clearly and concisely. You just received a user action or query.\n\n"
                 f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
                 f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
             )
 
-            messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
-                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
+            messages_for_api = [{"role": "system", "content": scilem_sys_prompt}] + [
+                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilem_messages
             ]
 
             full_response = ""
@@ -2057,5 +2057,5 @@ with scilem_container:
             except Exception as e:
                 full_response = f"Error connecting to Scilem engine: {str(e)}"
 
-            st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+            st.session_state.scilem_messages.append({"role": "assistant", "content": full_response})
             st.rerun()
