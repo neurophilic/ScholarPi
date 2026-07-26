@@ -194,7 +194,6 @@ def enforce_database_schema():
                        scope_alignment REAL, logic_score REAL,
                        subfields TEXT, fields TEXT, author_name TEXT, final_score REAL, timestamp DATETIME)""")
 
-    # Foolproof blockchain_por_weights migration & creation
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='blockchain_por_weights'")
     table_exists = cursor.fetchone()
     
@@ -787,14 +786,9 @@ def generate_rebuttal_strategy(scores_dict):
 # 6. AI EXTRACTION ENGINE & NEURAL NETS
 # ==========================================
 def get_evolving_system_context():
-    """
-    Dynamically constructs the LLM prompt context by analyzing the current 
-    blockchain epoch and recent human DeSci attestations.
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Fetch current LSTM epoch weights to tell the LLM what the network prioritizes
     cursor.execute("""
         SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8 
         FROM blockchain_por_weights 
@@ -802,7 +796,6 @@ def get_evolving_system_context():
     """)
     epoch_data = cursor.fetchone()
     
-    # 2. Fetch recent community attestations (DeSci Feedback)
     cursor.execute("""
         SELECT stance, COUNT(*) 
         FROM desci_attestations 
@@ -828,9 +821,6 @@ def get_evolving_system_context():
     return context_str
 
 def harvest_fine_tuning_data(text_chunk, final_json_output, eval_hash):
-    """
-    Saves high-quality parsed data to build a local Reinforcement Learning (RLHF) dataset.
-    """
     dataset_path = os.path.join(BASE_DIR, "pi_brain_rlhf_dataset.jsonl")
     try:
         record = {
@@ -919,8 +909,6 @@ def extract_unpublished_authors_fallback(text):
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
-    
-    # Inject the evolving intelligence from the blockchain and human feedback
     evolving_context = get_evolving_system_context()
     
     prompt = f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and audit variables.
@@ -950,12 +938,9 @@ Return ONLY a valid JSON object. Text: {text}"""
     result_content = response.choices[0].message.content
     try:
         parsed = json.loads(result_content)
-        
-        # Harvest this successful extraction for future local fine-tuning
         if isinstance(parsed, dict):
             harvest_fine_tuning_data(text, parsed, file_hash)
             return parsed
-            
         elif isinstance(parsed, str):
             sub_parsed = json.loads(parsed)
             if isinstance(sub_parsed, dict):
@@ -1028,7 +1013,8 @@ def process_single_pdf(
         return (
             "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-            file_hash, 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False,
+            file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
+            reproducibility_score, False,
         )
 
     scope_alignment = (
@@ -1783,7 +1769,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Active Epoch & DeSci Staking",
     "Pi-Brain Neural Network",
     "System Overview and Limitations",
-    "Scilm: Decentralized AI"
+    "Scilem: Decentralized AI"
 ])
 
 with tab1:
@@ -3205,28 +3191,28 @@ with tab5:
 
 with tab6:
     st.markdown(
-        "### Scilm: Decentralized Scientific Intelligence (Standard-Compliant Agent)"
+        "### Scilem: Decentralized Scientific Intelligence (Standard-Compliant Agent)"
         + tooltip(
-            "Scilm implements advanced LLM standards: Semantic RAG, Chain-of-Thought "
+            "Scilem implements advanced LLM standards: Semantic RAG, Chain-of-Thought "
             "reasoning, and a decentralized RLHF preference alignment loop connected to Pinata IPFS."
         ),
         unsafe_allow_html=True,
     )
     
     st.markdown(
-        "Query Scilm regarding research methodologies, request counterfactual logic stress tests, "
+        "Query Scilem regarding research methodologies, request counterfactual logic stress tests, "
         "or evaluate its alignment with CoARA guidelines."
     )
     st.markdown("---")
 
     col_sync, col_info = st.columns([1, 4])
     with col_sync:
-        if st.button("Sync Pinata Knowledge Base", key="scilm_sync_btn", use_container_width=True):
-            st.session_state["scilm_synced"] = True
+        if st.button("Sync Pinata Knowledge Base", key="scilem_sync_btn", use_container_width=True):
+            st.session_state["scilem_synced"] = True
             st.toast("Successfully synchronized decentralized RLHF dataset from Pinata IPFS!", icon="✅")
     with col_info:
-        if st.session_state.get("scilm_synced"):
-            st.success("Scilm active memory synchronized with live decentralized IPFS state.", icon="🌐")
+        if st.session_state.get("scilem_synced"):
+            st.success("Scilem active memory synchronized with live decentralized IPFS state.", icon="🌐")
         else:
             st.info("Using local cache. Click 'Sync' to pull latest Pinata dataset.")
 
@@ -3236,7 +3222,7 @@ with tab6:
         st.session_state.scilm_messages = [
             {
                 "role": "assistant", 
-                "content": "Greetings. I am Scilm, a decentralized CoARA-aligned scientific intelligence engine. My reasoning is grounded in peer-attested ledger data and optimized via RLHF standards. How may I assist your inquiry?"
+                "content": "Greetings. I am Scilem, a decentralized CoARA-aligned scientific intelligence engine. My reasoning is grounded in peer-attested ledger data and optimized via RLHF standards. How may I assist your inquiry?"
             }
         ]
 
@@ -3259,7 +3245,7 @@ with tab6:
                         with open(dataset_path, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"preference": "dispreferred", "response": message["content"], "timestamp": datetime.now().isoformat()}) + "\n")
 
-    if prompt := st.chat_input("Query Scilm with a scientific, methodological, or policy question..."):
+    if prompt := st.chat_input("Query Scilem with a scientific, methodological, or policy question..."):
         st.session_state.scilm_messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -3299,7 +3285,7 @@ with tab6:
                 pass
 
             scilm_sys_prompt = (
-                "You are Scilm, an advanced, rigorous Scientific LLM aligned with CoARA guidelines and "
+                "You are Scilem, an advanced, rigorous Scientific LLM aligned with CoARA guidelines and "
                 "decentralized DeSci tokenomics. You do not engage in conversational filler; you are analytical, "
                 "evidence-driven, and precise.\n\n"
                 "MANDATORY CHAIN-OF-THOUGHT INSTRUCTION:\n"
@@ -3315,18 +3301,31 @@ with tab6:
                 {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
             ]
 
+            full_response = ""
             try:
                 if groq_client:
-                    response = groq_client.chat.completions.create(
-                        model=PRIMARY_MODEL,
-                        messages=messages_for_api,
-                        temperature=0.15,
-                    )
-                    full_response = response.choices[0].message.content
+                    try:
+                        response = groq_client.chat.completions.create(
+                            model=PRIMARY_MODEL,
+                            messages=messages_for_api,
+                            temperature=0.15,
+                        )
+                        full_response = response.choices[0].message.content
+                    except Exception as primary_err:
+                        if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
+                            st.toast("Primary model rate limit reached. Automatically switching to Scilem Fallback Engine (8B)...", icon="⚡")
+                            fallback_response = groq_client.chat.completions.create(
+                                model=FALLBACK_MODEL,
+                                messages=messages_for_api,
+                                temperature=0.15,
+                            )
+                            full_response = fallback_response.choices[0].message.content + "\n\n*(Note: Handled via Scilem Fallback Engine due to TPD rate limit).* "
+                        else:
+                            raise primary_err
                 else:
                     full_response = "Error: Groq API client is not initialized. Please verify your API keys."
             except Exception as e:
-                full_response = f"Error connecting to Scilm inference engine: {str(e)}"
+                full_response = f"Error connecting to Scilem inference engine: {str(e)}"
 
             message_placeholder.markdown(full_response)
         
