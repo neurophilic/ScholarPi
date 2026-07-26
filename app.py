@@ -15,7 +15,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pyvis.network import Network
-import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -357,7 +356,7 @@ with chat_container:
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     direct_answer = None
@@ -423,7 +422,20 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
                     )
                     full_response = response.choices[0].message.content
                 except Exception as primary_err:
-                    if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
+                    err_str = str(primary_err)
+                    # Handle 413 / Request too large / TPM rate limit exceeded gracefully by trimming payload
+                    if "413" in err_str or "rate_limit_exceeded" in err_str or "tokens" in err_str or "limit" in err_str:
+                        trimmed_messages = [messages_for_api[0]] + messages_for_api[-3:]
+                        try:
+                            fallback_response = groq_client.chat.completions.create(
+                                model=FALLBACK_MODEL_NAME,
+                                messages=trimmed_messages,
+                                temperature=0.15,
+                            )
+                            full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
+                        except Exception as second_err:
+                            full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
+                    elif "429" in err_str:
                         fallback_response = groq_client.chat.completions.create(
                             model=FALLBACK_MODEL_NAME,
                             messages=messages_for_api,
