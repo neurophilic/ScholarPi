@@ -8,6 +8,7 @@ import shutil
 import colorsys
 import logging
 from datetime import datetime
+from collections import deque
 
 import pandas as pd
 import numpy as np
@@ -33,6 +34,20 @@ from brain import (
     process_single_pdf, generate_rebuttal_strategy, PiBrainLSTM, 
     PiBlockchainDataset
 )
+
+st.set_page_config(
+    page_title="Pi-Index Assessment Engine 🤖", layout="wide"
+)
+
+# --- System Action Log Monitor ---
+if "app_logs" not in st.session_state:
+    st.session_state.app_logs = deque(maxlen=50)
+
+def add_log(msg):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    log_entry = f"[{timestamp}] {msg}"
+    st.session_state.app_logs.appendleft(log_entry)
+    logging.info(log_entry)
 
 def safe_get_sepolia_url(tx):
     if not tx or not isinstance(tx, str) or not tx.startswith("0x") or len(tx) != 66:
@@ -75,21 +90,19 @@ def get_author_piq_dict():
 def preprocess_pdf_layout(pdf_bytes, fname):
     try:
         import fitz  # PyMuPDF
+        add_log(f"Initiating PyMuPDF spatial extraction for {fname}...")
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         text_blocks = []
-        # sort=True natively reconstructs standard reading order, overcoming multi-column/image snags
         for page in doc:
             text_blocks.append(page.get_text("text", sort=True))
         full_text = "\n".join(text_blocks)
         if len(full_text.strip()) > 50:
+            add_log(f"Successfully extracted {len(full_text)} characters.")
             return create_virtual_pdf_from_text(full_text, title=fname)
     except Exception as e:
+        add_log(f"PyMuPDF fallback triggered due to exception: {e}")
         logging.warning(f"PyMuPDF layout extraction fallback triggered: {e}")
     return pdf_bytes
-
-st.set_page_config(
-    page_title="Pi-Index Assessment Engine", layout="wide"
-)
 
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
@@ -97,7 +110,6 @@ def rbot(topic_key):
 # Custom JS/CSS for Scilem Icon-Only Click Function, Maximized Text Space, and Chat Alignment
 custom_ui_code = """
 <style>
-/* Scilem Chat Box Cushioning Reduction & Full Width */
 [data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
     overflow-x: hidden !important;
     scroll-behavior: smooth;
@@ -105,7 +117,7 @@ custom_ui_code = """
 }
 
 /* User Messages: Right Aligned */
-[data-testid="stChatMessage"]:has(div:contains("👤")) {
+[data-testid="stChatMessage"]:has(div:contains("USER")) {
     flex-direction: row-reverse !important;
     background-color: #e8f0fe !important;
     border-radius: 10px 0 10px 10px !important;
@@ -134,6 +146,7 @@ custom_ui_code = """
     min-width: 1.6rem !important;
     font-size: 1.4rem !important;
     margin: 0 0.2rem !important;
+    background-color: transparent !important;
 }
 [data-testid="stSidebar"] .stMarkdown {
     width: 100% !important;
@@ -246,6 +259,7 @@ finally:
 if "state_restored" not in st.session_state:
     restore_state_from_web3()
     st.session_state["state_restored"] = True
+    add_log("Synchronized state with Sepolia Ethereum Ledger.")
 
 if "assessment_update_token" not in st.session_state:
     st.session_state["assessment_update_token"] = time.time()
@@ -261,6 +275,7 @@ if "cancel_requested" not in st.session_state:
     st.session_state["cancel_requested"] = False
 if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
+    add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 
 if "orcid_id" not in st.session_state:
     saved_orcid = st.query_params.get("orcid", "")
@@ -297,6 +312,7 @@ if not st.session_state.is_authenticated:
             st.session_state.orcid_id = clean_orcid
             st.session_state.orcid_name = user_name
             st.session_state.is_authenticated = True
+            add_log(f"Identity Authenticated: {clean_orcid}")
             if remember_user:
                 st.query_params["orcid"] = clean_orcid
             else:
@@ -328,6 +344,7 @@ else:
     )
 
     if st.sidebar.button("Disconnect Session"):
+        add_log("Session Disconnected.")
         st.session_state.is_authenticated = False
         st.session_state.orcid_name = ""
         st.session_state.orcid_id = "0000-0000-0000-0000"
@@ -383,14 +400,14 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
 st.sidebar.markdown('<div class="scilem-box">', unsafe_allow_html=True)
 st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe_allow_html=True)
     
-chat_container = st.sidebar.container(height=280)
+chat_container = st.sidebar.container(height=450)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
+        # Robot avatar on left for assistant, USER text avatar on right
+        msg_avatar = "🤖" if message["role"] == "assistant" else "USER"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-# Fix: Lock chat input while pipeline is running to prevent parallel API crashes
 if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input", disabled=st.session_state.get("is_running", False)):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
@@ -449,7 +466,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input", 
             PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
             FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
             if groq_client:
-                # Fix: Concurrency safety with Backoff/Retry logic
+                add_log("Dispatching query to Scilem AI Engine...")
                 for attempt in range(3):
                     try:
                         response = groq_client.chat.completions.create(
@@ -458,11 +475,13 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input", 
                             temperature=0.15,
                         )
                         full_response = response.choices[0].message.content
+                        add_log("Scilem response generated.")
                         break
                     except Exception as primary_err:
                         err_str = str(primary_err).lower()
                         if any(k in err_str for k in ["413", "rate_limit_exceeded", "tokens", "limit", "429"]):
                             if attempt < 2:
+                                add_log(f"Rate limit hit. Retrying in {2**attempt}s...")
                                 time.sleep(2 ** attempt)
                                 continue
                             
@@ -474,9 +493,11 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input", 
                                     temperature=0.15,
                                 )
                                 full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
+                                add_log("Scilem fallback model executed successfully.")
                                 break
                             except Exception as second_err:
                                 full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
+                                add_log("Scilem fallback model failed.")
                                 break
                         else:
                             full_response = f"Error: {str(primary_err)}"
@@ -612,7 +633,7 @@ def render_bubble_chart_clean(target_author):
         font_color="#2c3e50",
         notebook=False,
     )
-    physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1000, "centralGravity": 1, "springLength": 100, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
+    physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1500, "centralGravity": 0.8, "springLength": 120, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
     net.set_options(physics_options)
 
     for topic, metrics in topic_aggregates.items():
@@ -646,6 +667,11 @@ def render_bubble_chart_clean(target_author):
                 "y": 4,
             },
         )
+        
+    for i, t1 in enumerate(unique_topics):
+        for j, t2 in enumerate(unique_topics):
+            if i < j and t1.split(">")[0].strip() == t2.split(">")[0].strip():
+                net.add_edge(t1, t2, color="rgba(150,150,150,0.2)")
 
     tmp_fd, tmp_name = tempfile.mkstemp(suffix=".html")
     os.close(tmp_fd) 
@@ -718,27 +744,31 @@ def evaluation_metrics_dialog():
     )
 
     criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "vapri₁", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = vapri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "vapri₂", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = vapri_2 \cdot \mathcal{I}_{blinding} + vapri_2 \cdot \mathcal{I}_{randomization} + vapri_2 \cdot \mathcal{I}_{power\_calc} + vapri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "vapri₃", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = vapri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "vapri₄", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = vapri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "vapri₅", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = vapri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "vapri₆", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = vapri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "vapri₇", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = vapri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "vapri₈", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = vapri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = vapri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = vapri_2 \cdot \mathcal{I}_{blinding} + vapri_2 \cdot \mathcal{I}_{randomization} + vapri_2 \cdot \mathcal{I}_{power\_calc} + vapri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = vapri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = vapri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = vapri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = vapri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = vapri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = vapri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} {sym} = {weight_val:.6f} 🤖", expanded=(title.startswith("C1"))):
-            st.markdown(desc)
+        with st.expander(f"{title} | vapri_{sym} = {weight_val:.6f} 🤖", expanded=(title.startswith("C1"))):
+            st.markdown(f"**Description:** {desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
-    st.markdown(f"<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine {rbot('pi-index')}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine 🤖</h1>", unsafe_allow_html=True)
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
+
+with st.expander("🖥️ Live System Monitor", expanded=False):
+    log_text = "\n".join(st.session_state.app_logs)
+    st.code(log_text if log_text else "No active logs...", language="bash")
 
 st.markdown("")
 with st.container(border=True):
@@ -784,8 +814,10 @@ with st.container(border=True):
                     alex_results = search_openalex_topics(q_str, limit=50)
                     if alex_results:
                         st.session_state["alex_search_results"] = alex_results
+                        add_log(f"Harvested {len(alex_results)} Open Access records from OpenAlex.")
                         st.success(f"Successfully harvested {len(alex_results)} papers from OpenAlex.")
                     else:
+                        add_log("Failed to find relevant records via OpenAlex.")
                         st.warning("No Open Access papers found matching criteria.")
 
     selected_alex_papers = []
@@ -851,6 +883,7 @@ with st.container(border=True):
             if st.button("Stop", type="secondary", use_container_width=True):
                 st.session_state["is_running"] = False
                 st.session_state["cancel_requested"] = True
+                add_log("Pipeline operation forcefully interrupted by user.")
                 st.info("Pipeline operation cancelled by user.")
                 st.rerun()
 
@@ -870,6 +903,7 @@ with st.container(border=True):
                     pdf_bytes = None
                     fname = f"OpenAlex_{p['title'][:20]}.pdf"
                     p_doi = p.get("doi", "None")
+                    add_log(f"Commencing open-access resolution for OpenAlex document: {fname}")
 
                     if p.get("pdf_url"):
                         pdf_bytes = download_pdf_from_url(p["pdf_url"])
@@ -908,6 +942,7 @@ with st.container(border=True):
                         }
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                        add_log(f"Successfully processed and recorded evaluation for {fname}")
                     else:
                         clean_doi = (
                             p_doi.replace("https://doi.org/", "").strip()
@@ -924,6 +959,7 @@ with st.container(border=True):
                             "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
                             "url": doi_url,
                         }
+                        add_log(f"Publisher access restriction encountered for OpenAlex target.")
                         if err_item not in st.session_state["download_errors"]:
                             st.session_state["download_errors"].append(err_item)
 
@@ -936,6 +972,8 @@ with st.container(border=True):
                 metadata = fetch_doi_metadata(doi_snap)
                 fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
                 pdf_bytes = None
+                add_log(f"Attempting API resolution for standalone DOI: {doi_snap}")
+                
                 if metadata and metadata.get("pdf_url"):
                     pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
                 if not pdf_bytes:
@@ -969,6 +1007,7 @@ with st.container(border=True):
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                    add_log(f"Successfully evaluated and logged DOI source.")
                 else:
                     clean_doi = doi_snap.replace("https://doi.org/", "").strip()
                     doi_url = f"https://doi.org/{clean_doi}"
@@ -977,6 +1016,7 @@ with st.container(border=True):
                         "doi": clean_doi,
                         "url": doi_url,
                     }
+                    add_log(f"Publisher access blocks direct binary extraction for standalone DOI.")
                     if err_item not in st.session_state["download_errors"]:
                         st.session_state["download_errors"].append(err_item)
 
@@ -986,6 +1026,7 @@ with st.container(border=True):
                     if st.session_state["cancel_requested"]:
                         break
                     status_text.text(f"Analyzing uploaded file {i+1} of {total_files}: {fname}...")
+                    add_log(f"Engaging logical extraction on local file structure: {fname}")
                     
                     with open(fpath, "rb") as in_f:
                         raw_bytes = in_f.read()
@@ -1011,6 +1052,7 @@ with st.container(border=True):
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
                     progress_bar.progress((i + 1) / total_files)
+                    add_log(f"Stored local assessment result to cache.")
 
             if st.session_state["cancel_requested"]:
                 st.warning("Pipeline operation was stopped.")
@@ -1037,13 +1079,15 @@ with st.container(border=True):
             ):
                 st.warning("Please tick at least one paper or input source to assess.")
             else:
-                # Fix: Write directly to memory-safe temp directory instead of keeping bytes in state
+                add_log("Preparing pipeline dispatch queue...")
                 saved_files = []
                 for f in selected_uploaded_files:
                     f_path = os.path.join(st.session_state["session_temp_dir"], f.name)
                     with open(f_path, "wb") as out_f:
-                        out_f.write(f.read())
+                        out_f.write(f.getvalue())
+                    f.seek(0)
                     saved_files.append((f.name, f_path))
+                    add_log(f"Cached user file to temporary disk node: {f.name}")
                     
                 st.session_state["snap_files"] = saved_files
                 st.session_state["snap_scope"] = research_scope
@@ -1336,22 +1380,29 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
-        # Fix: Amplify C1-C8 variance so graph movements are clearly visible instead of appearing strictly flat at 1.0
+        # Fix: Massively amplify micro-variance so lines separate visually on the graph
         if len(historical_rows) > 0:
             df_history = pd.DataFrame(
                 historical_rows,
                 columns=[
-                    "C1: Originality", "C2: Methodological Rigor",
-                    "C3: Interdisciplinary", "C4: Societal Impact",
-                    "C5: Open Science", "C6: Literature Integration",
-                    "C7: Empirical Density", "C8: Future Actionability",
+                    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"
                 ]
             )
             df_history.index.name = "Block / Epoch"
             
-            # Magnify micro-variances around 1.0 structurally
-            df_amplified = 1.0 + (df_history - 1.0) * 1000.0
-            st.line_chart(df_amplified, height=300, use_container_width=True)
+            df_amplified = df_history.copy()
+            for col in df_amplified.columns:
+                df_amplified[col] = 1.0 + (df_amplified[col] - 1.0) * 1500.0
+                
+            df_melted = df_amplified.reset_index().melt('Block / Epoch', var_name='Criterion', value_name='Weight (Amplified)')
+            
+            base = alt.Chart(df_melted).mark_line(point=True).encode(
+                x='Block / Epoch:O',
+                y=alt.Y('Weight (Amplified):Q', scale=alt.Scale(zero=False)),
+                color='Criterion:N',
+                tooltip=['Block / Epoch', 'Criterion', 'Weight (Amplified)']
+            ).properties(height=350)
+            st.altair_chart(base, use_container_width=True)
 
         st.markdown(
             f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
@@ -1783,8 +1834,10 @@ def framework_workflow_dialog():
 
             Auth [label="Researcher Authentication\\n• ORCID iD / W3C DID Verification\\n• ZK-Email Institutional Proof", fillcolor="#aed6f1"];
             Intake [label="Multi-Source Ingestion Engine\\n• Local Binary PDFs Extraction\\n• Unpaywall DOI Resolver\\n• OpenAlex Topic API Search", fillcolor="#aed6f1"];
+            TempDisk [label="Temp Disk State Management\\n• Streamlit Render Protection\\n• Buffered Binary Writes", fillcolor="#aed6f1", style="dashed,filled"];
             ZKBlind [label="ZK Double-Blind Assignment\\n• Merkle Tree Non-Membership Proofs\\n• Anonymous Author Shielding", fillcolor="#aed6f1"];
-            Auth -> Intake -> ZKBlind;
+            
+            Auth -> Intake -> TempDisk -> ZKBlind;
         }
 
         subgraph cluster_eval {
@@ -1793,12 +1846,14 @@ def framework_workflow_dialog():
             color = "#27ae60";
             fillcolor = "#e8f8f5";
 
+            PyMuPDF [label="PyMuPDF Layout Sort\\n• Spatial Reading Extraction\\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
             SciParser [label="Deterministic SciScore API\\n• MDAR Reporting Adherence\\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
+            Retry [label="Groq Fallback Retry Logic\\n• Distributed Concurrency Control\\n• Exponential 429 Backoff", fillcolor="#a3e4d7", style="dashed,filled"];
             IRTCalib [label="Item Response Theory Calibration\\n• Counterfactual Stress Testing\\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
             Criteria [label="8 Transparent Criteria Rubrics\\n• C1 Originality to C8 FAIR Actionability\\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
             Logic [label="Adversarial Logic Integrity Matrix\\n• Premise Validity & Evidence Strength\\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
             
-            SciParser -> IRTCalib -> Criteria -> Logic;
+            PyMuPDF -> SciParser -> Retry -> IRTCalib -> Criteria -> Logic;
         }
 
         subgraph cluster_blockchain {
@@ -1825,7 +1880,7 @@ def framework_workflow_dialog():
             PiBrain [label="Pi-Brain LSTM Meta-Learning\\n• PyTorch Temporal Weight Prediction\\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
 
-        Auth -> SciParser [lhead=cluster_eval, label="Processed Manuscript Text"];
+        ZKBlind -> PyMuPDF [lhead=cluster_eval, label="Processed Manuscript Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Audited Score & Hashes"];
         Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
