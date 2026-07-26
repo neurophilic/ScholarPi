@@ -419,6 +419,15 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             "frequency": 1,
         }
 
+    # Lower map resolution / complexity by limiting to top 15 most frequent/heaviest topics
+    if len(topic_aggregates) > 15:
+        sorted_topics = sorted(
+            topic_aggregates.items(),
+            key=lambda x: (x[1]["frequency"], x[1]["weight_sum"]),
+            reverse=True
+        )
+        topic_aggregates = dict(sorted_topics[:15])
+
     unique_topics = list(topic_aggregates.keys())
 
     major_fields_dict = {}
@@ -467,7 +476,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             }}, 
             "stabilization": {{ 
                 "enabled": true, 
-                "iterations": 500,
+                "iterations": 300,
                 "fit": true
             }} 
         }} 
