@@ -566,7 +566,6 @@ st.markdown(
 )
 
 with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
-    # Fetch latest epoch metrics to merge inside the expander
     conn_top_ep = get_db_connection()
     try:
         cur_te = conn_top_ep.cursor()
@@ -604,6 +603,8 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
                     unsafe_allow_html=True,
                 )
         st.markdown("---")
+    else:
+        tw1 = 1.001328
 
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
@@ -621,7 +622,7 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
     )
 
     st.markdown(
-        "**C1: Originality** "
+        f"**C1: Originality ($\varpi_1$ = `{tw1:.6f}`):** "
         + tooltip(
             "Semantic distance from literature corpus penalized by generative"
             " AI laundering heuristics."
@@ -633,95 +634,49 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
         r" \times (1 - \lambda_{laundering}) $$"
     )
 
-    st.markdown(
-        "**C2: Methodological Rigor** "
-        + tooltip(
-            "Deterministic adherence to MDAR reporting standards and valid RRIDs"
-            " via SciScore."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
-        r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
-        r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
-        r" \epsilon}\right) $$"
-    )
+    with st.expander("C2: Methodological Rigor"):
+        st.markdown(
+            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
+        )
+        st.markdown(
+            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
+            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r" \epsilon}\right) $$"
+        )
 
-    st.markdown(
-        "**C3: Interdisciplinary Synergy** "
-        + tooltip(
-            "Shannon entropy of the verified citation network across diverse"
-            " subfields."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    with st.expander("C3: Interdisciplinary Synergy"):
+        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    st.markdown(
-        "**C4: Societal & Open Infrastructure Impact** "
-        + tooltip(
-            "CoARA WG TIER aligned rewards for public datasets, civic policy"
-            " integration, and open science."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
-        r" U_v(\tau, \mathbf{x}) \right] $$"
-    )
+    with st.expander("C4: Societal & Open Infrastructure Impact"):
+        st.markdown(
+            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r" U_v(\tau, \mathbf{x}) \right] $$"
+        )
 
-    st.markdown(
-        "**C5: Open Science & Executable Reproducibility** "
-        + tooltip(
-            "Cryptographic verification of open data/code repositories and"
-            " sandboxed container execution."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
-        r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
-    )
+    with st.expander("C5: Open Science & Executable Reproducibility"):
+        st.markdown(
+            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+        )
 
-    st.markdown(
-        "**C6: Literature Integration** "
-        + tooltip(
-            "Citation context polarity classification (supporting vs."
-            " contrasting engagement)."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
-        r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
-    )
+    with st.expander("C6: Literature Integration"):
+        st.markdown(
+            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+        )
 
-    st.markdown(
-        "**C7: Empirical Density & Validation** "
-        + tooltip(
-            "Deterministic extraction of sample sizes, degrees of freedom, and"
-            " cohort volumes."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
-        r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
-    )
+    with st.expander("C7: Empirical Density & Validation"):
+        st.markdown(
+            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+        )
 
-    st.markdown(
-        "**C8: Future Actionability & FAIR** "
-        + tooltip(
-            "Strict measurement of adherence to FAIR principles for"
-            " downstream research cascade."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
-        r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
-    )
+    with st.expander("C8: Future Actionability & FAIR"):
+        st.markdown(
+            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+        )
 
 st.markdown("---")
 
@@ -1623,107 +1578,97 @@ try:
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
 
-        st.markdown(
-            "### Proof-of-Research Blockchain Explorer & Sepolia Contract Verification "
-            + tooltip(
-                "Search the ledger to mathematically verify if a specific research document has been authentically graded, and inspect live deployed smart contracts on Sepolia Etherscan."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.info(
-            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
-            f" sealed to block `{block_hash}`."
-        )
-        st.caption(
-            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
-            " grading mathematical constants cannot be tampered with)."
-        )
-
-        explore_col1, explore_col2 = st.columns([3, 1])
-        with explore_col1:
-            search_query = st.text_input(
-                "Enter Document Evaluation Hash or Block Hash to verify ledger record...",
-                key="pinamic_ledger_search_query"
+        with st.expander("Proof-of-Research Blockchain Explorer & Sepolia Contract Verification", expanded=False):
+            st.info(
+                f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
+                f" sealed to block `{block_hash}`."
             )
-        with explore_col2:
-            st.write("")
-            st.write("")
-            search_btn = st.button("Verify Record", key="pinamic_verify_record_btn")
+            st.caption(
+                f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
+                " grading mathematical constants cannot be tampered with)."
+            )
 
-        if search_btn and search_query:
-            try:
-                cursor.execute(
-                    "SELECT * FROM blockchain_por_weights WHERE block_hash=? OR"
-                    " eval_hash=?",
-                    (search_query, search_query),
+            explore_col1, explore_col2 = st.columns([3, 1])
+            with explore_col1:
+                search_query = st.text_input(
+                    "Enter Document Evaluation Hash or Block Hash to verify ledger record...",
+                    key="pinamic_ledger_search_query"
                 )
-                record = cursor.fetchone()
-                if record:
-                    st.success("Valid Block Found on Ledger")
-                    st.json({
-                        "Block Height": record[0],
-                        "Timestamp": record[9],
-                        "Model Used": record[14],
-                        "Validator Node": record[11],
-                        "Block Hash": record[12],
-                        "Evaluation Hash": record[13],
-                        "PoR Signature": record[15],
-                        "Formulas Hash": record[16],
-                        "Weights": dict(
-                            zip([f"w{i+1}" for i in range(8)], record[1:9])
-                        ),
-                    })
-                else:
-                    st.error(
-                        "No block matching that signature was found on the ledger."
+            with explore_col2:
+                st.write("")
+                st.write("")
+                search_btn = st.button("Verify Record", key="pinamic_verify_record_btn")
+
+            if search_btn and search_query:
+                try:
+                    cursor.execute(
+                        "SELECT * FROM blockchain_por_weights WHERE block_hash=? OR"
+                        " eval_hash=?",
+                        (search_query, search_query),
                     )
-            except:
-                st.error("Error reading database schema. Try refreshing the app.")
+                    record = cursor.fetchone()
+                    if record:
+                        st.success("Valid Block Found on Ledger")
+                        st.json({
+                            "Block Height": record[0],
+                            "Timestamp": record[9],
+                            "Model Used": record[14],
+                            "Validator Node": record[11],
+                            "Block Hash": record[12],
+                            "Evaluation Hash": record[13],
+                            "PoR Signature": record[15],
+                            "Formulas Hash": record[16],
+                            "Weights": dict(
+                                zip([f"w{i+1}" for i in range(8)], record[1:9])
+                            ),
+                        })
+                    else:
+                        st.error(
+                            "No block matching that signature was found on the ledger."
+                        )
+                except:
+                    st.error("Error reading database schema. Try refreshing the app.")
 
-        st.markdown("---")
-        st.markdown("#### Deployed Smart Contracts on Sepolia Etherscan")
-        col_ex1, col_ex2 = st.columns(2)
-        with col_ex1:
-            piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-            st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
-        with col_ex2:
-            reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-            if REGISTRY_CONTRACT_ADDRESS:
-                st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+        with st.expander("Deployed Smart Contracts on Sepolia Etherscan", expanded=False):
+            col_ex1, col_ex2 = st.columns(2)
+            with col_ex1:
+                piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+                st.markdown(f"**PiQ Token Contract:** [`{PIQ_CONTRACT_ADDRESS}`]({piq_url})")
+            with col_ex2:
+                reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+                if REGISTRY_CONTRACT_ADDRESS:
+                    st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+                else:
+                    st.markdown("**Registry Contract:** `Not Configured`")
+
+        with st.expander("Recent Ledger Proofs Summary & Transaction Ledger", expanded=False):
+            cursor.execute(
+                """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                          p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                          b.block_height, b.block_hash
+                   FROM papers_assessment p
+                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                   ORDER BY p.timestamp DESC LIMIT 5"""
+            )
+            recent_ledger_rows = cursor.fetchall()
+            if recent_ledger_rows:
+                table_data = []
+                for rrow in recent_ledger_rows:
+                    rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
+                    tx_url = safe_get_sepolia_url(rtx)
+                    tx_disp = f"[{rtx[:10]}...]({tx_url})" if tx_url else str(rtx)
+                    table_data.append({
+                        "Block Height": rbh if rbh is not None else "Pending",
+                        "Eval Hash": reval[:10] + "...",
+                        "Block Hash": rbhash[:10] + "..." if rbhash else "Pending",
+                        "zk-SNARK": rzk[:10] + "..." if rzk else "N/A",
+                        "piQ": rpiq,
+                        "Tx Hash (Etherscan)": tx_disp,
+                        "Timestamp": rts[:19] if rts else ""
+                    })
+                st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
             else:
-                st.markdown("**Registry Contract:** `Not Configured`")
-
-        # --- Recent Ledger Proofs Summary Table integrated inside Pinamic ---
-        st.markdown("---")
-        st.markdown("#### Recent Ledger Proofs Summary & Transaction Ledger")
-        
-        cursor.execute(
-            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
-               FROM papers_assessment p
-               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               ORDER BY p.timestamp DESC LIMIT 5"""
-        )
-        recent_ledger_rows = cursor.fetchall()
-        if recent_ledger_rows:
-            table_data = []
-            for rrow in recent_ledger_rows:
-                rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
-                tx_url = safe_get_sepolia_url(rtx)
-                tx_disp = f"[{rtx[:10]}...]({tx_url})" if tx_url else str(rtx)
-                table_data.append({
-                    "Block Height": rbh if rbh is not None else "Pending",
-                    "Eval Hash": reval[:10] + "...",
-                    "Block Hash": rbhash[:10] + "..." if rbhash else "Pending",
-                    "zk-SNARK": rzk[:10] + "..." if rzk else "N/A",
-                    "piQ": rpiq,
-                    "Tx Hash (Etherscan)": tx_disp,
-                    "Timestamp": rts[:19] if rts else ""
-                })
-            st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
-        else:
-            st.info("No ledger transaction proofs recorded yet.")
+                st.info("No ledger transaction proofs recorded yet.")
 
 finally:
     conn.close()
