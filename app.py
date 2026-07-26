@@ -364,8 +364,8 @@ if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 
-if "scilem_messages" not in st.session_state:
-    st.session_state.scilem_messages = [
+if "scilm_messages" not in st.session_state:
+    st.session_state.scilm_messages = [
         {
             "role": "assistant", 
             "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
@@ -481,7 +481,7 @@ if "last_analyzed_tracked" not in st.session_state:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
 elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
-    st.session_state.scilem_messages.append({
+    st.session_state.scilm_messages.append({
         "role": "assistant",
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
@@ -558,7 +558,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             raw_subfields = [s.title().strip() for s in json.loads(subfields_json)]
             score = float(final_score) if final_score else 50.0
             for rs in raw_subfields:
-                if rs.lower() not in exclude_terms:
+                if rs and rs.lower() not in exclude_terms:
                     s = refine_science_field(rs)
                     if s not in topic_aggregates:
                         topic_aggregates[s] = {"weight_sum": 0.0, "frequency": 0}
@@ -1820,7 +1820,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
@@ -1946,7 +1946,7 @@ with scilem_container:
     
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
-        for idx, message in enumerate(st.session_state.scilem_messages):
+        for idx, message in enumerate(st.session_state.scilm_messages):
             msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
@@ -1959,7 +1959,7 @@ with scilem_container:
             submitted_floating = st.form_submit_button("Send")
 
     if submitted_floating and floating_prompt:
-        st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
+        st.session_state.scilm_messages.append({"role": "user", "content": floating_prompt})
         
         direct_answer = None
         if floating_prompt.startswith("Explain:"):
@@ -1970,7 +1970,7 @@ with scilem_container:
                     break
 
         if direct_answer:
-            st.session_state.scilem_messages.append({"role": "assistant", "content": f"{direct_answer}"})
+            st.session_state.scilm_messages.append({"role": "assistant", "content": f"{direct_answer}"})
             st.rerun()
         else:
             rag_context = ""
@@ -2007,7 +2007,7 @@ with scilem_container:
             )
 
             messages_for_api = [{"role": "system", "content": scilem_sys_prompt}] + [
-                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilem_messages
+                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
             ]
 
             full_response = ""
@@ -2057,5 +2057,5 @@ with scilem_container:
             except Exception as e:
                 full_response = f"Error connecting to Scilem engine: {str(e)}"
 
-            st.session_state.scilem_messages.append({"role": "assistant", "content": full_response})
+            st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
             st.rerun()
