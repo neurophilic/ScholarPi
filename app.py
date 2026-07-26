@@ -1299,241 +1299,241 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-# --- Analytics Section: Pidyne Forecast & Global Map of Science (Stacked Layout) ---
+# --- Top Analytics Section: Side-by-Side Pidyne Forecast & Global Map of Science ---
+top_analytics_col1, top_analytics_col2 = st.columns(2)
 
-col_fc1, col_fc2 = st.columns([3, 1])
-with col_fc1:
-    st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
-with col_fc2:
-    forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
-    actual_lookback = int(forecast_horizon.split()[0])
+with top_analytics_col1:
+    col_fc1, col_fc2 = st.columns([3, 1])
+    with col_fc1:
+        st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
+    with col_fc2:
+        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
+        actual_lookback = int(forecast_horizon.split()[0])
 
-@st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-def train_pibrain_cached(weight_data, actual_lookback):
-    dataset = PiBlockchainDataset(weight_data, actual_lookback)
-    dataloader = DataLoader(
-        dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-    )
+    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+    def train_pibrain_cached(weight_data, actual_lookback):
+        dataset = PiBlockchainDataset(weight_data, actual_lookback)
+        dataloader = DataLoader(
+            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+        )
 
-    model = PiBrainLSTM()
-    weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-    if os.path.exists(weights_path):
-        try:
-            model.load_state_dict(torch.load(weights_path, weights_only=True))
-        except Exception:
-            pass
+        model = PiBrainLSTM()
+        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+        if os.path.exists(weights_path):
+            try:
+                model.load_state_dict(torch.load(weights_path, weights_only=True))
+            except Exception:
+                pass
 
-    loss_function = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+        loss_function = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    model.train()
-    for epoch in range(300):
-        for seq, target in dataloader:
-            optimizer.zero_grad()
-            loss = loss_function(model(seq), target)
-            loss.backward()
-            optimizer.step()
+        model.train()
+        for epoch in range(300):
+            for seq, target in dataloader:
+                optimizer.zero_grad()
+                loss = loss_function(model(seq), target)
+                loss.backward()
+                optimizer.step()
 
-    model.eval()
-    with torch.no_grad():
-        raw_pred = (
-            model(
-                torch.tensor(
-                    weight_data[-actual_lookback:], dtype=torch.float32
-                ).unsqueeze(0)
+        model.eval()
+        with torch.no_grad():
+            raw_pred = (
+                model(
+                    torch.tensor(
+                        weight_data[-actual_lookback:], dtype=torch.float32
+                    ).unsqueeze(0)
+                )
+                .squeeze()
+                .numpy()
             )
-            .squeeze()
-            .numpy()
-        )
-        current_w = weight_data[-1]
-        predicted = current_w + (raw_pred - current_w) * 20.0
-        predicted = np.clip(predicted, 0.01, 7.9)
-        predicted = predicted * (8.0 / np.sum(predicted))
-        torch.save(model.state_dict(), weights_path)
-        return predicted
+            current_w = weight_data[-1]
+            predicted = current_w + (raw_pred - current_w) * 20.0
+            predicted = np.clip(predicted, 0.01, 7.9)
+            predicted = predicted * (8.0 / np.sum(predicted))
+            torch.save(model.state_dict(), weights_path)
+            return predicted
 
-conn_pb = get_db_connection()
-try:
-    cursor_pb = conn_pb.cursor()
-    cursor_pb.execute(
-        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-        " BY block_height ASC"
-    )
-    historical_rows = cursor_pb.fetchall()
-finally:
-    conn_pb.close()
-
-min_blocks_required = 2
-if len(historical_rows) < min_blocks_required:
-    st.warning(
-        f"Not enough blockchain data to train the meta-model. You need at least"
-        f" {min_blocks_required} blocks (Currently on ledger:"
-        f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-        " block 2."
-    )
-else:
-    current_block_count = len(historical_rows)
-    lookback_window = max(1, min(actual_lookback, current_block_count - 1))
-
-    if (
-        "last_trained_blocks" not in st.session_state
-        or st.session_state.last_trained_blocks != current_block_count
-        or st.session_state.get("last_lookback") != lookback_window
-    ):
-        weight_data = np.array(historical_rows, dtype=np.float32)
-
-        st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, lookback_window)
-        st.session_state.current_weights = weight_data[-1]
-        st.session_state.last_trained_blocks = current_block_count
-        st.session_state.last_lookback = lookback_window
-
-    curr_vals = st.session_state.current_weights
-    pred_vals = st.session_state.predicted_next_weights
-
-    if len(historical_rows) > 0:
-        df_history = pd.DataFrame(
-            historical_rows,
-            columns=[
-                "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"
-            ]
-        )
-        df_history.index.name = "Block / Epoch"
-        
-        df_amplified = df_history.copy()
-        for col in df_amplified.columns:
-            df_amplified[col] = 1.0 + (df_amplified[col] - 1.0) * 1500.0
-            
-        df_melted = df_amplified.reset_index().melt('Block / Epoch', var_name='Criterion', value_name='Weight (Amplified)')
-        
-        base = alt.Chart(df_melted).mark_line(point=True).encode(
-            x='Block / Epoch:O',
-            y=alt.Y('Weight (Amplified):Q', scale=alt.Scale(zero=False)),
-            color='Criterion:N',
-            tooltip=['Block / Epoch', 'Criterion', 'Weight (Amplified)']
-        ).properties(height=350, width='container')
-        st.altair_chart(base, use_container_width=True)
-
-    st.markdown(
-        f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
-        f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
-        f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
-        f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
-        f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
-        f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
-        f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
-        f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
-        f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
-    )
-
-with st.expander("What's Pidyne?", expanded=False):
-    st.markdown("""
-    Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
-    1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-    2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-    3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
-    """)
-
-st.markdown("---")
-
-# --- Global Map of Science Section (Square, Borderless, Stacked directly below Pidyne) ---
-map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
-with map_title_col:
-    st.markdown(f"### Global Map of Science {rbot('global map of science')}", unsafe_allow_html=True)
-with map_badge_col:
-    st.markdown(
-        f"""
-        <div style="background-color: #2c3e50; color: white; padding: 4px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-            Total Analyzed Papers: {total_analyzed_count}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-map_container = st.container()
-with map_container:
-    st.markdown("<div id='map-anchor' style='position: relative; width: 750px; height: 750px;'>", unsafe_allow_html=True)
-    
-    with st.expander("⚙️ Settings", expanded=False):
-        mod_col1, mod_col2 = st.columns(2)
-        with mod_col1:
-            mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
-            mod_spring = st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
-        with mod_col2:
-            mod_size = st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
-            mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
-
-    conn_m = get_db_connection()
+    conn_pb = get_db_connection()
     try:
-        cursor_m = conn_m.cursor()
-        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
-        all_global_authors = []
-        for row in cursor_m.fetchall():
-            if row[0]:
-                cleaned = clean_author_name(row[0])
-                for a in cleaned.split(","):
-                    if a.strip() and not is_likely_institution(a.strip()):
-                        all_global_authors.append(a.strip())
-    finally:
-        conn_m.close()
-    all_global_authors = sorted(list(set(all_global_authors)))
-
-    selected_author_top = None
-    piq_dict, book_dict = get_author_piq_dict()
-
-    if all_global_authors:
-        filter_choice_top = st.selectbox(
-            "Filter Map by Author:",
-            ["All Authors"] + all_global_authors,
-            key=f"top_author_filter_{st.session_state['assessment_update_token']}",
-            format_func=lambda x: (
-                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
-            ),
+        cursor_pb = conn_pb.cursor()
+        cursor_pb.execute(
+            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+            " BY block_height ASC"
         )
-        if filter_choice_top != "All Authors":
-            selected_author_top = filter_choice_top
+        historical_rows = cursor_pb.fetchall()
+    finally:
+        conn_pb.close()
 
-    interactive_html_top, table_html_top = render_bubble_chart_clean(
-        selected_author_top,
-        repulsion=mod_repulsion,
-        spring_len=mod_spring,
-        size_scale=mod_size,
-        central_grav=mod_gravity
-    )
-    if interactive_html_top:
-        st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
-        components.html(interactive_html_top, height=750, width=750, scrolling=False)
-        st.markdown("</div>", unsafe_allow_html=True)
+    min_blocks_required = 2
+    if len(historical_rows) < min_blocks_required:
+        st.warning(
+            f"Not enough blockchain data to train the meta-model. You need at least"
+            f" {min_blocks_required} blocks (Currently on ledger:"
+            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+            " block 2."
+        )
     else:
-        st.info("Awaiting sufficient data for map visualization.")
+        current_block_count = len(historical_rows)
+        lookback_window = max(1, min(actual_lookback, current_block_count - 1))
+
+        if (
+            "last_trained_blocks" not in st.session_state
+            or st.session_state.last_trained_blocks != current_block_count
+            or st.session_state.get("last_lookback") != lookback_window
+        ):
+            weight_data = np.array(historical_rows, dtype=np.float32)
+
+            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, lookback_window)
+            st.session_state.current_weights = weight_data[-1]
+            st.session_state.last_trained_blocks = current_block_count
+            st.session_state.last_lookback = lookback_window
+
+        curr_vals = st.session_state.current_weights
+        pred_vals = st.session_state.predicted_next_weights
+
+        if len(historical_rows) > 0:
+            df_history = pd.DataFrame(
+                historical_rows,
+                columns=[
+                    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"
+                ]
+            )
+            df_history.index.name = "Block / Epoch"
+            
+            df_amplified = df_history.copy()
+            for col in df_amplified.columns:
+                df_amplified[col] = 1.0 + (df_amplified[col] - 1.0) * 1500.0
+                
+            df_melted = df_amplified.reset_index().melt('Block / Epoch', var_name='Criterion', value_name='Weight (Amplified)')
+            
+            base = alt.Chart(df_melted).mark_line(point=True).encode(
+                x='Block / Epoch:O',
+                y=alt.Y('Weight (Amplified):Q', scale=alt.Scale(zero=False)),
+                color='Criterion:N',
+                tooltip=['Block / Epoch', 'Criterion', 'Weight (Amplified)']
+            ).properties(height=350)
+            st.altair_chart(base, use_container_width=True)
+
+        st.markdown(
+            f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
+            f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
+            f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
+            f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
+            f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
+            f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
+            f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
+            f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
+            f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
+        )
+
+    with st.expander("What's Pidyne?", expanded=False):
+        st.markdown("""
+        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
+        """)
+
+with top_analytics_col2:
+    map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
+    with map_title_col:
+        st.markdown(f"### Global Map of Science {rbot('global map of science')}", unsafe_allow_html=True)
+    with map_badge_col:
+        st.markdown(
+            f"""
+            <div style="background-color: #2c3e50; color: white; padding: 4px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                Total Analyzed Papers: {total_analyzed_count}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    map_container = st.container()
+    with map_container:
+        st.markdown("<div id='map-anchor' style='position: relative; width: 750px; height: 750px;'>", unsafe_allow_html=True)
         
-    st.markdown("</div>", unsafe_allow_html=True)
+        with st.expander("⚙️", expanded=False):
+            mod_col1, mod_col2 = st.columns(2)
+            with mod_col1:
+                mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
+                mod_spring = st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
+            with mod_col2:
+                mod_size = st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
+                mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
 
-with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
-    st.markdown(table_html_top, unsafe_allow_html=True)
-    st.markdown("---")
-    st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
-    search_query_top = st.text_input(
-        "Search Explorer by Author or Book Address:",
-        placeholder="Enter author name or 0x...",
-        key="top_search_query_input"
-    )
-    if piq_dict:
-        leaderboard_data = []
-        for author, piq in piq_dict.items():
-            leaderboard_data.append({
-                "Contributing Author": author,
-                "Unique Author Book Address": book_dict.get(author, "None"),
-                "Total piQ Earned": round(piq, 2),
-            })
-        piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
-        if search_query_top:
-            q_clean = search_query_top.strip().lower()
-            filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
-            st.dataframe(filtered_df, use_container_width=True, height=180)
+        conn_m = get_db_connection()
+        try:
+            cursor_m = conn_m.cursor()
+            cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
+            all_global_authors = []
+            for row in cursor_m.fetchall():
+                if row[0]:
+                    cleaned = clean_author_name(row[0])
+                    for a in cleaned.split(","):
+                        if a.strip() and not is_likely_institution(a.strip()):
+                            all_global_authors.append(a.strip())
+        finally:
+            conn_m.close()
+        all_global_authors = sorted(list(set(all_global_authors)))
+
+        selected_author_top = None
+        piq_dict, book_dict = get_author_piq_dict()
+
+        if all_global_authors:
+            filter_choice_top = st.selectbox(
+                "Filter Map by Author:",
+                ["All Authors"] + all_global_authors,
+                key=f"top_author_filter_{st.session_state['assessment_update_token']}",
+                format_func=lambda x: (
+                    f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
+                ),
+            )
+            if filter_choice_top != "All Authors":
+                selected_author_top = filter_choice_top
+
+        interactive_html_top, table_html_top = render_bubble_chart_clean(
+            selected_author_top,
+            repulsion=mod_repulsion,
+            spring_len=mod_spring,
+            size_scale=mod_size,
+            central_grav=mod_gravity
+        )
+        if interactive_html_top:
+            st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
+            components.html(interactive_html_top, height=750, width=750, scrolling=False)
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
-            st.dataframe(piq_df, use_container_width=True, height=180)
-    else:
-        st.info("No piQ tokens minted yet.")
+            st.info("Awaiting sufficient data for map visualization.")
+            
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
+        st.markdown(table_html_top, unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
+        search_query_top = st.text_input(
+            "Search Explorer by Author or Book Address:",
+            placeholder="Enter author name or 0x...",
+            key="top_search_query_input"
+        )
+        if piq_dict:
+            leaderboard_data = []
+            for author, piq in piq_dict.items():
+                leaderboard_data.append({
+                    "Contributing Author": author,
+                    "Unique Author Book Address": book_dict.get(author, "None"),
+                    "Total piQ Earned": round(piq, 2),
+                })
+            piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
+            if search_query_top:
+                q_clean = search_query_top.strip().lower()
+                filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
+                st.dataframe(filtered_df, use_container_width=True, height=180)
+            else:
+                st.dataframe(piq_df, use_container_width=True, height=180)
+        else:
+            st.info("No piQ tokens minted yet.")
 
 st.markdown("---")
 
@@ -1940,7 +1940,6 @@ with col_center:
         framework_workflow_dialog()
 
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
-st.markdown("---")
 scilem_container = st.container()
 with scilem_container:
     st.markdown("<div id='scilem-drag-handle'><span class='robot-icon'>🤖</span> Scilem Assistant</div>", unsafe_allow_html=True)
