@@ -131,7 +131,7 @@ custom_ui_code = """
     padding: 12px !important;
 }
 
-[data-testid="stChatMessage"]:has(div:contains("USER")) {
+[data-testid="stChatMessage"]:has(div:contains("👤")) {
     flex-direction: row-reverse !important;
     background-color: #e8f0fe !important;
     border-radius: 10px 0 10px 10px !important;
@@ -419,7 +419,6 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             "frequency": 1,
         }
 
-    # Lower map resolution / complexity by limiting to top 15 most frequent/heaviest topics
     if len(topic_aggregates) > 15:
         sorted_topics = sorted(
             topic_aggregates.items(),
@@ -1779,7 +1778,7 @@ st.markdown("<h4 style='margin-bottom:0; color: #2c3e50;'>🤖 Scilem Assistant<
 floating_chat_container = st.container(height=280)
 with floating_chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        msg_avatar = "🤖" if message["role"] == "assistant" else "USER"
+        msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
