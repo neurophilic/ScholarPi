@@ -108,12 +108,21 @@ def rbot(topic_key):
 
 custom_ui_code = """
 <style>
+/* Make Sidebar Unscrollable */
+[data-testid="stSidebar"] {
+    overflow: hidden !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+    overflow: hidden !important;
+}
+
 [data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
     overflow-x: hidden !important;
     scroll-behavior: smooth;
     padding: 0 !important;
 }
 
+/* User Messages: Right Aligned */
 [data-testid="stChatMessage"]:has(div:contains("USER")) {
     flex-direction: row-reverse !important;
     background-color: #e8f0fe !important;
@@ -121,6 +130,7 @@ custom_ui_code = """
     text-align: right !important;
     margin-left: 20px !important;
 }
+/* Assistant Messages: Left Aligned */
 [data-testid="stChatMessage"]:has(div:contains("🤖")) {
     background-color: #f1f3f4 !important;
     border-radius: 0 10px 10px 10px !important;
@@ -350,6 +360,7 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
+# --- Scilem Assistant enclosed in Sidebar ---
 st.sidebar.markdown("---")
 
 SCILEM_KNOWLEDGE_BASE = {
@@ -394,7 +405,7 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
 st.sidebar.markdown('<div class="scilem-box">', unsafe_allow_html=True)
 st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe_allow_html=True)
     
-chat_container = st.sidebar.container(height=450)
+chat_container = st.sidebar.container(height=300)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
         msg_avatar = "🤖" if message["role"] == "assistant" else "USER"
@@ -503,6 +514,12 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input", 
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
         st.rerun()
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+# --- Live System Monitor in Sidebar ---
+st.sidebar.markdown("---")
+with st.sidebar.expander("🖥️ Live System Monitor", expanded=False):
+    log_text = "\n".join(st.session_state.app_logs)
+    st.code(log_text if log_text else "No active logs...", language="bash")
 
 def refine_science_field(s):
     s_lower = s.lower()
@@ -626,24 +643,16 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         font_color="#2c3e50",
         notebook=False,
     )
-    physics_options = f"""{{ 
-        "physics": {{ 
-            "barnesHut": {{ 
-                "gravitationalConstant": {repulsion}, 
-                "centralGravity": {central_grav}, 
-                "springLength": {spring_len}, 
-                "springConstant": 0.02,
-                "damping": 0.95,
-                "avoidOverlap": 2.5 
-            }}, 
-            "stabilization": {{ 
-                "enabled": true, 
-                "iterations": 1000,
-                "fit": true
-            }} 
-        }} 
-    }}"""
-    net.set_options(physics_options)
+    
+    # Using PyVis built-in physics configuration method for reliable slider binding
+    net.barnes_hut(
+        gravitational_constant=repulsion,
+        central_gravity=central_grav,
+        spring_length=spring_len,
+        spring_constant=0.02,
+        damping=0.95,
+        avoid_overlap=2.5
+    )
 
     for topic, metrics in topic_aggregates.items():
         avg_weight = metrics["weight_sum"] / metrics["frequency"]
@@ -693,12 +702,13 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
-    gradient_injection = """
+    gradient_injection = f"""
     <style type="text/css">
-        canvas {
+        canvas {{
             background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
-        }
+        }}
     </style>
+    <!-- reload_timestamp: {time.time()} -->
     </head>
     """
     html_string = html_string.replace("</head>", gradient_injection)
@@ -782,10 +792,6 @@ with col_t1:
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
-
-with st.expander("🖥️ Live System Monitor", expanded=False):
-    log_text = "\n".join(st.session_state.app_logs)
-    st.code(log_text if log_text else "No active logs...", language="bash")
 
 st.markdown("")
 with st.container(border=True):
