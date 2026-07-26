@@ -19,21 +19,19 @@ from pyvis.network import Network
 import streamlit as st
 import streamlit.components.v1 as components
 
-from config import BASE_DIR, EPOCH_BLOCK_SIZE, PRIMARY_MODEL, FALLBACK_MODEL
+from config import BASE_DIR, EPOCH_BLOCK_SIZE
 from database import get_db_connection
 from ledger import restore_state_from_web3, generate_blockchain_pi
 from integrations import (
     clean_author_name, is_likely_institution, fetch_doi_metadata, 
-    fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics
+    fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics,
+    fetch_core_text_by_doi, create_virtual_pdf_from_text
 )
 from brain import (
     process_single_pdf, generate_rebuttal_strategy, PiBrainLSTM, 
-    PiBlockchainDataset, groq_client
+    PiBlockchainDataset
 )
 
-# ==========================================
-# UI UTILITIES & METRICS
-# ==========================================
 def tooltip(text):
     svg_icon = (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16"'
@@ -74,11 +72,8 @@ def get_author_piq_dict():
             author_book[a] = "0x" + hashlib.sha256(a.encode()).hexdigest()[:40]
     return author_piq, author_book
 
-# ==========================================
-# STREAMLIT UI INITIALIZATION
-# ==========================================
 st.set_page_config(
-    page_title="Pi-Index Assessment Engine", layout="wide"
+    page_title="Pi-Index Assessment Engine (CoARA-Compliant)", layout="wide"
 )
 
 st.sidebar.title("System Access")
@@ -221,7 +216,7 @@ current_user = st.session_state.orcid_id
 current_email = "None"
 
 st.title(
-    "Pi-Index Assessment Engine",
+    "Pi-Index Assessment Engine (CoARA-Compliant)",
     help=(
         "Automated peer-review framework powered by neural networks, SciScore"
         " reproducibility metrics, and multidimensional blockchain consensus."
@@ -679,38 +674,12 @@ with tab1:
                         if metadata and metadata.get("pdf_url"):
                             pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
 
-                                        # Inside your processing loop:
-                    if pdf_bytes:
-                        # Standard PDF processing flow...
-                        pass
-                    else:
-                        # ---------------------------------------------------------
-                        # OPTION 2 FALLBACK: Try CORE API via DOI before failing
-                        # ---------------------------------------------------------
-                        from integrations import fetch_core_text_by_doi, create_virtual_pdf_from_text
-                        
-                        status_text.text(f"Direct download restricted. Querying CORE API fallback for DOI...")
+                    # Option 2 Fallback: CORE API query if binary download fails
+                    if not pdf_bytes and p_doi:
+                        status_text.text("Direct download restricted. Querying CORE API fallback...")
                         core_text = fetch_core_text_by_doi(p_doi)
-                        
                         if core_text:
-                            status_text.text(f"CORE text harvested successfully. Generating virtual assessment buffer...")
-                            pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access Manuscript'))
-                    
-                        # If Option 2 succeeds, process it normally through your pipeline:
-                        if pdf_bytes:
-                            (
-                                title, author_name, score, logic_integrity, drift, rec,
-                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
-                            ) = process_single_pdf(
-                                pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
-                            )
-                            # Append to session buffer as usual...
-                        else:
-                            # Fall back to error handling if CORE also doesn't have it indexed
-                            err_item = {"title": p.get("title", "Unknown Title"), "doi": p_doi, "url": p.get('pdf_url', 'N/A')}
-                            if err_item not in st.session_state["download_errors"]:
-                                st.session_state["download_errors"].append(err_item)
+                            pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
 
                     if pdf_bytes:
                         (
@@ -765,9 +734,14 @@ with tab1:
                     s2_url = fetch_semantic_scholar_pdf(doi_snap)
                     if s2_url:
                         pdf_bytes = download_pdf_from_url(s2_url)
+                
+                if not pdf_bytes:
+                    core_text = fetch_core_text_by_doi(doi_snap)
+                    if core_text:
+                        pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
 
                 if pdf_bytes:
-                    status_text.text("Assessing Open Access document from DOI...")
+                    status_text.text("Assessing document from resolved source...")
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
@@ -1951,10 +1925,13 @@ with tab6:
 
             full_response = ""
             try:
+                from brain import groq_client
+                PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
+                FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
                 if groq_client:
                     try:
                         response = groq_client.chat.completions.create(
-                            model=PRIMARY_MODEL,
+                            model=PRIMARY_MODEL_NAME,
                             messages=messages_for_api,
                             temperature=0.15,
                         )
@@ -1963,7 +1940,7 @@ with tab6:
                         if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
                             st.toast("Primary model rate limit reached. Automatically switching to Scilem Fallback Engine (8B)...", icon="⚡")
                             fallback_response = groq_client.chat.completions.create(
-                                model=FALLBACK_MODEL,
+                                model=FALLBACK_MODEL_NAME,
                                 messages=messages_for_api,
                                 temperature=0.15,
                             )
