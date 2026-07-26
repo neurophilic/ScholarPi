@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pyvis.network import Network
+import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -73,53 +74,49 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-# Custom JS/CSS to manage the robot pointer cursor, safe click-to-explain limits,
-# horizontal scroll lock on the Scilem box, and auto-scrolling the chat container.
+# Custom JS/CSS for Robot Cursor, Scilem Click-to-Explain, and Layout Adjustments
 custom_ui_code = """
 <style>
 /* Prevent horizontal scroll in chat */
 [data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
     overflow-x: hidden !important;
     scroll-behavior: smooth;
+    padding-right: 2px;
 }
 
-/* Scilem Box Styling */
-.scilem-box {
-    border: 1px solid #e0e6ed;
-    border-radius: 8px;
-    padding: 10px;
-    background-color: #fcfcfc;
-}
-
-/* Explainable text classes show a robot pointer and subtle underline */
+/* Explainable technical terms with URL-encoded Robot SVG cursor */
 .explainable {
-    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><text y="20" font-size="20">🤖</text></svg>') 12 12, pointer;
-    border-bottom: 1px dotted #2980b9;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ctext y='20' font-size='20'%3E%F0%9F%A4%96%3C/text%3E%3C/svg%3E"), pointer !important;
+    border-bottom: 1.5px dotted #2980b9;
+    color: #1a5276;
+    font-weight: 600;
     transition: all 0.2s ease-in-out;
 }
 .explainable:hover {
-    color: #2980b9;
-    background-color: #f1f8ff;
+    background-color: #eaf2f8;
+    border-radius: 4px;
+    padding: 0 2px;
 }
 </style>
 <script>
 const parentDoc = window.parent.document;
 
-// 1. Click Listener for Explainable Elements Only (Ignores dialogs/buttons to not block them)
+// 1. Click Listener for Explainable Elements (Captures clicks anywhere, including dialogs)
 parentDoc.addEventListener('click', function(e) {
     let explainTarget = e.target.closest('.explainable');
     if (!explainTarget) return; 
     
-    // Check if click originated from interactive elements inside the explainable area
-    if (e.target.closest('button, a, input, textarea, select, [role="button"], [role="tab"], [role="dialog"], [data-testid="stExpander"]')) return;
+    // Prevent normal click actions if it's purely for Scilem explanation
+    e.preventDefault();
+    e.stopPropagation();
 
     let text = explainTarget.innerText || explainTarget.textContent;
     if (!text) return;
     text = text.trim();
 
-    const textareas = parentDoc.querySelectorAll('textarea[aria-label="Ask Scilem..."]');
-    if (textareas.length > 0) {
-        const textarea = textareas[0];
+    // Find the Scilem Chat Input Textarea
+    const textarea = parentDoc.querySelector('[data-testid="stChatInputTextArea"]');
+    if (textarea) {
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
         nativeInputValueSetter.call(textarea, "Explain: " + text);
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -129,7 +126,7 @@ parentDoc.addEventListener('click', function(e) {
         });
         textarea.dispatchEvent(enterEvent);
     }
-});
+}, true); // Use capture phase to intercept early
 
 // 2. MutationObserver to always keep the chat scrolled to the bottom
 const observer = new MutationObserver(() => {
@@ -208,11 +205,11 @@ if "orcid_id" not in st.session_state:
     saved_orcid = st.query_params.get("orcid", "")
     if saved_orcid and (re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", saved_orcid) or "did:" in saved_orcid):
         st.session_state.orcid_id = saved_orcid
-        st.session_state.orcid_name = "Verified Decentralized Identity" if "did:" in saved_orcid else "Verified Researcher (Name Private)"
+        st.session_state.orcid_name = "Ali Vafadar Yengejeh" if "8050" in saved_orcid else "Verified Decentralized Identity"
         st.session_state.is_authenticated = True
     else:
         st.session_state.orcid_id = "0009-0009-8456-8050"
-        st.session_state.orcid_name = "Verified Researcher (Name Private)"
+        st.session_state.orcid_name = "Ali Vafadar Yengejeh"
         st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
@@ -231,8 +228,10 @@ if not st.session_state.is_authenticated:
             with st.sidebar.status("Connecting to Identity Registry..."):
                 if "did:" in clean_orcid:
                     is_valid, user_name = True, "Verified Decentralized Identity"
+                elif "8050" in clean_orcid:
+                    is_valid, user_name = True, "Ali Vafadar Yengejeh"
                 else:
-                    is_valid, user_name = True, "Verified Researcher (Name Private)"
+                    is_valid, user_name = True, "Verified Researcher"
             if is_valid:
                 st.session_state.orcid_id = clean_orcid
                 st.session_state.orcid_name = user_name
@@ -245,7 +244,7 @@ if not st.session_state.is_authenticated:
                         del st.query_params["orcid"]
                 st.rerun()
             else:
-                st.sidebar.error(user_name)
+                st.sidebar.error("Authentication Failed.")
         else:
             st.sidebar.error("Invalid ORCID or DID format.")
 
@@ -269,7 +268,7 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
-# --- Scilem Assistant enclosed in a Single Box ---
+# --- Scilem Assistant enclosed cleanly to maximize horizontal text space ---
 st.sidebar.markdown("---")
 
 SCILEM_KNOWLEDGE_BASE = {
@@ -277,7 +276,7 @@ SCILEM_KNOWLEDGE_BASE = {
     "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
     "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
     "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
-    "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs.",
+    "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs. It validates evaluations directly on the blockchain.",
     "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
     "c1": "C1 (Originality): Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
     "c2": "C2 (Methodological Rigor): Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
@@ -288,14 +287,17 @@ SCILEM_KNOWLEDGE_BASE = {
     "c7": "C7 (Empirical Density): Assesses empirical sample strength and baseline variance.",
     "c8": "C8 (Future Actionability): Evaluates future research actionability and adherence to FAIR principles.",
     "pi-index": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
-    "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights."
+    "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights.",
+    "zk-snark": "Zero-Knowledge Succinct Non-Interactive Argument of Knowledge. A cryptographic proof that an evaluation occurred exactly per guidelines without revealing reviewer identity.",
+    "sciscore mdar": "SciScore evaluates adherence to the Materials Design Analysis Reporting (MDAR) framework to ensure rigor.",
+    "desci peer attestation": "Allows decentralized scientists (DeSci) to stake their earned piQ tokens to either endorse rigor or challenge an anomaly on the blockchain."
 }
 
 if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** If you see a robot finger on any underlined text or feature in the main app, simply click it and I will automatically explain it here."
+            "content": "**Welcome! I am Scilem.** If you see a robot finger 🤖 on any bold/underlined text in the app, simply click it and I will automatically explain it here."
         }
     ]
 
@@ -308,13 +310,11 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
 
-# Make the scilem icon much smaller
 tiny_scilem_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='10' fill='%232c3e50'/%3E%3C/svg%3E"
 
-st.sidebar.markdown('<div class="scilem-box">', unsafe_allow_html=True)
 st.sidebar.markdown("### Scilem Assistant")
     
-# Internal scrollable container for the chat
+# Internal scrollable container for the chat (no border container to save horizontal space)
 chat_container = st.sidebar.container(height=350)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
@@ -404,7 +404,6 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
 
         st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
         st.rerun()
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 def refine_science_field(s):
     s_lower = s.lower()
@@ -508,13 +507,11 @@ def render_bubble_chart_clean(target_author):
     color_map = {}
 
     for i, major in enumerate(major_keys):
-        # Base hue for the major discipline
         h = i / len(major_keys) if len(major_keys) > 0 else 0
         subfields = sorted(major_fields_dict[major])
         n_subs = len(subfields)
         
         for j, topic in enumerate(subfields):
-            # Vary saturation and value to create shades mapping hierarchical depth
             if n_subs <= 1:
                 s, v = 0.7, 0.9
             else:
@@ -1029,7 +1026,7 @@ def more_details_dialog(item):
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
         st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
         st.write(f"**piQ Minted:** `{piq}`")
-        st.write(f"**zk-SNARK:** `{zk_proof}`")
+        st.markdown(f"**<span class='explainable'>zk-SNARK</span>:** `{zk_proof}`", unsafe_allow_html=True)
         
         tx_url = safe_get_sepolia_url(tx_hash)
         tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
@@ -1038,8 +1035,8 @@ def more_details_dialog(item):
         else:
             st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-        st.write(f"**Executable Reproducibility Score (C5/C7 audit):** `{repro_score * 100:.1f}%`")
-        st.write(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`")
+        st.markdown(f"**<span class='explainable'>Executable Reproducibility Score</span>:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
+        st.markdown(f"**<span class='explainable'>SciScore MDAR Adherence</span>:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
 
     scope_val = st.session_state.get("snap_scope", "")
     if scope_val.strip() and drift != "N/A" and rec != "N/A":
@@ -1327,27 +1324,22 @@ with top_analytics_col1:
 
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
-        
-        # Super Exaggeration for Visual Impact using Streamlit's native bar_chart
-        mean_val = np.mean(curr_vals)
-        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 150.0)
-        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 150.0)
 
-        df_compare = pd.DataFrame(
-            {
-                "Current Active Weights (150x Amplified)": exagg_curr,
-                "Predicted Next Epoch (150x Amplified)": exagg_pred,
-            },
-            index=[
-                "C1: Originality", "C2: Methodological Rigor",
-                "C3: Interdisciplinary", "C4: Societal Impact",
-                "C5: Open Science", "C6: Literature Integration",
-                "C7: Empirical Density", "C8: Future Actionability",
-            ],
-        )
+        df_compare = pd.DataFrame({
+            "Criterion": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"],
+            "Current Active": curr_vals,
+            "Predicted Next": pred_vals,
+        }).melt("Criterion", var_name="State", value_name="Weight")
+
+        pidyne_chart = alt.Chart(df_compare).mark_bar().encode(
+            x=alt.X('State:N', title=None, axis=alt.Axis(labels=False, ticks=False)),
+            y=alt.Y('Weight:Q', scale=alt.Scale(zero=False), title='Apri Weight'),
+            color=alt.Color('State:N', legend=alt.Legend(title=None, orient="bottom")),
+            column=alt.Column('Criterion:N', title=None, header=alt.Header(labelOrient="bottom"))
+        ).configure_view(stroke='transparent').properties(height=350)
         
-        # Switched back to st.bar_chart to restore the native Streamlit dropdown menu options
-        st.bar_chart(df_compare, height=380, use_container_width=True)
+        st.altair_chart(pidyne_chart, use_container_width=True)
+
         st.markdown(
             f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
             f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
@@ -1359,14 +1351,6 @@ with top_analytics_col1:
             f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
             f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
         )
-
-    with st.expander("What's Pidyne?", expanded=False):
-        st.markdown("""
-        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
-        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
-        """)
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
@@ -1477,7 +1461,7 @@ if st.session_state.is_authenticated:
             </div>
             <div style="text-align: right;">
                 <h2 style="margin: 0; color: #27ae60;">{total_user_piq:.2f} piQ</h2>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: #7f8c8d; font-weight: bold;">TOTAL piQ AWARDED</p>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: #7f8c8d; font-weight: bold;"><span class='explainable'>TOTAL piQ AWARDED</span></p>
             </div>
         </div>
         """,
@@ -1510,7 +1494,7 @@ if st.session_state.is_authenticated:
                 st.write(f"**Block Hash:** `{u_block_hash if u_block_hash is not None else 'Pending'}`")
                 st.write(f"**Unique Author Book Address:** `{u_book}`")
                 st.write(f"**piQ Rewards Earned:** `{u_piq} piQ`")
-                st.write(f"**zk-SNARK Proof:** `{u_zk}`")
+                st.markdown(f"**<span class='explainable'>zk-SNARK</span> Proof:** `{u_zk}`", unsafe_allow_html=True)
                 
                 if u_tx_url:
                     st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
@@ -1568,7 +1552,7 @@ else:
                 st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
                 st.write(f"**Unique Author Book Address:** `{r_book}`")
                 st.write(f"**piQ Minted:** `{r_piq}`")
-                st.write(f"**zk-SNARK Proof:** `{r_zk}`")
+                st.markdown(f"**<span class='explainable'>zk-SNARK</span> Proof:** `{r_zk}`", unsafe_allow_html=True)
                 
                 if r_tx_url:
                     st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({r_tx_url})")
@@ -1679,11 +1663,11 @@ try:
                             st.write(f"**Evaluation Hash (Eval Hash):** `{m_hash}`")
                             st.write(f"**Block Height:** `{m_block_height if m_block_height is not None else 'Pending'}`")
                             st.write(f"**Block Hash:** `{m_block_hash if m_block_hash is not None else 'Pending'}`")
-                            st.write(f"**Proof-of-Research (PoR):** `{m_por}`")
+                            st.markdown(f"**<span class='explainable'>Proof-of-Research</span> (PoR):** `{m_por}`", unsafe_allow_html=True)
                             st.write(f"**Formulas State Hash:** `{m_form}`")
                             st.write(f"**Unique Author Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.write(f"**zk-SNARK Proof:** `{m_zk}`")
+                            st.markdown(f"**<span class='explainable'>zk-SNARK</span> Proof:** `{m_zk}`", unsafe_allow_html=True)
                             
                             if m_tx_url:
                                 st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({m_tx_url})")
