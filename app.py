@@ -73,6 +73,44 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
+# Invisible JS to capture clicks on any text and forward them to Scilem Chat Input
+click_tracker_js = """
+<script>
+const parentDoc = window.parent.document;
+parentDoc.addEventListener('click', function(e) {
+    // Exclude clicks inside the sidebar to prevent looping or accidental triggers
+    if (e.target.closest('[data-testid="stSidebar"]')) return;
+    // Exclude interactive elements
+    if (['INPUT', 'TEXTAREA', 'BUTTON', 'A', 'SELECT', 'OPTION', 'SVG', 'PATH'].includes(e.target.tagName)) return;
+
+    let text = e.target.innerText || e.target.textContent;
+    if (!text) return;
+    text = text.split('\\n')[0].trim().substring(0, 100);
+
+    if (text.length > 2) {
+        const textareas = parentDoc.querySelectorAll('textarea[aria-label="Ask Scilem..."]');
+        if (textareas.length > 0) {
+            const textarea = textareas[0];
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+            nativeInputValueSetter.call(textarea, "Explain: " + text);
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+            const enterEvent = new KeyboardEvent('keydown', {
+                bubbles: true,
+                cancelable: true,
+                key: 'Enter',
+                code: 'Enter',
+                keyCode: 13
+            });
+            textarea.dispatchEvent(enterEvent);
+        }
+    }
+});
+</script>
+"""
+components.html(click_tracker_js, height=0, width=0)
+
+
 st.sidebar.title("System Access")
 
 if "initialized" not in st.session_state:
@@ -199,115 +237,139 @@ else:
 current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
-# --- Scilem Assistant in Sidebar (Fixed layout, clean chat display without empty container box) ---
+# --- Scilem Assistant in Sidebar ---
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🔬 Scilem Assistant")
+st.sidebar.markdown("### Scilem Assistant")
+
+SCILEM_KNOWLEDGE_BASE = {
+    "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
+    "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
+    "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
+    "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
+    "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs.",
+    "adversarial logic": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+    "c1": "Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
+    "c2": "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
+    "c3": "Measures cross-disciplinary integration and entropy across scientific domains.",
+    "c4": "Evaluates broader societal and open infrastructure contributions.",
+    "c5": "Evaluates open data, open code, and containerized reproducibility.",
+    "c6": "Evaluates citation polarity and integration with existing foundational literature.",
+    "c7": "Assesses empirical sample strength and baseline variance.",
+    "c8": "Evaluates future research actionability and adherence to FAIR principles.",
+    "pi-index assessment engine": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
+    "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights."
+}
 
 if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "👋 **Scilem Insight:** Welcome! I am monitoring your research pipeline. Click any feature or ask me questions to get instant CoARA-aligned scientific explanations."
+            "content": "**Scilem Insight:** Welcome! I am monitoring your research pipeline. Click any text, button, or feature, and I will instantly explain it based on the CoARA guidelines and framework whitepaper."
         }
     ]
 
-# Proactive trigger: If total analyzed papers changed or session started, add helpful explanatory tip
 if "last_analyzed_tracked" not in st.session_state:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
 elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
     st.session_state.scilm_messages.append({
         "role": "assistant",
-        "content": f"📊 **Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**. This updates our decentralized block weights and refines the Pidyne forecast curve."
+        "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**. This updates our decentralized block weights and refines the Pidyne forecast curve."
     })
 
-for message in st.session_state.scilm_messages:
-    with st.sidebar.chat_message(message["role"]):
-        st.sidebar.markdown(message["content"])
+transparent_pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
-if prompt := st.sidebar.chat_input("Ask Scilem or click app features...", key="scilem_sidebar_input"):
+chat_container = st.sidebar.container()
+with chat_container:
+    for idx, message in enumerate(st.session_state.scilm_messages):
+        # Apply the transparent pixel as the avatar for assistant to remove the robot icon
+        msg_avatar = transparent_pixel if message["role"] == "assistant" else None
+        with st.sidebar.chat_message(message["role"], avatar=msg_avatar):
+            st.sidebar.markdown(message["content"])
+
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
-    rag_context = ""
-    few_shot_examples = ""
-    try:
-        dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-        if os.path.exists(dataset_path):
-            with open(dataset_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                query_terms = set(prompt.lower().split())
-                relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
-                if not relevant_lines:
-                    relevant_lines = lines[-5:]
-                rag_context = "".join(relevant_lines[-5:])
-    except Exception:
-        rag_context = "No decentralized data accessible."
+    # Rapid lookup for clicked text explanations
+    direct_answer = None
+    if prompt.startswith("Explain:"):
+        query_topic = prompt.replace("Explain:", "").strip().lower()
+        for key, explanation in SCILEM_KNOWLEDGE_BASE.items():
+            if key in query_topic:
+                direct_answer = explanation
+                break
 
-    try:
-        conn_rag = get_db_connection()
-        cur_rag = conn_rag.cursor()
-        cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
-        top_paper = cur_rag.fetchone()
-        conn_rag.close()
-        if top_paper:
-            few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
-    except Exception:
-        pass
+    if direct_answer:
+        st.session_state.scilm_messages.append({"role": "assistant", "content": f"**Scilem Insight:** {direct_answer}"})
+        st.rerun()
+    else:
+        rag_context = ""
+        few_shot_examples = ""
+        try:
+            dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
+            if os.path.exists(dataset_path):
+                with open(dataset_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    query_terms = set(prompt.lower().split())
+                    relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
+                    if not relevant_lines:
+                        relevant_lines = lines[-5:]
+                    rag_context = "".join(relevant_lines[-5:])
+        except Exception:
+            rag_context = "No decentralized data accessible."
 
-    scilm_sys_prompt = (
-        "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
-        "Explain app features (C1-C8 criteria, Pidyne forecast, Global Map of Science, PoR blockchain consensus, ZK identity) clearly and precisely.\n\n"
-        f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
-        f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
-    )
+        try:
+            conn_rag = get_db_connection()
+            cur_rag = conn_rag.cursor()
+            cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
+            top_paper = cur_rag.fetchone()
+            conn_rag.close()
+            if top_paper:
+                few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
+        except Exception:
+            pass
 
-    messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
-        {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
-    ]
+        scilm_sys_prompt = (
+            "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
+            "Explain app features clearly and precisely. You just received a user action or query.\n\n"
+            f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
+            f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
+        )
 
-    full_response = ""
-    try:
-        from brain import groq_client
-        PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
-        FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
-        if groq_client:
-            try:
-                response = groq_client.chat.completions.create(
-                    model=PRIMARY_MODEL_NAME,
-                    messages=messages_for_api,
-                    temperature=0.15,
-                )
-                full_response = response.choices[0].message.content
-            except Exception as primary_err:
-                if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
-                    fallback_response = groq_client.chat.completions.create(
-                        model=FALLBACK_MODEL_NAME,
+        messages_for_api = [{"role": "system", "content": scilm_sys_prompt}] + [
+            {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
+        ]
+
+        full_response = ""
+        try:
+            from brain import groq_client
+            PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
+            FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
+            if groq_client:
+                try:
+                    response = groq_client.chat.completions.create(
+                        model=PRIMARY_MODEL_NAME,
                         messages=messages_for_api,
                         temperature=0.15,
                     )
-                    full_response = fallback_response.choices[0].message.content + "\n\n*(Handled via Fallback Engine).* "
-                else:
-                    raise primary_err
-        else:
-            full_response = "Error: Groq API client not initialized."
-    except Exception as e:
-        full_response = f"Error connecting to Scilem engine: {str(e)}"
+                    full_response = response.choices[0].message.content
+                except Exception as primary_err:
+                    if "429" in str(primary_err) or "rate_limit_exceeded" in str(primary_err):
+                        fallback_response = groq_client.chat.completions.create(
+                            model=FALLBACK_MODEL_NAME,
+                            messages=messages_for_api,
+                            temperature=0.15,
+                        )
+                        full_response = fallback_response.choices[0].message.content + "\n\n*(Handled via Fallback Engine).* "
+                    else:
+                        raise primary_err
+            else:
+                full_response = "Error: Groq API client not initialized."
+        except Exception as e:
+            full_response = f"Error connecting to Scilem engine: {str(e)}"
 
-    st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
-    st.rerun()
-
-# Quick-explain buttons for users to click any feature to get Scilem explanation automatically
-st.sidebar.markdown("---")
-st.sidebar.markdown("##### 💡 Instant Feature Explanations")
-col_ex1, col_ex2 = st.sidebar.columns(2)
-if col_ex1.button("Explain C1-C8", use_container_width=True):
-    st.session_state.scilm_messages.append({"role": "user", "content": "Explain the 8 evaluation criteria (C1-C8) and apri weights."})
-    st.session_state.scilm_messages.append({"role": "assistant", "content": "📋 **C1-C8 Evaluation Criteria & Apri Weights:**\n- **C1 (apri_1)**: Semantic Originality (penalizing AI laundering).\n- **C2 (apri_2)**: Methodological Rigor (SciScore & MDAR compliance).\n- **C3 (apri_3)**: Interdisciplinary Entropy.\n- **C4 (apri_4)**: Societal & Open Infrastructure Impact.\n- **C5 (apri_5)**: Executable Reproducibility (code/data/containers).\n- **C6 (apri_6)**: Literature Integration.\n- **C7 (apri_7)**: Empirical Density & Validation.\n- **C8 (apri_8)**: Future Actionability & FAIR principles."})
-    st.rerun()
-if col_ex2.button("Explain Pidyne", use_container_width=True):
-    st.session_state.scilm_messages.append({"role": "user", "content": "Explain Pidyne Forecast."})
-    st.session_state.scilm_messages.append({"role": "assistant", "content": "📈 **Pidyne Forecast:** An LSTM neural network trained directly on blockchain block weights to predict future shifts in algorithmic evaluation standards across epochs."})
-    st.rerun()
+        st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
 
 # --- Helper for Refining Subfields and Professional Science Fields ---
 def refine_science_field(s):
@@ -491,7 +553,7 @@ def render_bubble_chart_clean(target_author):
 
     return html_string, table_html
 
-# --- Dialog for Evaluation Metrics (with green badge styling for apri_1 to apri_8) ---
+# --- Dialog for Evaluation Metrics ---
 @st.dialog("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", width="large")
 def evaluation_metrics_dialog():
     conn_top_ep = get_db_connection()
@@ -534,8 +596,6 @@ def evaluation_metrics_dialog():
     else:
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
-    green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
-
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures."
     )
@@ -546,37 +606,62 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    st.markdown(f"**C1: Originality** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
-    st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
-    st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
+    with st.expander(f"C1: Originality (apri_1 = {tw1:.6f}):"):
+        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
+        st.markdown(
+            r"$$ C_1 = apri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+            r" \times (1 - \lambda_{laundering}) $$"
+        )
 
-    st.markdown(f"**C2: Methodological Rigor** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
-    st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
-    st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
+    with st.expander(f"C2: Methodological Rigor (apri_2 = {tw2:.6f}):"):
+        st.markdown(
+            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
+        )
+        st.markdown(
+            r"$$ C_2 = apri_2 \cdot \mathcal{I}_{blinding} + apri_2 \cdot"
+            r" \mathcal{I}_{randomization} + apri_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + apri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r" \epsilon}\right) $$"
+        )
 
-    st.markdown(f"**C3: Interdisciplinary Synergy** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
-    st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
-    st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+    with st.expander(f"C3: Interdisciplinary Synergy (apri_3 = {tw3:.6f}):"):
+        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
+        st.markdown(r"$$ C_3 = apri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    st.markdown(f"**C4: Societal & Open Infrastructure Impact** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
-    st.markdown("Evaluates broader societal and open infrastructure contributions.")
-    st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
+    with st.expander(f"C4: Societal & Open Infrastructure Impact (apri_4 = {tw4:.6f}):"):
+        st.markdown("Evaluates broader societal and open infrastructure contributions.")
+        st.markdown(
+            r"$$ C_4 = apri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r" U_v(\tau, \mathbf{x}) \right] $$"
+        )
 
-    st.markdown(f"**C5: Open Science & Executable Reproducibility** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
-    st.markdown("Evaluates open data, open code, and containerized reproducibility.")
-    st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
+    with st.expander(f"C5: Open Science & Executable Reproducibility (apri_5 = {tw5:.6f}):"):
+        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
+        st.markdown(
+            r"$$ C_5 = apri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+        )
 
-    st.markdown(f"**C6: Literature Integration** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
-    st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
-    st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
+    with st.expander(f"C6: Literature Integration (apri_6 = {tw6:.6f}):"):
+        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
+        st.markdown(
+            r"$$ C_6 = apri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+        )
 
-    st.markdown(f"**C7: Empirical Density & Validation** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
-    st.markdown("Assesses empirical sample strength and baseline variance.")
-    st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
+    with st.expander(f"C7: Empirical Density & Validation (apri_7 = {tw7:.6f}):"):
+        st.markdown("Assesses empirical sample strength and baseline variance.")
+        st.markdown(
+            r"$$ C_7 = apri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+        )
 
-    st.markdown(f"**C8: Future Actionability & FAIR** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
-    st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
-    st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
+    with st.expander(f"C8: Future Actionability & FAIR (apri_8 = {tw8:.6f}):"):
+        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
+        st.markdown(
+            r"$$ C_8 = apri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+        )
 
 # --- Top Header Layout ---
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
