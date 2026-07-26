@@ -21,7 +21,7 @@ import streamlit.components.v1 as components
 
 from config import BASE_DIR, EPOCH_BLOCK_SIZE
 from database import get_db_connection
-from ledger import restore_state_from_web3, generate_blockchain_pi
+from ledger import restore_state_from_web3, generate_blockchain_pi, get_ethereum_node_stats
 from integrations import (
     clean_author_name, is_likely_institution, fetch_doi_metadata, 
     fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics,
@@ -73,7 +73,7 @@ def get_author_piq_dict():
     return author_piq, author_book
 
 st.set_page_config(
-    page_title="Pi-Index Assessment Engine", layout="wide"
+    page_title="Pi-Index Assessment Engine (CoARA-Compliant)", layout="wide"
 )
 
 st.sidebar.title("System Access")
@@ -216,7 +216,7 @@ current_user = st.session_state.orcid_id
 current_email = "None"
 
 st.title(
-    "Pi-Index Assessment Engine",
+    "Pi-Index Assessment Engine (CoARA-Compliant)",
     help=(
         "Automated peer-review framework powered by neural networks, SciScore"
         " reproducibility metrics, and multidimensional blockchain consensus."
@@ -674,7 +674,6 @@ with tab1:
                         if metadata and metadata.get("pdf_url"):
                             pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
 
-                    # Option 2 Fallback: CORE API query if binary download fails
                     if not pdf_bytes and p_doi:
                         status_text.text("Direct download restricted. Querying CORE API fallback...")
                         core_text = fetch_core_text_by_doi(p_doi)
@@ -1496,6 +1495,27 @@ with tab3:
                         )
                 except:
                     st.error("Error reading database schema. Try refreshing the app.")
+
+            st.markdown("---")
+            st.markdown(
+                "### Live Ethereum Node & Peer Network Monitor "
+                + tooltip(
+                    "Inspects the health, connected peer count, client software, and synchronization status of the active Sepolia/Ethereum RPC node using net_peerCount."
+                ),
+                unsafe_allow_html=True,
+            )
+            
+            node_stats = get_ethereum_node_stats()
+            if node_stats.get("connected"):
+                col_n1, col_n2, col_n3 = st.columns(3)
+                col_n1.metric("Connected Peers (`net_peerCount`)", node_stats.get("peer_count", 0))
+                col_n2.metric("Node Client Software", str(node_stats.get("client_version", "Unknown")))
+                col_n3.metric("Network Sync Status", str(node_stats.get("sync_status", "Synced")))
+                
+                if st.button("Refresh Node Connection Stats"):
+                    st.rerun()
+            else:
+                st.warning("Web3 provider is currently disconnected. Check your RPC URI configuration in `config.py`.")
 
             st.markdown("---")
             st.markdown(
