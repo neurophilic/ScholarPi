@@ -1468,7 +1468,7 @@ try:
             explore_col1, explore_col2 = st.columns([3, 1])
             with explore_col1:
                 search_query = st.text_input(
-                    "Enter Document Evaluation Hash or Block Hash to verify ledger record...",
+                    "Enter Document Evaluation Hash, Block Hash, Paper Name, or Author Name to verify ledger record...",
                     key="pinamic_ledger_search_query"
                 )
             with explore_col2:
@@ -1478,33 +1478,85 @@ try:
 
             if search_btn and search_query:
                 try:
+                    q_term = f"%{search_query.strip()}%"
                     cursor.execute(
-                        "SELECT * FROM blockchain_por_weights WHERE block_hash=? OR"
-                        " eval_hash=?",
-                        (search_query, search_query),
+                        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                                  b.block_height, b.block_hash, b.por_proof, b.formulas_hash
+                           FROM papers_assessment p
+                           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                           WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ?
+                           LIMIT 5""",
+                        (q_term, q_term, q_term, q_term)
                     )
-                    record = cursor.fetchone()
-                    if record:
-                        st.success("Valid Block Found on Ledger")
-                        st.json({
-                            "Block Height": record[0],
-                            "Timestamp": record[9],
-                            "Model Used": record[14],
-                            "Validator Node": record[11],
-                            "Block Hash": record[12],
-                            "Evaluation Hash": record[13],
-                            "PoR Signature": record[15],
-                            "Formulas Hash": record[16],
-                            "Weights": dict(
-                                zip([f"w{i+1}" for i in range(8)], record[1:9])
-                            ),
-                        })
+                    matched_records = cursor.fetchall()
+                    if matched_records:
+                        st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
+                        for m_idx, mr in enumerate(matched_records):
+                            (
+                                m_title, m_author, m_filename, m_score, m_logic,
+                                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                                m_block_height, m_block_hash, m_por, m_form
+                            ) = mr
+
+                            m_author_clean = clean_author_name(m_author)
+                            m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
+                            m_tx_url = safe_get_sepolia_url(m_tx)
+
+                            with st.expander(
+                                f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
+                                f" **{m_score:.2f}** | {m_time[:16]})",
+                                expanded=True,
+                            ):
+                                st.write(f"**Title:** {m_title}")
+                                st.write(f"**Author(s):** {m_author_clean}")
+                                st.write(f"**Timestamp:** `{m_time}`")
+                                st.write(f"**Evaluation Hash (Eval Hash):** `{m_hash}`")
+                                st.write(f"**Block Height:** `{m_block_height if m_block_height is not None else 'Pending'}`")
+                                st.write(f"**Block Hash:** `{m_block_hash if m_block_hash is not None else 'Pending'}`")
+                                st.write(f"**Proof-of-Research (PoR):** `{m_por}`")
+                                st.write(f"**Formulas State Hash:** `{m_form}`")
+                                st.write(f"**Unique Author Book Address:** `{m_book}`")
+                                st.write(f"**piQ Minted:** `{m_piq}`")
+                                st.write(f"**zk-SNARK Proof:** `{m_zk}`")
+                                
+                                if m_tx_url:
+                                    st.markdown(f"**Tx Hash (Etherscan):** [`{m_tx}`]({m_tx_url})")
+                                else:
+                                    st.write(f"**Tx Hash:** `{m_tx}`")
+
+                                st.write(
+                                    f"**Logic Integrity:** `{m_logic:.1f}%` | **Reproducibility:**"
+                                    f" `{m_repro * 100:.1f}%` | **MDAR Adherence:**"
+                                    f" `{m_mdar * 100:.1f}%`"
+                                )
+
+                                m_df = pd.DataFrame({
+                                    "Criterion": [
+                                        "C1: Semantic Originality",
+                                        "C2: Methodological Rigor (SciScore)",
+                                        "C3: Interdisciplinary Entropy",
+                                        "C4: Societal Impact",
+                                        "C5: Open Science & Repro",
+                                        "C6: Literature Integration",
+                                        "C7: Empirical Density",
+                                        "C8: Future Actionability & FAIR",
+                                    ],
+                                    "Score (0-100)": [
+                                        m_c1, m_c2, m_c3, m_c4,
+                                        m_c5, m_c6, m_c7, m_c8,
+                                    ],
+                                })
+                                st.dataframe(m_df, hide_index=True, use_container_width=True)
                     else:
                         st.error(
-                            "No block matching that signature was found on the ledger."
+                            "No records matching that evaluation hash, block hash, paper name, or author name were found on the ledger."
                         )
-                except:
-                    st.error("Error reading database schema. Try refreshing the app.")
+                except Exception as e:
+                    st.error(f"Error reading database: {str(e)}")
 
         with st.expander("Deployed Smart Contracts on Sepolia Etherscan", expanded=False):
             col_ex1, col_ex2 = st.columns(2)
