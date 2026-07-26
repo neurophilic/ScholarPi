@@ -81,7 +81,7 @@ def get_author_piq_dict():
     return author_piq, author_book
 
 st.set_page_config(
-    page_title="Pi-Index Assessment Engine (CoARA-Compliant)", layout="wide"
+    page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
 st.sidebar.title("System Access")
@@ -208,7 +208,7 @@ if not st.session_state.is_authenticated:
             st.sidebar.error("Invalid ORCID or DID format.")
 
     st.sidebar.markdown("---")
-    st.sidebar.info("🔔 **Notice:** Please connect your ORCID iD or DID above to unlock and use your personal Assessment History and DeSci Peer Attestation features.")
+    st.sidebar.info("Notice: Please connect your ORCID iD or DID above to unlock and use your personal Assessment History and DeSci Peer Attestation features.")
 else:
     st.sidebar.success("Securely Connected")
     st.sidebar.markdown(
@@ -259,7 +259,7 @@ current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
 # --- DeSci Peer Attestation & Stake-Weighted Validation in Sidebar ---
-with st.sidebar.expander("⚖️ DeSci Peer Attestation & Staking", expanded=False):
+with st.sidebar.expander("DeSci Peer Attestation & Staking", expanded=False):
     st.markdown("Use this feature to endorse or challenge peer assessments on-chain by staking your earned piQ tokens.")
     if st.session_state.is_authenticated:
         conn_att = get_db_connection()
@@ -315,15 +315,15 @@ with st.sidebar.expander("⚖️ DeSci Peer Attestation & Staking", expanded=Fal
         st.warning("Please connect your ORCID iD or DID above to use the DeSci Peer Attestation feature.")
 
 # --- Scilem Accessory Chatbot in Sidebar ---
-with st.sidebar.expander("🤖 Scilem Accessory Chatbot", expanded=False):
+with st.sidebar.expander("Scilem Accessory Chatbot", expanded=False):
     st.markdown("CoARA-aligned decentralized scientific assistant.")
     
     if st.button("Sync Pinata Knowledge Base", key="scilem_sync_btn", use_container_width=True):
         st.session_state["scilem_synced"] = True
-        st.toast("Successfully synchronized decentralized RLHF dataset from Pinata IPFS!", icon="✅")
+        st.toast("Successfully synchronized decentralized RLHF dataset from Pinata IPFS!")
     
     if st.session_state.get("scilem_synced"):
-        st.success("Synced with Pinata IPFS.", icon="🌐")
+        st.success("Synced with Pinata IPFS.")
 
     if "scilm_messages" not in st.session_state:
         st.session_state.scilm_messages = [
@@ -556,7 +556,7 @@ header_col1, header_col2 = st.columns([1.1, 0.9])
 
 with header_col1:
     st.title(
-        "Pi-Index Assessment Engine (CoARA-Compliant)",
+        "Pi-Index Assessment Engine",
         help=(
             "Automated peer-review framework powered by neural networks, SciScore"
             " reproducibility metrics, and multidimensional blockchain consensus."
@@ -688,7 +688,7 @@ with header_col1:
         )
 
 with header_col2:
-    st.markdown("#### 🌐 Global Map of Science (Live Cartography)")
+    st.markdown("#### Global Map of Science")
     conn_m = get_db_connection()
     try:
         cursor_m = conn_m.cursor()
@@ -725,7 +725,7 @@ with header_col2:
     else:
         st.info("Awaiting sufficient data for map visualization.")
 
-    with st.expander("🔍 View Map Legend, Frequency Metrics & Leaderboard"):
+    with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
         st.markdown(table_html_top, unsafe_allow_html=True)
         st.markdown("---")
         st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
@@ -1104,7 +1104,7 @@ def render_breakdown_item(item):
         f" `{filename}`"
     )
 
-    dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (CoARA & DORA-Aligned)
+    dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
 **Title:** {title}
 **Author:** {author_name}
 **File Name:** {filename}
@@ -1116,7 +1116,7 @@ def render_breakdown_item(item):
 **SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
 **Valid RRIDs Count:** {rrid_count}
 
-## 8-Criteria Evaluation Breakdown (CoARA Compliant)
+## 8-Criteria Evaluation Breakdown
 - C1 Semantic Originality: {scores_dict.get("C1_Originality",0)}
 - C2 Methodological Rigor (SciScore): {scores_dict.get("C2_Methodological_Rigor",0)}
 - C3 Interdisciplinary Entropy: {scores_dict.get("C3_Interdisciplinary",0)}
@@ -1131,7 +1131,7 @@ def render_breakdown_item(item):
 - Tx Hash: {tx_hash}
 """
     st.download_button(
-        label=f"Download CoARA-Aligned Research Integrity Dossier ({filename})",
+        label=f"Download Research Integrity Dossier ({filename})",
         data=dossier_content,
         file_name=f"Dossier_{eval_hash[:10]}.md",
         mime="text/markdown",
@@ -1721,7 +1721,7 @@ finally:
 
 # ==================== SYSTEM OVERVIEW & MERGED FOOTER BLOCK ====================
 st.markdown("---")
-with st.expander("🏗️ The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow"):
+with st.expander("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow"):
     st.markdown(
         "### Architecture Flowchart & Whitepaper DOI\n\n"
         "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
