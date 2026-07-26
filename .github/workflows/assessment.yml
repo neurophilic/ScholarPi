@@ -1,0 +1,10 @@
+- name: Run Background Assessment
+        run: python app.py --cron
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PINATA_API_KEY: ${{ secrets.PINATA_API_KEY }}
+          PINATA_SECRET_API_KEY: ${{ secrets.PINATA_SECRET_API_KEY }}
+          ETH_ADMIN_PRIVATE_KEY: ${{ secrets.ETH_ADMIN_PRIVATE_KEY }}
+          REGISTRY_CONTRACT_ADDRESS: ${{ secrets.REGISTRY_CONTRACT_ADDRESS }}
+          PIQ_CONTRACT_ADDRESS: ${{ secrets.PIQ_CONTRACT_ADDRESS }}
+          WEB3_PROVIDER_URI: ${{ secrets.WEB3_PROVIDER_URI }}
