@@ -565,6 +565,322 @@ st.markdown(
     " Assessment (RRA).**"
 )
 
+# ==================== MOVED INTAKE SECTION TO THE TOP ====================
+st.markdown("")
+
+selected_uploaded_files = []
+uploaded_files = st.file_uploader(
+    "1. Upload Local PDF(s)",
+    type=["pdf"],
+    accept_multiple_files=True,
+    key=f"file_uploader_{st.session_state['reset_token']}",
+)
+if uploaded_files:
+    st.markdown("**Tick local files to include:**")
+    for i, file in enumerate(uploaded_files):
+        if st.checkbox(
+            f"Local File: {file.name}",
+            value=True,
+            key=f"up_chk_{i}_{st.session_state['reset_token']}",
+        ):
+            selected_uploaded_files.append(file)
+
+st.markdown("")
+research_scope = ""
+doi_input = ""
+include_doi = False
+
+with st.expander(
+    "Unified Research Scope, DOI & Topic Intake",
+    expanded=False,
+):
+    unified_query = st.text_input(
+        "Research Scope, DOI, or OpenAlex Topic",
+        placeholder="Enter research topic, DOI (e.g. 10.1038/...), or search keyword...",
+        key=f"unified_query_{st.session_state['reset_token']}",
+    )
+    
+    if unified_query.strip():
+        q_str = unified_query.strip()
+        if re.match(r"^10\.\d{4,9}/[-._;()/:A-Za-z0-9]+$", q_str) or q_str.startswith("10.") or "doi.org" in q_str:
+            doi_input = q_str
+            include_doi = True
+            research_scope = ""
+            st.caption("Detected as DOI. Will resolve via Unpaywall.")
+        else:
+            research_scope = q_str
+            if st.button("Search OpenAlex Papers for this Topic", key=f"unified_alex_btn_{st.session_state['reset_token']}"):
+                st.session_state.alex_visible_count = 10
+                with st.spinner("Querying OpenAlex..."):
+                    alex_results = search_openalex_topics(q_str, limit=50)
+                    if alex_results:
+                        st.session_state["alex_search_results"] = alex_results
+                        st.success(f"Successfully harvested {len(alex_results)} papers from OpenAlex.")
+                    else:
+                        st.warning("No Open Access papers found matching criteria.")
+
+selected_alex_papers = []
+if (
+    "alex_search_results" in st.session_state
+    and st.session_state["alex_search_results"]
+):
+    st.markdown("---")
+
+    col_res_header, col_close_btn = st.columns([5, 1])
+    with col_res_header:
+        st.markdown("#### OpenAlex Harvested Results")
+    with col_close_btn:
+        if st.button(
+            "Close", key=f"close_alex_{st.session_state['reset_token']}"
+        ):
+            del st.session_state["alex_search_results"]
+            st.rerun()
+
+    def toggle_all_alex():
+        is_all = st.session_state.get(
+            f"select_all_alex_{st.session_state['reset_token']}", False
+        )
+        for i in range(st.session_state.alex_visible_count):
+            st.session_state[f"alex_chk_{i}_{st.session_state['reset_token']}"] = (
+                is_all
+            )
+
+    select_all_alex = st.checkbox(
+        "Select All Visible OpenAlex Results",
+        key=f"select_all_alex_{st.session_state['reset_token']}",
+        on_change=toggle_all_alex,
+    )
+
+    visible_results = st.session_state["alex_search_results"][
+        : st.session_state.alex_visible_count
+    ]
+    for idx, p in enumerate(visible_results):
+        is_selected = st.checkbox(
+            f"OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*",
+            key=f"alex_chk_{idx}_{st.session_state['reset_token']}",
+        )
+        if is_selected:
+            selected_alex_papers.append(p)
+
+    if st.session_state.alex_visible_count < len(
+        st.session_state["alex_search_results"]
+    ):
+        if st.button("Show More OpenAlex Results"):
+            st.session_state.alex_visible_count += 10
+            st.rerun()
+
+st.markdown("---")
+stake_amount = st.checkbox(
+    "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
+    value=True,
+    help=(
+        "Staking mechanisms actively filter low-effort, adversarial, or spam"
+        " submissions."
+    ),
+    key=f"stake_chk_{st.session_state['reset_token']}",
+)
+
+if st.session_state["is_running"]:
+    col_run, col_stop = st.columns([4, 1])
+    with col_run:
+        st.button("Working...", type="primary", use_container_width=True, disabled=True)
+    with col_stop:
+        if st.button("Stop", type="secondary", use_container_width=True):
+            st.session_state["is_running"] = False
+            st.session_state["cancel_requested"] = True
+            st.info("Pipeline operation cancelled by user.")
+            st.rerun()
+
+    progress_bar, status_text = st.progress(0), st.empty()
+    scope_val = st.session_state.get("snap_scope", "")
+    snap_files = st.session_state.get("snap_files", [])
+    snap_alex = st.session_state.get("snap_alex", [])
+    include_doi_snap = st.session_state.get("snap_include_doi", False)
+    doi_snap = st.session_state.get("snap_doi", "")
+
+    try:
+        if snap_alex and not st.session_state["cancel_requested"]:
+            for p in snap_alex:
+                if st.session_state["cancel_requested"]:
+                    break
+                status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
+                pdf_bytes = None
+                fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                p_doi = p.get("doi", "None")
+
+                if p.get("pdf_url"):
+                    pdf_bytes = download_pdf_from_url(p["pdf_url"])
+                if not pdf_bytes and (p.get("title") or p.get("doi")):
+                    s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
+                    if s2_url:
+                        pdf_bytes = download_pdf_from_url(s2_url)
+                if not pdf_bytes and p.get("doi"):
+                    metadata = fetch_doi_metadata(p["doi"])
+                    if metadata and metadata.get("pdf_url"):
+                        pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+
+                if not pdf_bytes and p_doi:
+                    status_text.text("Direct download restricted. Querying CORE API fallback...")
+                    core_text = fetch_core_text_by_doi(p_doi)
+                    if core_text:
+                        pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
+
+                if pdf_bytes:
+                    (
+                        title, author_name, score, logic_integrity, drift, rec,
+                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                    ) = process_single_pdf(
+                        pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
+                    )
+                    eval_record = {
+                        "title": title, "author_name": clean_author_name(author_name),
+                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                        "rec": rec, "fields": fields, "subfields": subfields,
+                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                        "filename": fname,
+                    }
+                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                else:
+                    clean_doi = (
+                        p_doi.replace("https://doi.org/", "").strip()
+                        if p_doi
+                        else "None"
+                    )
+                    doi_url = (
+                        f"https://doi.org/{clean_doi}"
+                        if clean_doi and clean_doi != "None"
+                        else (p.get("pdf_url") or "N/A")
+                    )
+                    err_item = {
+                        "title": p.get("title", "Unknown Title"),
+                        "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
+                        "url": doi_url,
+                    }
+                    if err_item not in st.session_state["download_errors"]:
+                        st.session_state["download_errors"].append(err_item)
+
+        if (
+            include_doi_snap
+            and doi_snap.strip()
+            and not st.session_state["cancel_requested"]
+        ):
+            status_text.text(f"Resolving DOI: {doi_snap}...")
+            metadata = fetch_doi_metadata(doi_snap)
+            fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
+            pdf_bytes = None
+            if metadata and metadata.get("pdf_url"):
+                pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+            if not pdf_bytes:
+                s2_url = fetch_semantic_scholar_pdf(doi_snap)
+                if s2_url:
+                    pdf_bytes = download_pdf_from_url(s2_url)
+            
+            if not pdf_bytes:
+                core_text = fetch_core_text_by_doi(doi_snap)
+                if core_text:
+                    pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
+
+            if pdf_bytes:
+                status_text.text("Assessing document from resolved source...")
+                (
+                    title, author_name, score, logic_integrity, drift, rec,
+                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                ) = process_single_pdf(
+                    pdf_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
+                )
+                eval_record = {
+                    "title": title, "author_name": clean_author_name(author_name),
+                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                    "rec": rec, "fields": fields, "subfields": subfields,
+                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                    "filename": fname,
+                }
+                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+            else:
+                clean_doi = doi_snap.replace("https://doi.org/", "").strip()
+                doi_url = f"https://doi.org/{clean_doi}"
+                err_item = {
+                    "title": f"DOI Input: {clean_doi}",
+                    "doi": clean_doi,
+                    "url": doi_url,
+                }
+                if err_item not in st.session_state["download_errors"]:
+                    st.session_state["download_errors"].append(err_item)
+
+        if snap_files and not st.session_state["cancel_requested"]:
+            total_files = len(snap_files)
+            for i, (fname, file_bytes) in enumerate(snap_files):
+                if st.session_state["cancel_requested"]:
+                    break
+                status_text.text(
+                    f"Analyzing uploaded file {i+1} of {total_files}: {fname}..."
+                )
+                (
+                    title, author_name, score, logic_integrity, drift, rec,
+                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                ) = process_single_pdf(
+                    file_bytes, fname, scope_val, current_user, "None", current_email, "None",
+                )
+                eval_record = {
+                    "title": title, "author_name": clean_author_name(author_name),
+                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                    "rec": rec, "fields": fields, "subfields": subfields,
+                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                    "filename": fname,
+                }
+                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                progress_bar.progress((i + 1) / total_files)
+
+        if st.session_state["cancel_requested"]:
+            st.warning("Pipeline operation was stopped.")
+        else:
+            status_text.success("Pipeline processing complete.")
+            time.sleep(1)
+    finally:
+        st.session_state["is_running"] = False
+        st.session_state["cancel_requested"] = False
+        st.session_state["reset_token"] += 1
+        st.session_state["assessment_update_token"] = time.time()
+
+else:
+    if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
+        if not stake_amount:
+            st.error(
+                "You must agree to the piQ micro-stake to execute the assessment"
+                " pipeline."
+            )
+        elif (
+            not selected_uploaded_files
+            and not (include_doi and doi_input.strip())
+            and not selected_alex_papers
+        ):
+            st.warning("Please tick at least one paper or input source to assess.")
+        else:
+            st.session_state["snap_files"] = [
+                (f.name, f.read()) for f in selected_uploaded_files
+            ]
+            st.session_state["snap_scope"] = research_scope
+            st.session_state["snap_doi"] = doi_input
+            st.session_state["snap_include_doi"] = include_doi
+            st.session_state["snap_alex"] = selected_alex_papers
+            st.session_state["is_running"] = True
+            st.session_state["cancel_requested"] = False
+            st.rerun()
+
+st.markdown("---")
+
 with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
     conn_top_ep = get_db_connection()
     try:
@@ -848,458 +1164,6 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-# ==================== ASSESSMENT & DOSSIER SECTION ====================
-st.markdown(
-    "### Unified Multi-Source Intake & Custom Topic Search"
-    + tooltip(
-        "Define your scope, upload local files, or query OpenAlex"
-        " to maximize evaluation precision."
-    ),
-    unsafe_allow_html=True,
-)
-
-selected_uploaded_files = []
-uploaded_files = st.file_uploader(
-    "1. Upload Local PDF(s)",
-    type=["pdf"],
-    accept_multiple_files=True,
-    key=f"file_uploader_{st.session_state['reset_token']}",
-)
-if uploaded_files:
-    st.markdown("**Tick local files to include:**")
-    for i, file in enumerate(uploaded_files):
-        if st.checkbox(
-            f"Local File: {file.name}",
-            value=True,
-            key=f"up_chk_{i}_{st.session_state['reset_token']}",
-        ):
-            selected_uploaded_files.append(file)
-
-st.markdown("")
-research_scope = ""
-doi_input = ""
-include_doi = False
-
-with st.expander(
-    "Unified Research Scope, DOI & Topic Intake",
-    expanded=False,
-):
-    unified_query = st.text_input(
-        "Research Scope, DOI, or OpenAlex Topic",
-        placeholder="Enter research topic, DOI (e.g. 10.1038/...), or search keyword...",
-        key=f"unified_query_{st.session_state['reset_token']}",
-    )
-    
-    if unified_query.strip():
-        q_str = unified_query.strip()
-        if re.match(r"^10\.\d{4,9}/[-._;()/:A-Za-z0-9]+$", q_str) or q_str.startswith("10.") or "doi.org" in q_str:
-            doi_input = q_str
-            include_doi = True
-            research_scope = ""
-            st.caption("Detected as DOI. Will resolve via Unpaywall.")
-        else:
-            research_scope = q_str
-            if st.button("Search OpenAlex Papers for this Topic", key=f"unified_alex_btn_{st.session_state['reset_token']}"):
-                st.session_state.alex_visible_count = 10
-                with st.spinner("Querying OpenAlex..."):
-                    alex_results = search_openalex_topics(q_str, limit=50)
-                    if alex_results:
-                        st.session_state["alex_search_results"] = alex_results
-                        st.success(f"Successfully harvested {len(alex_results)} papers from OpenAlex.")
-                    else:
-                        st.warning("No Open Access papers found matching criteria.")
-
-selected_alex_papers = []
-if (
-    "alex_search_results" in st.session_state
-    and st.session_state["alex_search_results"]
-):
-    st.markdown("---")
-
-    col_res_header, col_close_btn = st.columns([5, 1])
-    with col_res_header:
-        st.markdown("#### OpenAlex Harvested Results")
-    with col_close_btn:
-        if st.button(
-            "Close", key=f"close_alex_{st.session_state['reset_token']}"
-        ):
-            del st.session_state["alex_search_results"]
-            st.rerun()
-
-    def toggle_all_alex():
-        is_all = st.session_state.get(
-            f"select_all_alex_{st.session_state['reset_token']}", False
-        )
-        for i in range(st.session_state.alex_visible_count):
-            st.session_state[f"alex_chk_{i}_{st.session_state['reset_token']}"] = (
-                is_all
-            )
-
-    select_all_alex = st.checkbox(
-        "Select All Visible OpenAlex Results",
-        key=f"select_all_alex_{st.session_state['reset_token']}",
-        on_change=toggle_all_alex,
-    )
-
-    visible_results = st.session_state["alex_search_results"][
-        : st.session_state.alex_visible_count
-    ]
-    for idx, p in enumerate(visible_results):
-        is_selected = st.checkbox(
-            f"OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*",
-            key=f"alex_chk_{idx}_{st.session_state['reset_token']}",
-        )
-        if is_selected:
-            selected_alex_papers.append(p)
-
-    if st.session_state.alex_visible_count < len(
-        st.session_state["alex_search_results"]
-    ):
-        if st.button("Show More OpenAlex Results"):
-            st.session_state.alex_visible_count += 10
-            st.rerun()
-
-st.markdown("---")
-stake_amount = st.checkbox(
-    "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
-    value=True,
-    help=(
-        "Staking mechanisms actively filter low-effort, adversarial, or spam"
-        " submissions."
-    ),
-    key=f"stake_chk_{st.session_state['reset_token']}",
-)
-
-def render_breakdown_item(item):
-    title = item["title"]
-    author_name = clean_author_name(item["author_name"])
-    score = item["score"]
-    logic_integrity = item["logic_integrity"]
-    scores_dict = item["scores_dict"]
-    used_weights = item["used_weights"]
-    eval_hash = item["eval_hash"]
-    piq = item["piq"]
-    tx_hash = item["tx_hash"]
-    zk_proof = item["zk_proof"]
-    drift = item["drift"]
-    rec = item["rec"]
-    mdar_score = item["h_idx"]
-    rrid_count = item["i10_idx"]
-    repro_score = item["repro_score"]
-    filename = item["filename"]
-    author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
-
-    st.markdown("---")
-    st.subheader(f"{title} by {author_name}")
-
-    with st.expander(
-        f"Ledger Data & Dossier Details ({filename})", expanded=False
-    ):
-        st.write(f"**File Name:** `{filename}`")
-        st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
-        st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
-        st.write(f"**piQ Minted:** `{piq}`")
-        st.write(f"**zk-SNARK:** `{zk_proof}`")
-        
-        tx_url = safe_get_sepolia_url(tx_hash)
-        if tx_url:
-            st.markdown(f"**Tx Hash:** [`{tx_hash}`]({tx_url}) (View on Sepolia Etherscan)")
-        else:
-            st.write(f"**Tx Hash:** `{tx_hash}`")
-
-        st.write(
-            f"**Executable Reproducibility Score (C5/C7 audit):**"
-            f" `{repro_score * 100:.1f}%`"
-        )
-        st.write(
-            f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid"
-            f" RRIDs:** `{rrid_count}`"
-        )
-
-    scope_val = st.session_state.get("snap_scope", "")
-    if scope_val.strip() and drift != "N/A" and rec != "N/A":
-        st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
-        st.markdown(f"**Recommendation Tier:** `{rec}`")
-
-    breakdown_df = pd.DataFrame({
-        "Criterion": [
-            "C1: Semantic Originality",
-            "C2: Methodological Rigor (SciScore)",
-            "C3: Interdisciplinary Entropy",
-            "C4: Societal Impact",
-            "C5: Open Science & Repro",
-            "C6: Literature Integration",
-            "C7: Empirical Density",
-            "C8: Future Actionability & FAIR",
-        ],
-        "Score Extracted (0-100)": [
-            scores_dict.get("C1_Originality", 0),
-            scores_dict.get("C2_Methodological_Rigor", 0),
-            scores_dict.get("C3_Interdisciplinary", 0),
-            scores_dict.get("C4_Societal_Impact", 0),
-            scores_dict.get("C5_Open_Science_Potential", 0),
-            scores_dict.get("C6_Literature_Integration", 0),
-            scores_dict.get("C7_Empirical_Density", 0),
-            scores_dict.get("C8_Future_Actionability", 0),
-        ],
-        "Epoch Weight": used_weights,
-        "Weighted Value": [
-            scores_dict.get(k, 0) * used_weights[i]
-            for i, k in enumerate([
-                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                "C7_Empirical_Density", "C8_Future_Actionability",
-            ])
-        ],
-    })
-    st.dataframe(breakdown_df, hide_index=True)
-    raw_base = sum(breakdown_df["Weighted Value"]) / 8.0
-    logic_multiplier = 0.7 + (logic_integrity / 333.3)
-    st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
-    st.markdown(
-        f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from"
-        f" {logic_integrity:.1f}% raw logic score)"
-    )
-    st.markdown(
-        f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}`"
-        f" &nbsp;|&nbsp; **MDAR Adherence:** `{mdar_score * 100:.1f}%`"
-        f" &nbsp;|&nbsp; **Valid RRIDs:** `{rrid_count}` &nbsp;|&nbsp; **File:**"
-        f" `{filename}`"
-    )
-
-    dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
-**Title:** {title}
-**Author:** {author_name}
-**File Name:** {filename}
-**Evaluation Hash (Paper Address):** {eval_hash}
-**Unique Author Book Address:** {author_book}
-**Final Pi-Index Score:** {score:.2f} / 100
-**Logic Integrity Score:** {logic_integrity:.1f}%
-**Executable Reproducibility Score:** {repro_score * 100:.1f}%
-**SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
-**Valid RRIDs Count:** {rrid_count}
-
-## 8-Criteria Evaluation Breakdown
-- C1 Semantic Originality: {scores_dict.get("C1_Originality",0)}
-- C2 Methodological Rigor (SciScore): {scores_dict.get("C2_Methodological_Rigor",0)}
-- C3 Interdisciplinary Entropy: {scores_dict.get("C3_Interdisciplinary",0)}
-- C4 Societal Impact: {scores_dict.get("C4_Societal_Impact",0)}
-- C5 Open Science & Repro: {scores_dict.get("C5_Open_Science_Potential",0)}
-- C6 Literature Integration: {scores_dict.get("C6_Literature_Integration",0)}
-- C7 Empirical Density: {scores_dict.get("C7_Empirical_Density",0)}
-- C8 Future Actionability & FAIR: {scores_dict.get("C8_Future_Actionability",0)}
-
-## Cryptographic Proofs & Ledger Seal
-- zk-SNARK: {zk_proof}
-- Tx Hash: {tx_hash}
-"""
-    st.download_button(
-        label=f"Download Research Integrity Dossier ({filename})",
-        data=dossier_content,
-        file_name=f"Dossier_{eval_hash[:10]}.md",
-        mime="text/markdown",
-        key=f"download_dossier_{eval_hash}_{time.time()}",
-    )
-
-if st.session_state["is_running"]:
-    col_run, col_stop = st.columns([4, 1])
-    with col_run:
-        st.button("Working...", type="primary", use_container_width=True, disabled=True)
-    with col_stop:
-        if st.button("Stop", type="secondary", use_container_width=True):
-            st.session_state["is_running"] = False
-            st.session_state["cancel_requested"] = True
-            st.info("Pipeline operation cancelled by user.")
-            st.rerun()
-
-    progress_bar, status_text = st.progress(0), st.empty()
-    scope_val = st.session_state.get("snap_scope", "")
-    snap_files = st.session_state.get("snap_files", [])
-    snap_alex = st.session_state.get("snap_alex", [])
-    include_doi_snap = st.session_state.get("snap_include_doi", False)
-    doi_snap = st.session_state.get("snap_doi", "")
-
-    try:
-        if snap_alex and not st.session_state["cancel_requested"]:
-            for p in snap_alex:
-                if st.session_state["cancel_requested"]:
-                    break
-                status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
-                pdf_bytes = None
-                fname = f"OpenAlex_{p['title'][:20]}.pdf"
-                p_doi = p.get("doi", "None")
-
-                if p.get("pdf_url"):
-                    pdf_bytes = download_pdf_from_url(p["pdf_url"])
-                if not pdf_bytes and (p.get("title") or p.get("doi")):
-                    s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
-                    if s2_url:
-                        pdf_bytes = download_pdf_from_url(s2_url)
-                if not pdf_bytes and p.get("doi"):
-                    metadata = fetch_doi_metadata(p["doi"])
-                    if metadata and metadata.get("pdf_url"):
-                        pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-
-                if not pdf_bytes and p_doi:
-                    status_text.text("Direct download restricted. Querying CORE API fallback...")
-                    core_text = fetch_core_text_by_doi(p_doi)
-                    if core_text:
-                        pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
-
-                if pdf_bytes:
-                    (
-                        title, author_name, score, logic_integrity, drift, rec,
-                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
-                    ) = process_single_pdf(
-                        pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
-                    )
-                    eval_record = {
-                        "title": title, "author_name": clean_author_name(author_name),
-                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                        "rec": rec, "fields": fields, "subfields": subfields,
-                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname,
-                    }
-                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                else:
-                    clean_doi = (
-                        p_doi.replace("https://doi.org/", "").strip()
-                        if p_doi
-                        else "None"
-                    )
-                    doi_url = (
-                        f"https://doi.org/{clean_doi}"
-                        if clean_doi and clean_doi != "None"
-                        else (p.get("pdf_url") or "N/A")
-                    )
-                    err_item = {
-                        "title": p.get("title", "Unknown Title"),
-                        "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
-                        "url": doi_url,
-                    }
-                    if err_item not in st.session_state["download_errors"]:
-                        st.session_state["download_errors"].append(err_item)
-
-        if (
-            include_doi_snap
-            and doi_snap.strip()
-            and not st.session_state["cancel_requested"]
-        ):
-            status_text.text(f"Resolving DOI: {doi_snap}...")
-            metadata = fetch_doi_metadata(doi_snap)
-            fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
-            pdf_bytes = None
-            if metadata and metadata.get("pdf_url"):
-                pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-            if not pdf_bytes:
-                s2_url = fetch_semantic_scholar_pdf(doi_snap)
-                if s2_url:
-                    pdf_bytes = download_pdf_from_url(s2_url)
-            
-            if not pdf_bytes:
-                core_text = fetch_core_text_by_doi(doi_snap)
-                if core_text:
-                    pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
-
-            if pdf_bytes:
-                status_text.text("Assessing document from resolved source...")
-                (
-                    title, author_name, score, logic_integrity, drift, rec,
-                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
-                ) = process_single_pdf(
-                    pdf_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
-                )
-                eval_record = {
-                    "title": title, "author_name": clean_author_name(author_name),
-                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                    "rec": rec, "fields": fields, "subfields": subfields,
-                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                    "filename": fname,
-                }
-                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-            else:
-                clean_doi = doi_snap.replace("https://doi.org/", "").strip()
-                doi_url = f"https://doi.org/{clean_doi}"
-                err_item = {
-                    "title": f"DOI Input: {clean_doi}",
-                    "doi": clean_doi,
-                    "url": doi_url,
-                }
-                if err_item not in st.session_state["download_errors"]:
-                    st.session_state["download_errors"].append(err_item)
-
-        if snap_files and not st.session_state["cancel_requested"]:
-            total_files = len(snap_files)
-            for i, (fname, file_bytes) in enumerate(snap_files):
-                if st.session_state["cancel_requested"]:
-                    break
-                status_text.text(
-                    f"Analyzing uploaded file {i+1} of {total_files}: {fname}..."
-                )
-                (
-                    title, author_name, score, logic_integrity, drift, rec,
-                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
-                ) = process_single_pdf(
-                    file_bytes, fname, scope_val, current_user, "None", current_email, "None",
-                )
-                eval_record = {
-                    "title": title, "author_name": clean_author_name(author_name),
-                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                    "rec": rec, "fields": fields, "subfields": subfields,
-                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                    "filename": fname,
-                }
-                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                progress_bar.progress((i + 1) / total_files)
-
-        if st.session_state["cancel_requested"]:
-            st.warning("Pipeline operation was stopped.")
-        else:
-            status_text.success("Pipeline processing complete.")
-            time.sleep(1)
-    finally:
-        st.session_state["is_running"] = False
-        st.session_state["cancel_requested"] = False
-        st.session_state["reset_token"] += 1
-        st.session_state["assessment_update_token"] = time.time()
-
-else:
-    if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
-        if not stake_amount:
-            st.error(
-                "You must agree to the piQ micro-stake to execute the assessment"
-                " pipeline."
-            )
-        elif (
-            not selected_uploaded_files
-            and not (include_doi and doi_input.strip())
-            and not selected_alex_papers
-        ):
-            st.warning("Please tick at least one paper or input source to assess.")
-        else:
-            st.session_state["snap_files"] = [
-                (f.name, f.read()) for f in selected_uploaded_files
-            ]
-            st.session_state["snap_scope"] = research_scope
-            st.session_state["snap_doi"] = doi_input
-            st.session_state["snap_include_doi"] = include_doi
-            st.session_state["snap_alex"] = selected_alex_papers
-            st.session_state["is_running"] = True
-            st.session_state["cancel_requested"] = False
-            st.rerun()
-
 if (
     st.session_state["evaluated_papers_buffer"]
     or st.session_state.get("download_errors")
@@ -1392,7 +1256,7 @@ else:
 
 st.markdown("---")
 st.markdown(
-    "### Last 5 Assessed Papers & Blockchain Ledger Proofs"
+    "### Latest Assessed Papers "
     + tooltip(
         "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
     ),
@@ -1479,7 +1343,7 @@ else:
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
 st.markdown(
-    "### Pinamic: Active Epoch & Proof-of-Research Blockchain Explorer "
+    "### Proof-of-Research Blockchain Explorer "
     + tooltip(
         "Manages decentralized consensus, ledger weights, and smart contract audit proofs."
     ),
