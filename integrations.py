@@ -39,6 +39,52 @@ def is_likely_institution(name):
             return True
     return False
 
+import fitz  # PyMuPDF
+
+def fetch_core_text_by_doi(doi):
+    """Queries the CORE API v3 using the DOI to extract available full-text or abstract."""
+    if not doi or doi == "None":
+        return None
+    
+    clean_doi = doi.replace("https://doi.org/", "").strip()
+    url = f"https://api.core.ac.uk/v3/search/works?q=doi:{clean_doi}"
+    headers = {"User-Agent": "Pi-Index-Engine/1.0"}
+    
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            results = data.get("results", [])
+            if results:
+                paper_data = results[0]
+                # CORE indexes fullText or abstract
+                text = paper_data.get("fullText") or paper_data.get("abstract")
+                if text and len(text.strip()) > 200:
+                    return text
+    except Exception as e:
+        print(f"CORE API lookup warning: {e}")
+        
+    return None
+
+
+def create_virtual_pdf_from_text(text, title="CORE Open Access Text"):
+    """Converts raw text into an in-memory PDF binary stream so the processing pipeline doesn't break."""
+    try:
+        doc = fitz.open()  # Create a new blank PDF in memory
+        page = doc.new_page()
+        
+        # Inject the text into a printable bounding box on the page
+        rect = fitz.Rect(50, 50, 550, 800)
+        page.insert_textbox(rect, f"Title: {title}\n\n{text}", fontsize=10, fontname="helv")
+        
+        pdf_bytes = doc.write()
+        doc.close()
+        return pdf_bytes
+    except Exception as e:
+        print(f"Virtual PDF generation error: {e}")
+        
+    return None
+
 def fetch_author_coara_metrics(author_name):
     try:
         clean_name = clean_author_name(author_name)
