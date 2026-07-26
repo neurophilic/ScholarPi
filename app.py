@@ -86,7 +86,6 @@ def get_author_piq_dict():
             author_book[a] = "0x" + hashlib.sha256(a.encode()).hexdigest()[:40]
     return author_piq, author_book
 
-# Fix: Robust PDF Layout Extraction (Resolves Multi-Column & Equation Extraction Bugs)
 def preprocess_pdf_layout(pdf_bytes, fname):
     try:
         import fitz  # PyMuPDF
@@ -107,7 +106,6 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Icon-Only Click Function, Maximized Text Space, and Chat Alignment
 custom_ui_code = """
 <style>
 [data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
@@ -116,7 +114,6 @@ custom_ui_code = """
     padding: 0 !important;
 }
 
-/* User Messages: Right Aligned */
 [data-testid="stChatMessage"]:has(div:contains("USER")) {
     flex-direction: row-reverse !important;
     background-color: #e8f0fe !important;
@@ -124,7 +121,6 @@ custom_ui_code = """
     text-align: right !important;
     margin-left: 20px !important;
 }
-/* Assistant Messages: Left Aligned */
 [data-testid="stChatMessage"]:has(div:contains("🤖")) {
     background-color: #f1f3f4 !important;
     border-radius: 0 10px 10px 10px !important;
@@ -164,7 +160,6 @@ custom_ui_code = """
     background-color: #f8f9fa;
 }
 
-/* Larger Robot Icon Trigger Styling */
 .scilm-trigger {
     cursor: pointer !important;
     font-size: 1.4em;
@@ -355,7 +350,6 @@ else:
 current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
-# --- Scilem Assistant enclosed in a Single Box ---
 st.sidebar.markdown("---")
 
 SCILEM_KNOWLEDGE_BASE = {
@@ -632,13 +626,31 @@ def render_bubble_chart_clean(target_author):
         font_color="#2c3e50",
         notebook=False,
     )
-    physics_options = """{ "physics": { "barnesHut": { "gravitationalConstant": -1500, "centralGravity": 0.8, "springLength": 120, "avoidOverlap": 1.0 }, "stabilization": { "enabled": true, "iterations": 200 } } }"""
+    # Optimized physics parameters for stability (reduced jiggling)
+    physics_options = """{ 
+        "physics": { 
+            "barnesHut": { 
+                "gravitationalConstant": -3000, 
+                "centralGravity": 0.1, 
+                "springLength": 180, 
+                "springConstant": 0.02,
+                "damping": 0.98,
+                "avoidOverlap": 2.0 
+            }, 
+            "stabilization": { 
+                "enabled": true, 
+                "iterations": 1500,
+                "fit": true
+            } 
+        } 
+    }"""
     net.set_options(physics_options)
 
     for topic, metrics in topic_aggregates.items():
         avg_weight = metrics["weight_sum"] / metrics["frequency"]
         freq = metrics["frequency"]
-        node_size = max(25, 15 + (avg_weight * 2.0))
+        # Increased minimum and maximum node sizes significantly so bubbles appear much larger
+        node_size = max(50, 30 + (avg_weight * 5.0))
 
         base_col = color_map[topic]
         net.add_node(
@@ -757,8 +769,6 @@ def evaluation_metrics_dialog():
         with st.expander(f"{title} | vapri_{sym} = {weight_val:.6f} {rbot(q_key)}", expanded=(title.startswith("C1"))):
             st.markdown(f"**Description:** {desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
-            
-            # Show Raw Data JSON block inside the expander
             st.markdown("**Raw Parameter Data:**")
             st.json({
                 "criterion": title,
@@ -1296,7 +1306,6 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-# ==================== TOP SIDE-BY-SIDE ANALYTICS (PIDYNE FORECAST ON LEFT, GLOBAL MAP ON RIGHT) ====================
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
@@ -1389,7 +1398,6 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
-        # Fix: Massively amplify micro-variance so lines separate visually on the graph
         if len(historical_rows) > 0:
             df_history = pd.DataFrame(
                 historical_rows,
@@ -1512,7 +1520,6 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-# ==================== CONDITIONAL DISPLAY: ORCID CONNECTED VS NOT CONNECTED ====================
 if st.session_state.is_authenticated:
     conn_hist = get_db_connection()
     try:
@@ -1648,7 +1655,6 @@ else:
                 })
                 st.dataframe(r_df, hide_index=True, use_container_width=True)
 
-# ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
 st.markdown(f"### Proof-of-Research Blockchain Explorer {rbot('proof-of-research')}", unsafe_allow_html=True)
 
@@ -1815,7 +1821,6 @@ try:
 finally:
     conn.close()
 
-# ==================== SYSTEM OVERVIEW & POP-UP WORKFLOW MODAL ====================
 @st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
 def framework_workflow_dialog():
     st.markdown(
