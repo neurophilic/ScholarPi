@@ -106,7 +106,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Floating Draggable Window & Chat Alignment
+# Custom JS/CSS for Scilem Floating Draggable Window & Form Button Fit
 custom_ui_code = """
 <style>
 [data-testid="stSidebar"] {
@@ -158,11 +158,17 @@ custom_ui_code = """
 #scilem-drag-handle:active {
     cursor: grabbing;
 }
+
+/* Ensure form submit buttons fit text properly */
+button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
+    padding: 0.35rem 0.75rem !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+}
 </style>
 <script>
 const parentDoc = window.parent.document;
 
-// RAG Auto-trigger handler
 parentDoc.addEventListener('click', function(e) {
     let trigger = e.target.closest('.scilm-trigger');
     if (!trigger) return; 
@@ -185,16 +191,13 @@ parentDoc.addEventListener('click', function(e) {
     }
 }, true);
 
-// Floating & Draggable Chat Window Initializer
 function initDraggableScilem() {
     const handle = parentDoc.getElementById('scilem-drag-handle');
     if (!handle) return;
     
-    // Find the specific container holding the scilem chat (isolating it from the main app)
     let block = handle.closest('[data-testid="stVerticalBlock"]');
     if (!block || block.getAttribute('data-draggable') === 'true') return;
 
-    // Safety check: ensure we didn't grab the whole page layout
     if (block.innerText.includes("Pi-Index Assessment Engine") || block.innerText.includes("Live System Monitor")) {
         const blocks = parentDoc.querySelectorAll('[data-testid="stVerticalBlock"]');
         for(let i=0; i < blocks.length; i++) {
@@ -208,7 +211,7 @@ function initDraggableScilem() {
     block.style.position = 'fixed';
     block.style.bottom = '20px';
     block.style.right = '20px';
-    block.style.width = '360px';
+    block.style.width = '380px';
     block.style.backgroundColor = '#ffffff';
     block.style.border = '1px solid #d0d7de';
     block.style.borderRadius = '12px';
@@ -216,7 +219,6 @@ function initDraggableScilem() {
     block.style.zIndex = '999999';
     block.style.padding = '1rem';
     
-    // Drag Logic
     let isDragging = false;
     let startX, startY, initialX, initialY;
 
@@ -227,7 +229,7 @@ function initDraggableScilem() {
         const rect = block.getBoundingClientRect();
         initialX = rect.left;
         initialY = rect.top;
-        block.style.bottom = 'auto'; // Reset bottom/right so left/top anchor takes over
+        block.style.bottom = 'auto';
         block.style.right = 'auto';
         block.style.transition = 'none'; 
         e.preventDefault(); 
@@ -560,28 +562,29 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
+    # Increased map height to 600px
     net = Network(
-        height="450px",
+        height="600px",
         width="100%",
         bgcolor="#ffffff",
         font_color="#2c3e50",
         notebook=False,
     )
     
-    # Tuned damping (0.2), reduced iterations (150), and adjusted overlap logic for a fast, non-jiggly map load.
+    # Highly stabilized physics parameters for minimal initial jiggliness
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
                 "gravitationalConstant": {repulsion}, 
                 "centralGravity": {central_grav}, 
                 "springLength": {spring_len}, 
-                "springConstant": 0.01,
-                "damping": 0.2,
-                "avoidOverlap": 1 
+                "springConstant": 0.015,
+                "damping": 0.95,
+                "avoidOverlap": 2.0 
             }}, 
             "stabilization": {{ 
                 "enabled": true, 
-                "iterations": 150,
+                "iterations": 2000,
                 "fit": true
             }} 
         }} 
@@ -1393,16 +1396,16 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # --- PERMANENT VISIBLE MAP MODULATION CONTROL PANEL ---
+    # --- PERMANENT VISIBLE MAP MODULATION CONTROL PANEL WITH EXPANDED SLIDER RANGES ---
     with st.container(border=True):
         st.markdown("**🎛️ Map Physics & Display Modulation**")
         mod_col1, mod_col2 = st.columns(2)
         with mod_col1:
-            mod_repulsion = st.slider("Repulsion Force", min_value=-8000, max_value=-500, value=-3000, step=500, key="mod_repulsion")
-            mod_spring = st.slider("Spring Length", min_value=50, max_value=400, value=150, step=10, key="mod_spring")
+            mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
+            mod_spring = st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
         with mod_col2:
-            mod_size = st.slider("Bubble Size Scale", min_value=0.5, max_value=3.0, value=1.5, step=0.1, key="mod_size")
-            mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.01, max_value=0.5, value=0.15, step=0.01, key="mod_gravity")
+            mod_size = st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
+            mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
 
     conn_m = get_db_connection()
     try:
@@ -1442,7 +1445,8 @@ with top_analytics_col2:
         central_grav=mod_gravity
     )
     if interactive_html_top:
-        components.html(interactive_html_top, height=410, scrolling=False)
+        # Taller map component height (580px)
+        components.html(interactive_html_top, height=580, scrolling=False)
     else:
         st.info("Awaiting sufficient data for map visualization.")
 
@@ -1877,9 +1881,8 @@ with col_center:
     if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
         framework_workflow_dialog()
 
-# --- Floating Scilem Corner Chatbot Window ---
+# --- Floating, Draggable Scilem Corner Chatbot Window ---
 st.markdown("---")
-# Ensure an isolated vertical block by placing it at the very bottom
 scilem_container = st.container()
 with scilem_container:
     st.markdown("<div id='scilem-drag-handle'>🤖 Scilem Assistant (Drag me)</div>", unsafe_allow_html=True)
@@ -1892,7 +1895,7 @@ with scilem_container:
                 st.markdown(message["content"])
 
     with st.form(key="scilem_floating_form", clear_on_submit=True):
-        f_cols = st.columns([4, 1])
+        f_cols = st.columns([3, 1])
         with f_cols[0]:
             floating_prompt = st.text_input("Ask Scilem...", placeholder="Ask a question...", label_visibility="collapsed")
         with f_cols[1]:
