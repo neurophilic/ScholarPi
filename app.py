@@ -684,7 +684,7 @@ def evaluation_metrics_dialog():
     else:
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
-    green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
+    green_badge = lambda sym, val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">{sym} = {val:.6f}</span>'
 
     st.markdown(
         f"**Adversarial Logic Gap {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
@@ -697,35 +697,35 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    with st.expander(f"C1: Originality {rbot('c1: originality')} &nbsp; {green_badge(tw1)}", expanded=True):
+    with st.expander(f"C1: Originality {rbot('c1: originality')} &nbsp; {green_badge('ϖ₁', tw1)}", expanded=True):
         st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
         st.markdown(r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
 
-    with st.expander(f"C2: Methodological Rigor {rbot('c2: methodological rigor')} &nbsp; {green_badge(tw2)}"):
+    with st.expander(f"C2: Methodological Rigor {rbot('c2: methodological rigor')} &nbsp; {green_badge('ϖ₂', tw2)}"):
         st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
         st.markdown(r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
 
-    with st.expander(f"C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')} &nbsp; {green_badge(tw3)}"):
+    with st.expander(f"C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')} &nbsp; {green_badge('ϖ₃', tw3)}"):
         st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
         st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    with st.expander(f"C4: Societal Impact {rbot('c4: societal impact')} &nbsp; {green_badge(tw4)}"):
+    with st.expander(f"C4: Societal Impact {rbot('c4: societal impact')} &nbsp; {green_badge('ϖ₄', tw4)}"):
         st.markdown("Evaluates broader societal and open infrastructure contributions.")
         st.markdown(r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
 
-    with st.expander(f"C5: Open Science {rbot('c5: open science')} &nbsp; {green_badge(tw5)}"):
+    with st.expander(f"C5: Open Science {rbot('c5: open science')} &nbsp; {green_badge('ϖ₅', tw5)}"):
         st.markdown("Evaluates open data, open code, and containerized reproducibility.")
         st.markdown(r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
 
-    with st.expander(f"C6: Literature Integration {rbot('c6: literature integration')} &nbsp; {green_badge(tw6)}"):
+    with st.expander(f"C6: Literature Integration {rbot('c6: literature integration')} &nbsp; {green_badge('ϖ₆', tw6)}"):
         st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
         st.markdown(r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
 
-    with st.expander(f"C7: Empirical Density {rbot('c7: empirical density')} &nbsp; {green_badge(tw7)}"):
+    with st.expander(f"C7: Empirical Density {rbot('c7: empirical density')} &nbsp; {green_badge('ϖ₇', tw7)}"):
         st.markdown("Assesses empirical sample strength and baseline variance.")
         st.markdown(r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
 
-    with st.expander(f"C8: Future Actionability {rbot('c8: future actionability')} &nbsp; {green_badge(tw8)}"):
+    with st.expander(f"C8: Future Actionability {rbot('c8: future actionability')} &nbsp; {green_badge('ϖ₈', tw8)}"):
         st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
         st.markdown(r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
 
@@ -1723,7 +1723,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
