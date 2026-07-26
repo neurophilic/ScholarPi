@@ -1122,27 +1122,33 @@ def more_details_dialog(item):
         st.markdown("#### AI Peer Review Defense Rebuttal Strategy")
         st.markdown(st.session_state[f"defense_{eval_hash}"])
 
+@st.dialog("AI Peer Review Defense Strategy", width="medium")
+def defense_strategy_dialog(scores_dict, eval_hash):
+    with st.spinner("Synthesizing adversarial defense strategy..."):
+        rebuttal = generate_rebuttal_strategy(scores_dict)
+    st.markdown(rebuttal)
+
 def render_breakdown_item(item, index):
     title = item["title"]
     author_name = clean_author_name(item["author_name"])
     score = item["score"]
     eval_hash = item["eval_hash"]
     piq = item["piq"]
-    tx_hash = item["tx_hash"]
-    filename = item["filename"]
+    scores_dict = item["scores_dict"]
 
     with st.container(border=True):
-        col_info, col_actions = st.columns([7, 2])
+        col_info, col_actions = st.columns([7, 3])
         with col_info:
             st.markdown(f"**{title}** — *{author_name}*")
-            tx_url = safe_get_sepolia_url(tx_hash)
-            tx_snippet = f"[`{tx_hash[:10]}...`]({tx_url})" if tx_url else f"`{tx_hash[:10]}...`"
-            st.caption(f"Score: **{score:.2f}** | piQ: `{piq}` | Tx: {tx_snippet} | File: `{filename}`")
+            st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
         with col_actions:
-            c_det, c_del = st.columns([3, 1])
+            c_det, c_strat, c_del = st.columns([2, 2, 1])
             with c_det:
                 if st.button("More Details", key=f"more_det_{index}_{eval_hash}", use_container_width=True):
                     more_details_dialog(item)
+            with c_strat:
+                if st.button("Generate Strategy", key=f"gen_strat_{index}_{eval_hash}", use_container_width=True):
+                    defense_strategy_dialog(scores_dict, eval_hash)
             with c_del:
                 if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
                     st.session_state["evaluated_papers_buffer"].pop(index)
