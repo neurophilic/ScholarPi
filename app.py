@@ -684,10 +684,10 @@ def evaluation_metrics_dialog():
     else:
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
-    green_badge = lambda val: f'apri = {val:.6f}'
+    green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
 
     st.markdown(
-        f"**Adversarial Logic Gap** {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$): Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+        f"**Adversarial Logic Gap {rbot('adversarial logic gap')} ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
         unsafe_allow_html=True
     )
     st.markdown(
@@ -697,25 +697,37 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
-    ]
+    with st.expander(f"C1: Originality {rbot('c1: originality')} &nbsp; {green_badge(tw1)}", expanded=True):
+        st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
+        st.markdown(r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
 
-    for title, q_key, weight_val, desc, formula in criteria_list:
-        with st.expander(f"{title} ({green_badge(weight_val)})"):
-            col_lbl, col_bot = st.columns([10, 1])
-            with col_lbl:
-                st.markdown(desc)
-            with col_bot:
-                st.markdown(rbot(q_key), unsafe_allow_html=True)
-            st.markdown(formula)
+    with st.expander(f"C2: Methodological Rigor {rbot('c2: methodological rigor')} &nbsp; {green_badge(tw2)}"):
+        st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
+        st.markdown(r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
+
+    with st.expander(f"C3: Interdisciplinary Synergy {rbot('c3: interdisciplinary synergy')} &nbsp; {green_badge(tw3)}"):
+        st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
+        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+
+    with st.expander(f"C4: Societal Impact {rbot('c4: societal impact')} &nbsp; {green_badge(tw4)}"):
+        st.markdown("Evaluates broader societal and open infrastructure contributions.")
+        st.markdown(r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
+
+    with st.expander(f"C5: Open Science {rbot('c5: open science')} &nbsp; {green_badge(tw5)}"):
+        st.markdown("Evaluates open data, open code, and containerized reproducibility.")
+        st.markdown(r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
+
+    with st.expander(f"C6: Literature Integration {rbot('c6: literature integration')} &nbsp; {green_badge(tw6)}"):
+        st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
+        st.markdown(r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
+
+    with st.expander(f"C7: Empirical Density {rbot('c7: empirical density')} &nbsp; {green_badge(tw7)}"):
+        st.markdown("Assesses empirical sample strength and baseline variance.")
+        st.markdown(r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
+
+    with st.expander(f"C8: Future Actionability {rbot('c8: future actionability')} &nbsp; {green_badge(tw8)}"):
+        st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
+        st.markdown(r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
