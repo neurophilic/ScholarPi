@@ -122,7 +122,6 @@ Output a JSON object with two keys:
 
 Text: {text_chunk}"""
     
-    # Retry Logic for Rate Limits
     for attempt in range(3):
         try:
             response = groq_client.chat.completions.create(
@@ -149,7 +148,6 @@ def evaluate_scope_alignment(text, scope, model, text_limit):
 Return ONLY a valid JSON object with a single key "Scope_Alignment" containing a float between 0.0 and 100.0.
 Text: {text}"""
 
-    # Retry Logic for Rate Limits
     for attempt in range(3):
         try:
             response = groq_client.chat.completions.create(
@@ -214,7 +212,6 @@ Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Ju
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
 Return ONLY a valid JSON object. Text: {text}"""
 
-    # Retry Logic for Rate Limits
     result_content = None
     for attempt in range(3):
         try:
@@ -458,7 +455,6 @@ def process_single_pdf(
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             pdf_meta_author = doc.metadata.get("author", "").strip()
             
-            # Robust Spatial Extraction 
             text_blocks = []
             for page in doc:
                 text_blocks.append(page.get_text("text", sort=True))
