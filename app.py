@@ -1453,8 +1453,9 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # --- MAP MODULATION CONTROL PANEL ---
-    with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
+    # --- PERMANENT VISIBLE MAP MODULATION CONTROL PANEL ---
+    with st.container(border=True):
+        st.markdown("**🎛️ Map Physics & Display Modulation**")
         mod_col1, mod_col2 = st.columns(2)
         with mod_col1:
             mod_repulsion = st.slider("Repulsion Force", min_value=-8000, max_value=-500, value=-3000, step=500, key="mod_repulsion")
