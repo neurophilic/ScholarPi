@@ -305,7 +305,7 @@ with st.sidebar.expander("DeSci Peer Attestation & Staking", expanded=False):
     else:
         st.warning("Please connect your ORCID iD or DID above to use the DeSci Peer Attestation feature.")
 
-# --- Scilem Accessory Chatbot in Sidebar (Not a dropdown) ---
+# --- Scilem Accessory Chatbot in Sidebar (Not a dropdown, auto-updated knowledge base) ---
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     "### Scilem Accessory Chatbot "
@@ -398,36 +398,36 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
     st.rerun()
 
-# --- Helper for Refining Subfields and Professional Science Fields ---
+# --- Helper for Refining Subfields and Professional Science Fields (No Interdisciplinary Research) ---
 def refine_science_field(s):
     s_lower = s.lower()
     if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
         return "Computer Science > Blockchain & Distributed Systems"
     elif any(k in s_lower for k in ["machine learning", "deep learning", "neural", "ai", "artificial intelligence"]):
         return "Computer Science > Artificial Intelligence & Machine Learning"
-    elif any(k in s_lower for k in ["algorithm", "software", "computation", "cyber", "data"]):
+    elif any(k in s_lower for k in ["algorithm", "software", "computation", "cyber", "data", "information"]):
         return "Computer Science > Algorithms & Software Engineering"
     elif any(k in s_lower for k in ["quantum", "optics", "photonics"]):
         return "Physics > Quantum Mechanics & Optics"
-    elif any(k in s_lower for k in ["energy", "mechanics", "thermodynamics"]):
+    elif any(k in s_lower for k in ["energy", "mechanics", "thermodynamics", "physics"]):
         return "Physics > Applied Mechanics & Energy Systems"
-    elif any(k in s_lower for k in ["polymer", "catalysis", "molecule", "chemical"]):
+    elif any(k in s_lower for k in ["polymer", "catalysis", "molecule", "chemical", "chemistry"]):
         return "Chemistry > Chemical Synthesis & Molecular Catalysis"
-    elif any(k in s_lower for k in ["genetics", "genomics", "gene"]):
+    elif any(k in s_lower for k in ["genetics", "genomics", "gene", "biology"]):
         return "Life Sciences > Genetics & Genomics"
     elif any(k in s_lower for k in ["cellular", "protein", "molecular biology"]):
         return "Life Sciences > Molecular & Cellular Biology"
     elif any(k in s_lower for k in ["ecology", "ecosystem", "biodiversity"]):
         return "Life Sciences > Ecology & Evolutionary Biology"
-    elif any(k in s_lower for k in ["clinical", "hospital", "patient", "disease", "pharmac"]):
+    elif any(k in s_lower for k in ["clinical", "hospital", "patient", "disease", "pharmac", "medical", "medicine"]):
         return "Medical Sciences > Clinical Medicine & Pharmacology"
     elif any(k in s_lower for k in ["biomedical", "neuroscience", "cardiac"]):
         return "Medical Sciences > Biomedical Research"
-    elif any(k in s_lower for k in ["climate", "carbon", "atmosphere", "meteorology"]):
+    elif any(k in s_lower for k in ["climate", "carbon", "atmosphere", "meteorology", "earth"]):
         return "Earth Sciences > Climate Science & Meteorology"
-    elif any(k in s_lower for k in ["geology", "earth", "ocean", "seismic"]):
+    elif any(k in s_lower for k in ["geology", "ocean", "seismic"]):
         return "Earth Sciences > Geology & Earth Systems"
-    elif any(k in s_lower for k in ["economics", "finance", "market"]):
+    elif any(k in s_lower for k in ["economics", "finance", "market", "social"]):
         return "Social Sciences > Economics & Quantitative Finance"
     elif any(k in s_lower for k in ["sociology", "psychology", "policy", "management"]):
         return "Social Sciences > Behavioral & Policy Studies"
@@ -436,7 +436,7 @@ def refine_science_field(s):
     elif any(k in s_lower for k in ["engineering", "robotics", "materials", "civil", "electrical"]):
         return "Engineering & Technology > Applied Engineering & Materials Science"
     else:
-        return f"Interdisciplinary Research > {s.title()}"
+        return f"Engineering & Technology > Applied Technical Research ({s.title()})"
 
 # --- Helper for Cartography Render ---
 def render_bubble_chart_clean(target_author):
@@ -482,7 +482,7 @@ def render_bubble_chart_clean(target_author):
             continue
 
     if not topic_aggregates:
-        topic_aggregates["Interdisciplinary Research > General Science"] = {
+        topic_aggregates["Computer Science > Algorithms & Software Engineering"] = {
             "weight_sum": 50.0,
             "frequency": 1,
         }
