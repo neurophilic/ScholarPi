@@ -566,6 +566,45 @@ st.markdown(
 )
 
 with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
+    # Fetch latest epoch metrics to merge inside the expander
+    conn_top_ep = get_db_connection()
+    try:
+        cur_te = conn_top_ep.cursor()
+        cur_te.execute(
+            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+        )
+        top_epoch_data = cur_te.fetchone()
+        cur_te.execute("SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE eval_hash != 'genesis'")
+        top_total_papers = cur_te.fetchone()[0]
+    except Exception:
+        top_epoch_data = None
+        top_total_papers = 0
+    finally:
+        conn_top_ep.close()
+
+    if top_epoch_data:
+        tb_height, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, tmodel = top_epoch_data
+        t_pi_acc = generate_blockchain_pi(tb_height)
+        st.markdown(
+            f"**Processed:** `{top_total_papers}` | **Block Size:** `{EPOCH_BLOCK_SIZE}` | **Model:** `{tmodel}` | **Block:** `{tb_height}` | **Pi Algorithmic Precision:** `{t_pi_acc}`"
+        )
+        t_cols = st.columns(4)
+        t_weights_vals = [tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8]
+        t_labels = [
+            ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
+            ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
+            ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
+            ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
+        ]
+        for i, col in enumerate(t_cols * 2):
+            if i < 8:
+                col.markdown(f"**{t_labels[i][0]} ({t_labels[i][1]})**")
+                col.markdown(
+                    f"<h3 style='margin-top:0px; margin-bottom:5px;'>{t_weights_vals[i]:.6f}</h3>",
+                    unsafe_allow_html=True,
+                )
+        st.markdown("---")
+
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
         + tooltip(
@@ -1583,35 +1622,6 @@ try:
             epoch_data[0], epoch_data[1:9], epoch_data[9],
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
-        cursor.execute(
-            "SELECT COUNT(DISTINCT eval_hash) FROM blockchain_por_weights WHERE"
-            " eval_hash != 'genesis'"
-        )
-        total_papers_processed = cursor.fetchone()[0]
-
-        current_pi_accuracy = generate_blockchain_pi(block_height)
-
-        st.markdown(
-            f"**Processed:** `{total_papers_processed}` | **Block Size:**"
-            f" `{EPOCH_BLOCK_SIZE}` | **Model:** `{model_used}` | **Block:**"
-            f" `{block_height}` | **Pi Algorithmic Precision:**"
-            f" `{current_pi_accuracy}`"
-        )
-
-        cols = st.columns(4)
-        labels = [
-            ("C1", r"$\varpi_1$"), ("C2", r"$\varpi_2$"),
-            ("C3", r"$\varpi_3$"), ("C4", r"$\varpi_4$"),
-            ("C5", r"$\varpi_5$"), ("C6", r"$\varpi_6$"),
-            ("C7", r"$\varpi_7$"), ("C8", r"$\varpi_8$"),
-        ]
-        for i, col in enumerate(cols * 2):
-            if i < 8:
-                col.markdown(f"**{labels[i][0]} ({labels[i][1]})**")
-                col.markdown(
-                    f"<h3 style='margin-top:0px; margin-bottom:5px;'>{weights[i]:.6f}</h3>",
-                    unsafe_allow_html=True,
-                )
 
         st.markdown(
             "### Proof-of-Research Blockchain Explorer & Sepolia Contract Verification "
