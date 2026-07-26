@@ -1430,7 +1430,7 @@ with tab_map:
 
     map_container = st.container()
     with map_container:
-        with st.expander("⚙️ Map Modulator Settings", expanded=False):
+        with st.expander("⚙️", expanded=False):
             mod_col1, mod_col2 = st.columns(2)
             with mod_col1:
                 mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
@@ -1478,7 +1478,7 @@ with tab_map:
         )
         if interactive_html_top:
             st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
-            components.html(interactive_html_top, height=600, width=1000, scrolling=False)
+            components.html(interactive_html_top, height=600, scrolling=False)
             st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("Awaiting sufficient data for map visualization.")
