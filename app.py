@@ -1429,34 +1429,6 @@ finally:
 if not recent_papers:
     st.info("No papers have been assessed in the database yet.")
 else:
-    formatted_hashes = []
-    for rp in recent_papers:
-        bh_val = rp[21] if rp[21] is not None else "Pending"
-        bhash_val = rp[22] if rp[22] is not None else "Pending"
-        tx_h = rp[14]
-        tx_url = safe_get_sepolia_url(tx_h)
-        tx_display = f"[{tx_h[:10]}...]({tx_url})" if tx_url else str(tx_h)
-        formatted_hashes.append((
-            str(bh_val),
-            rp[19][:10] + "...",
-            str(bhash_val)[:10] + "..." if bhash_val != "Pending" else "Pending",
-            rp[15][:10] + "..." if rp[15] else "N/A",
-            rp[13],
-            tx_display,
-            rp[20]
-        ))
-    
-    df_hashes = pd.DataFrame(
-        formatted_hashes,
-        columns=[
-            "Block Height", "Eval Hash", "Block Hash",
-            "zk-SNARK", "piQ", "Tx Hash (Etherscan)", "Timestamp",
-        ],
-    )
-    st.markdown("**Recent Ledger Proofs Summary Table:**")
-    st.markdown(df_hashes.to_markdown(index=False), unsafe_allow_html=True)
-    st.markdown("")
-
     for idx, rp in enumerate(recent_papers):
         (
             r_title, r_author, r_filename, r_score, r_logic,
@@ -1635,7 +1607,7 @@ try:
                 for rrow in recent_ledger_rows:
                     rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                     tx_url = safe_get_sepolia_url(rtx)
-                    tx_disp = f"[{rtx[:10]}...]({tx_url})" if tx_url else str(rtx)
+                    tx_disp = f"[{rtx[:10]}...]({tx_url})" if rtx else str(rtx)
                     table_data.append({
                         "Block Height": rbh if rbh is not None else "Pending",
                         "Eval Hash": reval[:10] + "...",
