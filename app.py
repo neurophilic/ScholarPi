@@ -1453,7 +1453,7 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # --- MAP MODULATION CONTROL PANEL (Using Correct min_value / max_value parameters) ---
+    # --- MAP MODULATION CONTROL PANEL ---
     with st.expander("🎛️ Map Physics & Display Modulation", expanded=False):
         mod_col1, mod_col2 = st.columns(2)
         with mod_col1:
