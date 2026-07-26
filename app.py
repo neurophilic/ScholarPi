@@ -109,7 +109,7 @@ def rbot(topic_key):
 # Custom JS/CSS for UI Modifications
 custom_ui_code = """
 <style>
-/* 1. Hide anchor links globally on markdown headers */
+/* 1. Globally hide Streamlit's default anchor link icons on all markdown headers */
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
 .stMarkdown h4 a, .stMarkdown h5 a, .stMarkdown h6 a,
 [data-testid="stHeaderActionElements"] {
@@ -172,7 +172,7 @@ custom_ui_code = """
     cursor: grabbing;
 }
 
-/* 3. Larger Robot Icon in Header */
+/* 3. Larger Robot Icon in Scilem Header */
 #scilem-drag-handle .robot-icon {
     font-size: 1.5em;
     margin-right: 8px;
@@ -276,7 +276,7 @@ function initUI() {
         }
     }
 
-    // 6. Merge Map Controls on top of Map
+    // 6. Merge Map Controls directly into the top-left corner of ymap
     const marker = parentDoc.getElementById('map-controls-marker');
     const anchor = parentDoc.getElementById('map-anchor');
     if (marker && anchor) {
@@ -768,7 +768,7 @@ def evaluation_metrics_dialog():
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( `\varpi_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} ( `\\varpi_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
