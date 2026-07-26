@@ -403,7 +403,6 @@ st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe
 chat_container = st.sidebar.container(height=450)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        # Robot avatar on left for assistant, USER text avatar on right
         msg_avatar = "🤖" if message["role"] == "assistant" else "USER"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
@@ -755,9 +754,19 @@ def evaluation_metrics_dialog():
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} | vapri_{sym} = {weight_val:.6f} 🤖", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} | vapri_{sym} = {weight_val:.6f} {rbot(q_key)}", expanded=(title.startswith("C1"))):
             st.markdown(f"**Description:** {desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
+            
+            # Show Raw Data JSON block inside the expander
+            st.markdown("**Raw Parameter Data:**")
+            st.json({
+                "criterion": title,
+                "symbol": f"vapri_{sym}",
+                "weight_value": weight_val,
+                "topic_key": q_key,
+                "formula_latex": formula
+            })
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
