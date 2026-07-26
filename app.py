@@ -248,6 +248,15 @@ if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 
+# --- Initialize Scilem Chat State Early ---
+if "scilm_messages" not in st.session_state:
+    st.session_state.scilm_messages = [
+        {
+            "role": "assistant", 
+            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
+        }
+    ]
+
 if "orcid_id" not in st.session_state:
     saved_orcid = st.query_params.get("orcid", "")
     if saved_orcid and (re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", saved_orcid) or "did:" in saved_orcid):
@@ -331,6 +340,37 @@ st.sidebar.markdown("---")
 with st.sidebar.expander("🖥️ Live System Monitor", expanded=False):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
+
+SCILEM_KNOWLEDGE_BASE = {
+    "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
+    "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
+    "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
+    "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
+    "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs. It validates evaluations directly on the blockchain.",
+    "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+    "c1: originality": "Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
+    "c2: methodological rigor": "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
+    "c3: interdisciplinary synergy": "Measures cross-disciplinary integration and entropy across scientific domains.",
+    "c4: societal impact": "Evaluates broader societal and open infrastructure contributions.",
+    "c5: open science": "Evaluates open data, open code, and containerized reproducibility.",
+    "c6: literature integration": "Evaluates citation polarity and integration with existing foundational literature.",
+    "c7: empirical density": "Assesses empirical sample strength and baseline variance.",
+    "c8: future actionability": "Evaluates future research actionability and adherence to FAIR principles.",
+    "pi-index": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
+    "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights.",
+    "zk-snark": "Zero-Knowledge Succinct Non-Interactive Argument of Knowledge. A cryptographic proof that an evaluation occurred exactly per guidelines without revealing reviewer identity.",
+    "sciscore mdar": "SciScore evaluates adherence to the Materials Design Analysis Reporting (MDAR) framework to ensure rigor.",
+    "executable reproducibility score": "An audit metric calculating whether code, data, and software environments (C5 & C7) can reliably execute independent results."
+}
+
+if "last_analyzed_tracked" not in st.session_state:
+    st.session_state["last_analyzed_tracked"] = total_analyzed_count
+elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
+    st.session_state["last_analyzed_tracked"] = total_analyzed_count
+    st.session_state.scilm_messages.append({
+        "role": "assistant",
+        "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
+    })
 
 def refine_science_field(s):
     s_lower = s.lower()
