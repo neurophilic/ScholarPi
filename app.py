@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pyvis.network import Network
+import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -73,43 +74,64 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-# Invisible JS to capture clicks on plain text and forward them to Scilem Chat Input.
-# Ignored clicks on buttons, dialogs, and expanders to prevent interrupting popups!
-click_tracker_js = """
+# Custom JS/CSS to manage the pointer cursor (finger), specific click-to-explain limits,
+# horizontal scroll lock on the Scilem box, and auto-scrolling the chat container.
+custom_ui_code = """
+<style>
+/* Prevent horizontal scroll in chat */
+[data-testid="stSidebar"] [data-testid="stChatMessageContainer"] {
+    overflow-x: hidden !important;
+    scroll-behavior: smooth;
+}
+
+/* Explainable text classes show a finger pointer and subtle underline */
+.explainable {
+    cursor: pointer;
+    border-bottom: 1px dotted #2980b9;
+    transition: all 0.2s ease-in-out;
+}
+.explainable:hover {
+    color: #2980b9;
+    background-color: #f1f8ff;
+}
+</style>
 <script>
 const parentDoc = window.parent.document;
+
+// 1. Click Listener for Explainable Elements Only
 parentDoc.addEventListener('click', function(e) {
-    if (e.target.closest('[data-testid="stSidebar"]')) return;
+    let explainTarget = e.target.closest('.explainable');
+    if (!explainTarget) return; // Only process clicks on explicitly marked explainable features
     
-    // Ignore interactive UI elements (buttons, links, inputs, expanders, modals) so popups open safely!
-    if (e.target.closest('button, a, input, textarea, select, [role="button"], [role="tab"], [role="dialog"], [data-testid="stExpander"]')) return;
-
-    let text = e.target.innerText || e.target.textContent;
+    let text = explainTarget.innerText || explainTarget.textContent;
     if (!text) return;
-    text = text.split('\\n')[0].trim().substring(0, 100);
+    text = text.trim();
 
-    if (text.length > 2) {
-        const textareas = parentDoc.querySelectorAll('textarea[aria-label="Ask Scilem..."]');
-        if (textareas.length > 0) {
-            const textarea = textareas[0];
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-            nativeInputValueSetter.call(textarea, "Explain: " + text);
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    const textareas = parentDoc.querySelectorAll('textarea[aria-label="Ask Scilem..."]');
+    if (textareas.length > 0) {
+        const textarea = textareas[0];
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+        nativeInputValueSetter.call(textarea, "Explain: " + text);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
-            const enterEvent = new KeyboardEvent('keydown', {
-                bubbles: true,
-                cancelable: true,
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13
-            });
-            textarea.dispatchEvent(enterEvent);
-        }
+        const enterEvent = new KeyboardEvent('keydown', {
+            bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13
+        });
+        textarea.dispatchEvent(enterEvent);
     }
 });
+
+// 2. MutationObserver to always keep the chat scrolled to the bottom
+const observer = new MutationObserver(() => {
+    const chatContainers = parentDoc.querySelectorAll('[data-testid="stChatMessageContainer"]');
+    chatContainers.forEach(container => {
+        container.scrollTop = container.scrollHeight;
+    });
+});
+observer.observe(parentDoc.body, { childList: true, subtree: true });
 </script>
 """
-components.html(click_tracker_js, height=0, width=0)
+components.html(custom_ui_code, height=0, width=0)
 
 st.sidebar.title("System Access")
 
@@ -246,16 +268,16 @@ SCILEM_KNOWLEDGE_BASE = {
     "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
     "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
     "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs.",
-    "adversarial logic": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
-    "c1": "Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
-    "c2": "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
-    "c3": "Measures cross-disciplinary integration and entropy across scientific domains.",
-    "c4": "Evaluates broader societal and open infrastructure contributions.",
-    "c5": "Evaluates open data, open code, and containerized reproducibility.",
-    "c6": "Evaluates citation polarity and integration with existing foundational literature.",
-    "c7": "Assesses empirical sample strength and baseline variance.",
-    "c8": "Evaluates future research actionability and adherence to FAIR principles.",
-    "pi-index assessment engine": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
+    "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+    "c1": "C1 (Originality): Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
+    "c2": "C2 (Methodological Rigor): Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
+    "c3": "C3 (Interdisciplinary Synergy): Measures cross-disciplinary integration and entropy across scientific domains.",
+    "c4": "C4 (Societal Impact): Evaluates broader societal and open infrastructure contributions.",
+    "c5": "C5 (Open Science): Evaluates open data, open code, and containerized reproducibility.",
+    "c6": "C6 (Literature Integration): Evaluates citation polarity and integration with existing foundational literature.",
+    "c7": "C7 (Empirical Density): Assesses empirical sample strength and baseline variance.",
+    "c8": "C8 (Future Actionability): Evaluates future research actionability and adherence to FAIR principles.",
+    "pi-index": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
     "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights."
 }
 
@@ -263,7 +285,7 @@ if "scilm_messages" not in st.session_state:
     st.session_state.scilm_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** If you click on any text, metric, or feature in the main app, I will automatically explain it here."
+            "content": "**Welcome! I am Scilem.** If you see a pointer finger on any underlined text or feature in the main app, simply click it and I will automatically explain it here."
         }
     ]
 
@@ -276,7 +298,8 @@ elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
 
-transparent_pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+# A tiny dot SVG for the Scilem Avatar
+tiny_scilem_avatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='15' fill='%232c3e50'/%3E%3C/svg%3E"
 
 with st.sidebar.container(border=True):
     st.markdown("### Scilem Assistant")
@@ -285,7 +308,7 @@ with st.sidebar.container(border=True):
     chat_container = st.container(height=380)
     with chat_container:
         for idx, message in enumerate(st.session_state.scilm_messages):
-            msg_avatar = transparent_pixel if message["role"] == "assistant" else None
+            msg_avatar = tiny_scilem_avatar if message["role"] == "assistant" else None
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
 
@@ -332,7 +355,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
 
         scilm_sys_prompt = (
             "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
-            "Explain app features clearly and precisely. You just received a user action or query.\n\n"
+            "Explain app features clearly and concisely. You just received a user action or query.\n\n"
             f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
             f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
         )
@@ -605,7 +628,7 @@ def evaluation_metrics_dialog():
         ]
         for i, col in enumerate(t_cols * 2):
             if i < 8:
-                col.markdown(f"**{t_labels[i][0]} ({t_labels[i][1]})**")
+                col.markdown(f"**<span class='explainable'>{t_labels[i][0]}</span> ({t_labels[i][1]})**", unsafe_allow_html=True)
                 col.markdown(
                     f"<h3 style='margin-top:0px; margin-bottom:5px;'>{t_weights_vals[i]:.6f}</h3>",
                     unsafe_allow_html=True,
@@ -617,7 +640,8 @@ def evaluation_metrics_dialog():
     green_badge = lambda val: f'<span style="background-color: #e8f8f5; color: #27ae60; padding: 2px 6px; border-radius: 4px; font-weight: bold;">apri = {val:.6f}</span>'
 
     st.markdown(
-        r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures."
+        r"**<span class='explainable'>Adversarial Logic Gap</span> ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+        unsafe_allow_html=True
     )
     st.markdown(
         r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
@@ -626,35 +650,35 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    st.markdown(f"**C1: Originality** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C1: Originality</span>** &nbsp; {green_badge(tw1)}", unsafe_allow_html=True)
     st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
     st.markdown(r"$$ C_1 = apri \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$")
 
-    st.markdown(f"**C2: Methodological Rigor** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C2: Methodological Rigor</span>** &nbsp; {green_badge(tw2)}", unsafe_allow_html=True)
     st.markdown("Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.")
     st.markdown(r"$$ C_2 = apri \cdot \mathcal{I}_{blinding} + apri \cdot \mathcal{I}_{randomization} + apri \cdot \mathcal{I}_{power\_calc} + apri \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$")
 
-    st.markdown(f"**C3: Interdisciplinary Synergy** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C3: Interdisciplinary Synergy</span>** &nbsp; {green_badge(tw3)}", unsafe_allow_html=True)
     st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
     st.markdown(r"$$ C_3 = apri \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    st.markdown(f"**C4: Societal & Open Infrastructure Impact** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C4: Societal Impact</span>** &nbsp; {green_badge(tw4)}", unsafe_allow_html=True)
     st.markdown("Evaluates broader societal and open infrastructure contributions.")
     st.markdown(r"$$ C_4 = apri \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$")
 
-    st.markdown(f"**C5: Open Science & Executable Reproducibility** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C5: Open Science</span>** &nbsp; {green_badge(tw5)}", unsafe_allow_html=True)
     st.markdown("Evaluates open data, open code, and containerized reproducibility.")
     st.markdown(r"$$ C_5 = apri \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$")
 
-    st.markdown(f"**C6: Literature Integration** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C6: Literature Integration</span>** &nbsp; {green_badge(tw6)}", unsafe_allow_html=True)
     st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
     st.markdown(r"$$ C_6 = apri \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$")
 
-    st.markdown(f"**C7: Empirical Density & Validation** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C7: Empirical Density</span>** &nbsp; {green_badge(tw7)}", unsafe_allow_html=True)
     st.markdown("Assesses empirical sample strength and baseline variance.")
     st.markdown(r"$$ C_7 = apri \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$")
 
-    st.markdown(f"**C8: Future Actionability & FAIR** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
+    st.markdown(f"**<span class='explainable'>C8: Future Actionability</span>** &nbsp; {green_badge(tw8)}", unsafe_allow_html=True)
     st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
     st.markdown(r"$$ C_8 = apri \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$")
 
@@ -1204,7 +1228,7 @@ if (
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
-    st.markdown("### Pidyne Forecast")
+    st.markdown("### <span class='explainable'>Pidyne Forecast</span>", unsafe_allow_html=True)
 
     @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
     def train_pibrain_cached(weight_data, actual_lookback):
@@ -1292,24 +1316,22 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
         
-        # Super Exaggeration for Visual Impact (150x Amplified to expose micro-shifts clearly)
-        mean_val = np.mean(curr_vals)
-        exagg_curr = np.maximum(0.01, mean_val + (curr_vals - mean_val) * 150.0)
-        exagg_pred = np.maximum(0.01, mean_val + (pred_vals - mean_val) * 150.0)
+        # ALTAIR CHART REPLACEMENT: Clean UI with Non-Zero scale for native micro-exaggeration
+        df_compare = pd.DataFrame({
+            "Criterion": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"],
+            "Current Active": curr_vals,
+            "Predicted Next": pred_vals,
+        }).melt("Criterion", var_name="State", value_name="Weight")
 
-        df_compare = pd.DataFrame(
-            {
-                "Current Active Weights (150x Amplified for Visibility)": exagg_curr,
-                "Predicted Next Epoch (150x Amplified for Visibility)": exagg_pred,
-            },
-            index=[
-                "C1: Originality", "C2: Methodological Rigor",
-                "C3: Interdisciplinary", "C4: Societal Impact",
-                "C5: Open Science", "C6: Literature Integration",
-                "C7: Empirical Density", "C8: Future Actionability",
-            ],
-        )
-        st.bar_chart(df_compare, height=380, use_container_width=True)
+        pidyne_chart = alt.Chart(df_compare).mark_bar().encode(
+            x=alt.X('State:N', title=None, axis=alt.Axis(labels=False, ticks=False)),
+            y=alt.Y('Weight:Q', scale=alt.Scale(zero=False), title='Apri Weight'),
+            color=alt.Color('State:N', legend=alt.Legend(title=None, orient="bottom")),
+            column=alt.Column('Criterion:N', title=None, header=alt.Header(labelOrient="bottom"))
+        ).configure_view(stroke='transparent').properties(height=350)
+        
+        st.altair_chart(pidyne_chart, use_container_width=True)
+
         st.markdown(
             f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
             f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
@@ -1325,7 +1347,7 @@ with top_analytics_col1:
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
     with map_title_col:
-        st.markdown("### Global Map of Science")
+        st.markdown("### <span class='explainable'>Global Map of Science</span>", unsafe_allow_html=True)
     with map_badge_col:
         st.markdown(
             f"""
@@ -1551,7 +1573,7 @@ else:
 
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
-st.markdown("### Proof-of-Research Blockchain Explorer")
+st.markdown("### <span class='explainable'>Proof-of-Research Blockchain Explorer</span>", unsafe_allow_html=True)
 
 conn = get_db_connection()
 try:
