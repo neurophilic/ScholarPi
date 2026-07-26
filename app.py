@@ -1376,7 +1376,8 @@ with top_analytics_col2:
         central_grav=mod_gravity
     )
     if interactive_html_top:
-        components.html(interactive_html_top, height=410, scrolling=True)
+        # Map set to scrolling=False to make it unscrollable
+        components.html(interactive_html_top, height=410, scrolling=False)
     else:
         st.info("Awaiting sufficient data for map visualization.")
 
@@ -1811,23 +1812,30 @@ with col_center:
     if st.button("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", use_container_width=True):
         framework_workflow_dialog()
 
-# --- Floating Scilem Corner Chatbot Window ---
+# --- Floating Scilem Corner Chatbot Window (Using st.form + st.text_input for stability) ---
 st.markdown('<div class="scilem-floating-card">', unsafe_allow_html=True)
 st.markdown("<h4 style='margin-bottom:0; color: #2c3e50;'>🤖 Scilem Assistant</h4>", unsafe_allow_html=True)
 
-floating_chat_container = st.container(height=280)
+floating_chat_container = st.container(height=240)
 with floating_chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
         msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-if prompt := st.chat_input("Ask Scilem...", key="scilem_floating_input", disabled=st.session_state.get("is_running", False)):
-    st.session_state.scilm_messages.append({"role": "user", "content": prompt})
+with st.form(key="scilem_floating_form", clear_on_submit=True):
+    f_cols = st.columns([4, 1])
+    with f_cols[0]:
+        floating_prompt = st.text_input("Ask Scilem...", placeholder="Ask a question...", label_visibility="collapsed")
+    with f_cols[1]:
+        submitted_floating = st.form_submit_button("Send")
+
+if submitted_floating and floating_prompt:
+    st.session_state.scilm_messages.append({"role": "user", "content": floating_prompt})
     
     direct_answer = None
-    if prompt.startswith("Explain:"):
-        query_topic = prompt.replace("Explain:", "").strip().lower()
+    if floating_prompt.startswith("Explain:"):
+        query_topic = floating_prompt.replace("Explain:", "").strip().lower()
         for key, explanation in SCILEM_KNOWLEDGE_BASE.items():
             if key in query_topic:
                 direct_answer = explanation
@@ -1844,7 +1852,7 @@ if prompt := st.chat_input("Ask Scilem...", key="scilem_floating_input", disable
             if os.path.exists(dataset_path):
                 with open(dataset_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
-                    query_terms = set(prompt.lower().split())
+                    query_terms = set(floating_prompt.lower().split())
                     relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
                     if not relevant_lines:
                         relevant_lines = lines[-5:]
