@@ -355,6 +355,7 @@ st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe
 chat_container = st.sidebar.container(height=280)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
+        # Robot avatar on left for assistant, user bubble on right
         msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
@@ -687,13 +688,13 @@ def evaluation_metrics_dialog():
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} {sym} = {weight_val:.6f} 🤖", expanded=(title.startswith("C1"))):
-            st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
+        with st.expander(f"{title} {sym}={weight_val:.6f} {rbot(q_key)}", expanded=(title.startswith("C1"))):
+            st.markdown(desc)
             st.markdown(formula)
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
-    st.title("Pi-Index Assessment Engine")
+    st.markdown(f"<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine {rbot('pi-index')}</h1>", unsafe_allow_html=True)
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
@@ -1286,7 +1287,12 @@ with top_analytics_col1:
         if len(historical_rows) > 0:
             df_history = pd.DataFrame(
                 historical_rows,
-                columns=["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]
+                columns=[
+                    "C1: Originality", "C2: Methodological Rigor",
+                    "C3: Interdisciplinary", "C4: Societal Impact",
+                    "C5: Open Science", "C6: Literature Integration",
+                    "C7: Empirical Density", "C8: Future Actionability",
+                ]
             )
             df_history.index.name = "Block / Epoch"
             st.line_chart(df_history, height=300, use_container_width=True)
@@ -1697,13 +1703,10 @@ finally:
 @st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
 def framework_workflow_dialog():
     st.markdown(
-        "Pi-Index filter noise and yield quantitative results aligned with Responsible Research Assessment (RRA).\n\n"
+        "Pi-Index filters noise and yields quantitative results strictly aligned with **Responsible Research Assessment (RRA)** and **CoARA** (Coalition for Advancing Research Assessment) guidelines.\n\n"
         "### Architecture Flowchart & Whitepaper DOI\n\n"
         "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
-        "The enhanced system architecture flow below details the decentralized"
-        " intake, ZK double-blind reviewer assignment, SciScore deterministic"
-        " parsing, Item Response Theory (IRT) calibration, and smart contract"
-        " slashing mechanisms."
+        "The enhanced system architecture flow below details the decentralized intake, ZK double-blind reviewer assignment, SciScore deterministic parsing, Item Response Theory (IRT) calibration, and smart contract slashing mechanisms."
     )
 
     st.graphviz_chart("""
@@ -1772,6 +1775,14 @@ def framework_workflow_dialog():
         Mint -> Cartography;
         Mint -> PiBrain;
     }
+    """)
+    st.markdown("---")
+    st.markdown("""
+    ### 📜 CoARA Compliance & Core Pillars
+    
+    *   **Diverse Research Outputs (C5 & C8):** Moving beyond traditional journal impact factors, Pi-Index structurally evaluates open datasets, code repositories, and containerized executable environments.
+    *   **Qualitative & Quantitative Balance (C1-C8):** Algorithms act as auditors, not replacements for peer review. They standardize empirical rigor (e.g., RRID usage, MDAR adherence) while an adversarial logic matrix maps qualitative reasoning structure.
+    *   **Transparency & Researcher Sovereignty:** Complete evaluation weights, logic states, and criteria scores are irreversibly hashed and stored on the Ethereum (Sepolia) blockchain. Researchers retain sovereign ownership of their academic profile via DID/ORCID integration.
     """)
 
     st.markdown("---")
