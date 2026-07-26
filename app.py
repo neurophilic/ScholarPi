@@ -194,10 +194,10 @@ iframe {
     padding: 0 !important;
 }
 
-/* 4. Strict 750px by 750px PyVis Map Iframe */
+/* Strict compact square PyVis Map Iframe (450px by 450px to match Pidyne perfectly) */
 .pyvis-map-wrapper iframe {
-    width: 750px !important;
-    height: 750px !important;
+    width: 450px !important;
+    height: 450px !important;
     display: block !important;
 }
 </style>
@@ -287,7 +287,7 @@ function initUI() {
             expander.style.top = '10px';
             expander.style.left = '10px';
             expander.style.zIndex = '100';
-            expander.style.width = '350px';
+            expander.style.width = '320px';
             expander.style.background = 'rgba(255, 255, 255, 0.95)';
             expander.style.backdropFilter = 'blur(4px)';
             expander.style.border = '1px solid #d0d7de';
@@ -609,10 +609,10 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
-    # Strictly squared 750x750 layout
+    # Strictly squared 450x450 compact layout matching Pidyne
     net = Network(
-        height="750px",
-        width="750px",
+        height="450px",
+        width="450px",
         bgcolor="#ffffff",
         font_color="#2c3e50",
         notebook=False,
@@ -641,7 +641,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
     for topic, metrics in topic_aggregates.items():
         avg_weight = metrics["weight_sum"] / metrics["frequency"]
         freq = metrics["frequency"]
-        node_size = max(45, (30 + (avg_weight * 4.0)) * size_scale)
+        node_size = max(35, (25 + (avg_weight * 3.0)) * size_scale)
 
         base_col = color_map[topic]
         net.add_node(
@@ -664,9 +664,9 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             shadow={
                 "enabled": True,
                 "color": "rgba(0,0,0,0.5)",
-                "size": 8,
-                "x": 4,
-                "y": 4,
+                "size": 6,
+                "x": 3,
+                "y": 3,
             },
         )
         
@@ -686,23 +686,23 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
-    # Injecting CSS to absolutely strip PyVis default borders and lock strict 750x750 canvas dimensions
+    # Injecting CSS to absolutely strip PyVis default borders and lock strict 450x450 canvas dimensions
     gradient_injection = f"""
     <style type="text/css">
-        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 750px; height: 750px; }}
+        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 450px; height: 450px; }}
         canvas {{
             background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
             border: none !important;
             outline: none !important;
-            width: 750px !important;
-            height: 750px !important;
+            width: 450px !important;
+            height: 450px !important;
         }}
         #mynetwork, .vis-network, .card-body {{
             border: none !important;
             box-shadow: none !important;
             margin: 0 !important;
-            width: 750px !important;
-            height: 750px !important;
+            width: 450px !important;
+            height: 450px !important;
         }}
     </style>
     <!-- reload_timestamp: {time.time()} -->
@@ -1451,7 +1451,7 @@ with top_analytics_col2:
 
     map_container = st.container()
     with map_container:
-        st.markdown("<div id='map-anchor' style='position: relative; width: 750px; height: 750px;'>", unsafe_allow_html=True)
+        st.markdown("<div id='map-anchor' style='position: relative; width: 450px; height: 450px;'>", unsafe_allow_html=True)
         
         with st.expander("⚙️", expanded=False):
             mod_col1, mod_col2 = st.columns(2)
@@ -1501,7 +1501,7 @@ with top_analytics_col2:
         )
         if interactive_html_top:
             st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
-            components.html(interactive_html_top, height=750, width=750, scrolling=False)
+            components.html(interactive_html_top, height=450, width=450, scrolling=False)
             st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.info("Awaiting sufficient data for map visualization.")
