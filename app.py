@@ -198,12 +198,47 @@ if not st.session_state.is_authenticated:
                 st.sidebar.error(user_name)
         else:
             st.sidebar.error("Invalid ORCID or DID format.")
+
+    st.sidebar.markdown("---")
+    st.sidebar.info("🔔 **Notice:** Please connect your ORCID iD or DID above to unlock and use your personal Assessment History and DeSci Peer Attestation features.")
 else:
     st.sidebar.success("Securely Connected")
     st.sidebar.markdown(
         f"**Researcher:** {st.session_state.orcid_name}\n**ID Vault:**"
         f" `{st.session_state.orcid_id}`"
     )
+    
+    # --- Assessment and Reward History in Sidebar ---
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Your Assessment & Reward History")
+    
+    current_user = st.session_state.orcid_id
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT title, author_name, filename, scope, final_score, piq_minted,"
+            " tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC"
+            " LIMIT 20",
+            (current_user,),
+        )
+        history_data = cursor.fetchall()
+    finally:
+        conn.close()
+        
+    if history_data:
+        for row in history_data:
+            title, author_name, filename, scope, score, piq, tx_h = row
+            tx_url = get_sepolia_explorer_url(tx_h, "tx")
+            clean_auth = clean_author_name(author_name)
+            st.sidebar.markdown(f"**{title[:45]}...**")
+            st.sidebar.caption(f"Author: {clean_auth} | Score: **{score:.2f}** | piQ: `{piq}`")
+            if tx_url:
+                st.sidebar.markdown(f"Tx: [`{tx_h[:10]}...`]({tx_url})")
+            st.sidebar.markdown("---")
+    else:
+        st.sidebar.info("No assessment history found for this ID.")
+
     if st.sidebar.button("Disconnect Session"):
         st.session_state.is_authenticated = False
         st.session_state.orcid_name = ""
@@ -214,6 +249,62 @@ else:
 
 current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
+
+# --- DeSci Peer Attestation & Stake-Weighted Validation in Sidebar ---
+with st.sidebar.expander("⚖️ DeSci Peer Attestation & Staking", expanded=False):
+    st.markdown("Use this feature to endorse or challenge peer assessments on-chain by staking your earned piQ tokens.")
+    if st.session_state.is_authenticated:
+        conn_att = get_db_connection()
+        try:
+            cur_att = conn_att.cursor()
+            cur_att.execute("SELECT eval_hash, title FROM papers_assessment ORDER BY timestamp DESC LIMIT 20")
+            eval_papers_att = cur_att.fetchall()
+        finally:
+            conn_att.close()
+
+        if eval_papers_att:
+            attest_options = {p[1]: p[0] for p in eval_papers_att}
+            chosen_attest_title = st.selectbox(
+                "Select Paper for Attestation:",
+                list(attest_options.keys()),
+                key="sidebar_desci_attest_select",
+            )
+            target_eval_hash = attest_options[chosen_attest_title]
+
+            attest_stance = st.radio(
+                "Attestation Stance:",
+                ["Endorse Rigor", "Challenge Anomaly"],
+                horizontal=True,
+                key="sidebar_attest_stance"
+            )
+            stake_val = st.slider(
+                "Stake piQ Amount:",
+                min_value=0.1,
+                max_value=10.0,
+                value=1.0,
+                step=0.1,
+                key="sidebar_stake_val"
+            )
+
+            if st.button("Submit Attestation On-Chain", key="sidebar_submit_attest"):
+                attest_id = "ATT_" + hashlib.sha256(
+                    f"{current_user}:{target_eval_hash}:{time.time()}".encode()
+                ).hexdigest()[:12]
+                conn_sub = get_db_connection()
+                try:
+                    cur_sub = conn_sub.cursor()
+                    cur_sub.execute(
+                        "INSERT OR REPLACE INTO desci_attestations (attestation_id, eval_hash, attester_id, stake_amount, stance, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                        (attest_id, target_eval_hash, current_user, stake_val, attest_stance, datetime.now().isoformat()),
+                    )
+                    conn_sub.commit()
+                    st.success(f"Attestation recorded! ID: `{attest_id}`")
+                finally:
+                    conn_sub.close()
+        else:
+            st.info("No assessed papers available for attestation.")
+    else:
+        st.warning("Please connect your ORCID iD or DID above to use the DeSci Peer Attestation feature.")
 
 # --- Scilem Accessory Chatbot in Sidebar ---
 with st.sidebar.expander("🤖 Scilem Accessory Chatbot", expanded=False):
@@ -1239,69 +1330,9 @@ with tab1:
 
     st.markdown("---")
     st.markdown(
-        "### Your Assessment and Reward History "
+        "### Last 5 Assessed Papers & Blockchain Ledger Proofs"
         + tooltip(
-            "Your permanently recorded academic evaluations mapped to your ORCID"
-            " iD/DID."
-        ),
-        unsafe_allow_html=True,
-    )
-    if st.session_state.is_authenticated:
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT title, author_name, filename, scope, final_score, piq_minted,"
-                " tx_hash FROM papers_assessment WHERE user_id=? ORDER BY timestamp DESC"
-                " LIMIT 20",
-                (current_user,),
-            )
-            history_data = cursor.fetchall()
-        finally:
-            conn.close()
-            
-        if history_data:
-            cleaned_history = []
-            for row in history_data:
-                tx_h = row[6]
-                tx_url = get_sepolia_explorer_url(tx_h, "tx")
-                tx_display = f"[{tx_h[:10]}...]({tx_url})" if tx_url else tx_h
-                cleaned_history.append((
-                    row[0],
-                    clean_author_name(row[1]),
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
-                    tx_display,
-                ))
-            
-            st.markdown(
-                pd.DataFrame(
-                    cleaned_history,
-                    columns=[
-                        "Paper Title",
-                        "Contributing Authors",
-                        "File Name",
-                        "Scope",
-                        "Pi-Index Score",
-                        "piQ Earned",
-                        "Eth Tx Hash",
-                    ],
-                ).to_markdown(index=False),
-                unsafe_allow_html=True
-            )
-        else:
-            st.info("No assessment history found.")
-    else:
-        st.warning("Please connect your ORCID iD or DID in the sidebar.")
-
-    st.markdown("---")
-    st.markdown(
-        "### Last 5 Assessed Papers across the Ledger"
-        + tooltip(
-            "Displays the 5 most recently evaluated papers globally from the database"
-            " with full breakdown details."
+            "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations."
         ),
         unsafe_allow_html=True,
     )
@@ -1310,9 +1341,14 @@ with tab1:
     try:
         cur_last = conn_last.cursor()
         cur_last.execute(
-            """SELECT title, author_name, filename, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8, 
-                      piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count, reproducibility_score, eval_hash, timestamp 
-               FROM papers_assessment ORDER BY timestamp DESC LIMIT 5"""
+            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash
+               FROM papers_assessment p
+               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+               ORDER BY p.timestamp DESC LIMIT 5"""
         )
         recent_papers = cur_last.fetchall()
     finally:
@@ -1321,11 +1357,40 @@ with tab1:
     if not recent_papers:
         st.info("No papers have been assessed in the database yet.")
     else:
+        formatted_hashes = []
+        for rp in recent_papers:
+            bh_val = rp[21] if rp[21] is not None else "Pending"
+            bhash_val = rp[22] if rp[22] is not None else "Pending"
+            tx_h = rp[14]
+            tx_url = get_sepolia_explorer_url(tx_h, "tx")
+            tx_display = f"[{tx_h[:10]}...]({tx_url})" if tx_url else str(tx_h)
+            formatted_hashes.append((
+                str(bh_val),
+                rp[19][:10] + "...",
+                str(bhash_val)[:10] + "..." if bhash_val != "Pending" else "Pending",
+                rp[15][:10] + "..." if rp[15] else "N/A",
+                rp[13],
+                tx_display,
+                rp[20]
+            ))
+        
+        df_hashes = pd.DataFrame(
+            formatted_hashes,
+            columns=[
+                "Block Height", "Eval Hash", "Block Hash",
+                "zk-SNARK", "piQ", "Tx Hash (Etherscan)", "Timestamp",
+            ],
+        )
+        st.markdown("**Recent Ledger Proofs Summary Table:**")
+        st.markdown(df_hashes.to_markdown(index=False), unsafe_allow_html=True)
+        st.markdown("")
+
         for idx, rp in enumerate(recent_papers):
             (
                 r_title, r_author, r_filename, r_score, r_logic,
                 r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
                 r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
+                r_block_height, r_block_hash
             ) = rp
 
             r_author_clean = clean_author_name(r_author)
@@ -1340,11 +1405,15 @@ with tab1:
                 st.write(f"**Title:** {r_title}")
                 st.write(f"**Author(s):** {r_author_clean}")
                 st.write(f"**Timestamp:** `{r_time}`")
-                st.write(f"**Evaluation Hash:** `{r_hash}`")
+                st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
+                st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
+                st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
                 st.write(f"**Unique Author Book Address:** `{r_book}`")
                 st.write(f"**piQ Minted:** `{r_piq}`")
+                st.write(f"**zk-SNARK Proof:** `{r_zk}`")
+                
                 if r_tx_url:
-                    st.markdown(f"**Tx Hash:** [`{r_tx}`]({r_tx_url})")
+                    st.markdown(f"**Tx Hash (Etherscan):** [`{r_tx}`]({r_tx_url})")
                 else:
                     st.write(f"**Tx Hash:** `{r_tx}`")
 
@@ -1464,8 +1533,7 @@ with tab2:
             explore_col1, explore_col2 = st.columns([3, 1])
             with explore_col1:
                 search_query = st.text_input(
-                    "Enter Document Evaluation Hash or Block Hash to verify ledger"
-                    " record..."
+                    "Enter Document Evaluation Hash or Block Hash to verify ledger record..."
                 )
             with explore_col2:
                 st.write("")
@@ -1521,87 +1589,6 @@ with tab2:
                     st.markdown(f"**Registry Contract:** [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
                 else:
                     st.markdown("**Registry Contract:** `Not Configured`")
-
-            st.markdown("---")
-            st.markdown(
-                "### DeSci Peer Attestation & Stake-Weighted Validation "
-                + tooltip(
-                    "High-reputation researchers can stake a fraction of their piQ to"
-                    " endorse or challenge peer assessments on-chain."
-                ),
-                unsafe_allow_html=True,
-            )
-            if st.session_state.is_authenticated:
-                cursor.execute(
-                    "SELECT eval_hash, title FROM papers_assessment ORDER BY timestamp"
-                    " DESC LIMIT 20"
-                )
-                eval_papers = cursor.fetchall()
-                if eval_papers:
-                    attest_options = {p[1]: p[0] for p in eval_papers}
-                    chosen_attest_title = st.selectbox(
-                        "Select Paper for Attestation:",
-                        list(attest_options.keys()),
-                        key="desci_attest_select",
-                    )
-                    target_eval_hash = attest_options[chosen_attest_title]
-
-                    attest_stance = st.radio(
-                        "Attestation Stance:",
-                        ["Endorse Methodological Rigor", "Challenge / Flag Anomaly"],
-                        horizontal=True,
-                    )
-                    stake_val = st.slider(
-                        "Stake piQ Amount:",
-                        min_value=0.1,
-                        max_value=10.0,
-                        value=1.0,
-                        step=0.1,
-                    )
-
-                    if st.button("Submit On-Chain Attestation"):
-                        attest_id = "ATT_" + hashlib.sha256(
-                            f"{current_user}:{target_eval_hash}:{time.time()}".encode()
-                        ).hexdigest()[:12]
-                        cursor.execute(
-                            "INSERT OR REPLACE INTO desci_attestations (attestation_id,"
-                            " eval_hash, attester_id, stake_amount, stance, timestamp) VALUES"
-                            " (?, ?, ?, ?, ?, ?)",
-                            (
-                                attest_id, target_eval_hash, current_user,
-                                stake_val, attest_stance, datetime.now().isoformat(),
-                            ),
-                        )
-                        conn.commit()
-                        st.success(
-                            f"Attestation recorded successfully! Attestation ID: `{attest_id}`"
-                        )
-
-                    cursor.execute(
-                        "SELECT attester_id, stake_amount, stance, timestamp FROM"
-                        " desci_attestations WHERE eval_hash=?",
-                        (target_eval_hash,),
-                    )
-                    existing_attestations = cursor.fetchall()
-                    if existing_attestations:
-                        st.markdown("#### Active Community Attestations for this Manuscript")
-                        st.dataframe(
-                            pd.DataFrame(
-                                existing_attestations,
-                                columns=[
-                                    "Attester ID", "Staked piQ", "Stance", "Timestamp",
-                                ],
-                            ),
-                            use_container_width=True,
-                            hide_index=True,
-                        )
-                else:
-                    st.info("No assessed papers available for attestation.")
-            else:
-                st.warning(
-                    "Please authenticate with your ORCID iD or DID to participate in"
-                    " DeSci attestation staking."
-                )
 
             st.markdown("---")
             st.markdown(
@@ -1704,50 +1691,14 @@ with tab2:
                     f"**Mathematical Constraint Check:** Predicted Sum ="
                     f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
                 )
-
-            st.markdown("---")
-            st.markdown(
-                "### Latest Blockchain Ledger Hashes, zk-SNARK Proofs, and piQ Minted "
-                + tooltip(
-                    "Chronological view of the most recent smart contract executions,"
-                    " demonstrating mathematical proofs of computation and token"
-                    " allocations."
-                ),
-                unsafe_allow_html=True,
-            )
-            cursor.execute("""
-                SELECT b.block_height, b.eval_hash, b.block_hash, p.zk_proof, p.piq_minted, p.tx_hash, b.timestamp 
-                FROM blockchain_por_weights b 
-                LEFT JOIN papers_assessment p ON b.eval_hash = p.eval_hash 
-                ORDER BY b.block_height DESC LIMIT 10
-            """)
-            recent_hashes = cursor.fetchall()
-            if recent_hashes:
-                formatted_hashes = []
-                for rh in recent_hashes:
-                    bh, eh, bhash, zk, piq, tx, ts = rh
-                    tx_url = get_sepolia_explorer_url(tx, "tx")
-                    tx_display = f"[{tx[:10]}...]({tx_url})" if tx_url else str(tx)
-                    formatted_hashes.append((bh, eh[:10] + "...", bhash[:10] + "...", zk[:10] + "...", piq, tx_display, ts))
-
-                df_hashes = pd.DataFrame(
-                    formatted_hashes,
-                    columns=[
-                        "Block Height", "Eval Hash", "Block Hash",
-                        "zk-SNARK", "piQ", "Tx Hash (Etherscan)", "Timestamp",
-                    ],
-                )
-                st.markdown(df_hashes.to_markdown(index=False), unsafe_allow_html=True)
-            else:
-                st.info("No hashes to display yet.")
     finally:
         conn.close()
 
-# --- System Overview & Flowchart Expander at Bottom of Main Page ---
+# --- System Overview, Architecture Flowchart & Whitepaper Expander at Bottom ---
 st.markdown("---")
-with st.expander("🏗️ View System Overview, Architecture Flowchart & Whitepaper DOI (Ali Vafadar Yengejeh)"):
+with st.expander("🏗️ The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow"):
     st.markdown(
-        "### The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow\n\n"
+        "### Architecture Flowchart & Whitepaper DOI\n\n"
         "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
         "The enhanced system architecture flow below details the decentralized"
         " intake, ZK double-blind reviewer assignment, SciScore deterministic"
