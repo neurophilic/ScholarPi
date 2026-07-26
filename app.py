@@ -212,6 +212,9 @@ else:
             del st.query_params["orcid"]
         st.rerun()
 
+current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
+current_email = "None"
+
 # --- Scilem Accessory Chatbot in Sidebar ---
 with st.sidebar.expander("🤖 Scilem Accessory Chatbot", expanded=False):
     st.markdown("CoARA-aligned decentralized scientific assistant.")
@@ -466,30 +469,6 @@ with header_col1:
         " Assessment (RRA).**"
     )
 
-    with st.expander(
-        "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)",
-        expanded=False,
-    ):
-        st.subheader(
-            "Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine"
-        )
-        st.markdown("---")
-
-        st.markdown(
-            r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
-            + tooltip(
-                "Evaluates reasoning structure and penalizes claims unsupported by"
-                " evidence or counterfactual stress failures."
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
-            r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
-            r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
-            r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
-        )
-
 with header_col2:
     st.markdown("#### 🌐 Global Map of Science (Live Cartography)")
     conn_m = get_db_connection()
@@ -554,6 +533,138 @@ with header_col2:
                 st.dataframe(piq_df, use_container_width=True, height=180)
         else:
             st.info("No piQ tokens minted yet.")
+
+st.markdown("---")
+
+# --- Restored Full-Width Grading Criteria & Formulations Expander ---
+with st.expander(
+    "View Simplified Pi-Index Grading Criteria Formulations (CoARA/RRA Aligned)",
+    expanded=False,
+):
+    st.subheader(
+        "Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine"
+    )
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(
+            r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
+            + tooltip(
+                "Evaluates reasoning structure and penalizes claims unsupported by"
+                " evidence or counterfactual stress failures."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
+            r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
+            r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
+            r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
+        )
+
+        st.markdown(
+            "**C1: Originality** "
+            + tooltip(
+                "Semantic distance from literature corpus penalized by generative"
+                " AI laundering heuristics."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+            r" \times (1 - \lambda_{laundering}) $$"
+        )
+
+        st.markdown(
+            "**C2: Methodological Rigor** "
+            + tooltip(
+                "Deterministic adherence to MDAR reporting standards and valid RRIDs"
+                " via SciScore."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
+            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r" \epsilon}\right) $$"
+        )
+
+        st.markdown(
+            "**C3: Interdisciplinary Synergy** "
+            + tooltip(
+                "Shannon entropy of the verified citation network across diverse"
+                " subfields."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+
+        st.markdown(
+            "**C4: Societal & Open Infrastructure Impact** "
+            + tooltip(
+                "CoARA WG TIER aligned rewards for public datasets, civic policy"
+                " integration, and open science."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r" U_v(\tau, \mathbf{x}) \right] $$"
+        )
+    with col2:
+        st.markdown(
+            "**C5: Open Science & Executable Reproducibility** "
+            + tooltip(
+                "Cryptographic verification of open data/code repositories and"
+                " sandboxed container execution."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+        )
+
+        st.markdown(
+            "**C6: Literature Integration** "
+            + tooltip(
+                "Citation context polarity classification (supporting vs."
+                " contrasting engagement)."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+        )
+
+        st.markdown(
+            "**C7: Empirical Density & Validation** "
+            + tooltip(
+                "Deterministic extraction of sample sizes, degrees of freedom, and"
+                " cohort volumes."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+        )
+
+        st.markdown(
+            "**C8: Future Actionability & FAIR** "
+            + tooltip(
+                "Strict measurement of adherence to FAIR principles for"
+                " downstream research cascade."
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+        )
 
 st.markdown("---")
 
