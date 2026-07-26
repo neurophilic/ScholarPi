@@ -104,7 +104,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
     return pdf_bytes
 
 def rbot(topic_key):
-    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
+    return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
 # Custom JS/CSS for UI Modifications
 custom_ui_code = """
@@ -163,6 +163,12 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
     padding: 0.35rem 0.75rem !important;
     font-size: 14px !important;
     white-space: nowrap !important;
+}
+
+/* Force borderless iframes for the map */
+iframe {
+    border: none !important;
+    border-radius: 8px !important;
 }
 </style>
 <script>
@@ -244,7 +250,7 @@ function initUI() {
 
     // Merge Map Controls on top of Map
     const marker = parentDoc.getElementById('map-controls-marker');
-    const anchor = parentDoc.getElementById('map-relative-container');
+    const anchor = parentDoc.getElementById('map-anchor');
     if (marker && anchor) {
         let expander = marker.closest('[data-testid="stExpander"]');
         let block = anchor.closest('[data-testid="stVerticalBlock"]');
@@ -255,7 +261,7 @@ function initUI() {
             expander.style.left = '10px';
             expander.style.zIndex = '50';
             expander.style.width = '380px';
-            expander.style.background = 'rgba(255, 255, 255, 0.9)';
+            expander.style.background = 'rgba(255, 255, 255, 0.95)';
             expander.style.backdropFilter = 'blur(4px)';
             expander.style.border = '1px solid #d0d7de';
             expander.style.borderRadius = '8px';
@@ -576,6 +582,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             rgb = colorsys.hsv_to_rgb(h, s, v)
             color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
 
+    # Strictly squared 750x750 layout
     net = Network(
         height="750px",
         width="750px",
@@ -584,6 +591,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         notebook=False,
     )
     
+    # High damping to completely prevent initial jiggliness
     physics_options = f"""{{ 
         "physics": {{ 
             "barnesHut": {{ 
@@ -651,6 +659,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
 
+    # Injecting CSS to absolutely strip PyVis default borders
     gradient_injection = f"""
     <style type="text/css">
         body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; }}
@@ -1411,7 +1420,7 @@ with top_analytics_col2:
     # --- Container linking the Overlay Map Controls directly to the Map canvas ---
     map_container = st.container()
     with map_container:
-        st.markdown("<div id='map-relative-container'></div>", unsafe_allow_html=True)
+        st.markdown("<div id='map-anchor'></div>", unsafe_allow_html=True)
         
         with st.expander("⚙️", expanded=False):
             st.markdown("<div id='map-controls-marker'></div>", unsafe_allow_html=True)
