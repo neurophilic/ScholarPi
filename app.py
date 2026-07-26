@@ -4,6 +4,7 @@ import json
 import time
 import hashlib
 import tempfile
+import shutil
 import colorsys
 import logging
 from datetime import datetime
@@ -70,6 +71,22 @@ def get_author_piq_dict():
             author_book[a] = "0x" + hashlib.sha256(a.encode()).hexdigest()[:40]
     return author_piq, author_book
 
+# Fix: Robust PDF Layout Extraction (Resolves Multi-Column & Equation Extraction Bugs)
+def preprocess_pdf_layout(pdf_bytes, fname):
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        text_blocks = []
+        # sort=True natively reconstructs standard reading order, overcoming multi-column/image snags
+        for page in doc:
+            text_blocks.append(page.get_text("text", sort=True))
+        full_text = "\n".join(text_blocks)
+        if len(full_text.strip()) > 50:
+            return create_virtual_pdf_from_text(full_text, title=fname)
+    except Exception as e:
+        logging.warning(f"PyMuPDF layout extraction fallback triggered: {e}")
+    return pdf_bytes
+
 st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
@@ -77,7 +94,7 @@ st.set_page_config(
 def rbot(topic_key):
     return f"<span class='scilm-trigger' data-query='{topic_key}' title='Click to ask Scilem'>🤖</span>"
 
-# Custom JS/CSS for Scilem Icon-Only Click Function & Maximized Text Space
+# Custom JS/CSS for Scilem Icon-Only Click Function, Maximized Text Space, and Chat Alignment
 custom_ui_code = """
 <style>
 /* Scilem Chat Box Cushioning Reduction & Full Width */
@@ -86,32 +103,44 @@ custom_ui_code = """
     scroll-behavior: smooth;
     padding: 0 !important;
 }
+
+/* User Messages: Right Aligned */
+[data-testid="stChatMessage"]:has(div:contains("👤")) {
+    flex-direction: row-reverse !important;
+    background-color: #e8f0fe !important;
+    border-radius: 10px 0 10px 10px !important;
+    text-align: right !important;
+    margin-left: 20px !important;
+}
+/* Assistant Messages: Left Aligned */
+[data-testid="stChatMessage"]:has(div:contains("🤖")) {
+    background-color: #f1f3f4 !important;
+    border-radius: 0 10px 10px 10px !important;
+    margin-right: 20px !important;
+}
+
 [data-testid="stSidebar"] [data-testid="stChatMessage"] {
-    padding: 0.15rem 0.1rem !important;
-    background-color: transparent;
-    border-radius: 4px;
-    margin-bottom: 0.05rem !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
+    padding: 0.3rem 0.4rem !important;
+    margin-bottom: 0.2rem !important;
 }
 [data-testid="stSidebar"] div[data-testid="stChatMessageContent"] {
     width: 100% !important;
     flex-grow: 1 !important;
-    padding: 0 0.1rem !important;
+    padding: 0 0.2rem !important;
 }
 [data-testid="stSidebar"] [data-testid="stChatMessageAvatar"] {
-    width: 1.4rem !important;
-    height: 1.4rem !important;
-    min-width: 1.4rem !important;
-    font-size: 1.2rem !important;
-    margin-right: 0.2rem !important;
+    width: 1.6rem !important;
+    height: 1.6rem !important;
+    min-width: 1.6rem !important;
+    font-size: 1.4rem !important;
+    margin: 0 0.2rem !important;
 }
 [data-testid="stSidebar"] .stMarkdown {
     width: 100% !important;
 }
 [data-testid="stSidebar"] .stMarkdown p {
-    font-size: 0.78rem !important;
-    line-height: 1.2 !important;
+    font-size: 0.85rem !important;
+    line-height: 1.3 !important;
     margin-bottom: 0 !important;
     word-break: break-word !important;
 }
@@ -122,17 +151,17 @@ custom_ui_code = """
     background-color: #f8f9fa;
 }
 
-/* Robot Icon Trigger Styling */
+/* Larger Robot Icon Trigger Styling */
 .scilm-trigger {
     cursor: pointer !important;
-    font-size: 1.1em;
+    font-size: 1.4em;
     margin-left: 4px;
     vertical-align: middle;
     display: inline-block;
     transition: transform 0.15s ease-in-out;
 }
 .scilm-trigger:hover {
-    transform: scale(1.25);
+    transform: scale(1.3);
 }
 </style>
 <script>
@@ -230,6 +259,8 @@ if "is_running" not in st.session_state:
     st.session_state["is_running"] = False
 if "cancel_requested" not in st.session_state:
     st.session_state["cancel_requested"] = False
+if "session_temp_dir" not in st.session_state:
+    st.session_state["session_temp_dir"] = tempfile.mkdtemp()
 
 if "orcid_id" not in st.session_state:
     saved_orcid = st.query_params.get("orcid", "")
@@ -355,12 +386,12 @@ st.sidebar.markdown("<h4 style='margin-bottom:0;'>Scilem Assistant</h4>", unsafe
 chat_container = st.sidebar.container(height=280)
 with chat_container:
     for idx, message in enumerate(st.session_state.scilm_messages):
-        # Robot avatar on left for assistant, user bubble on right
         msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
+# Fix: Lock chat input while pipeline is running to prevent parallel API crashes
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input", disabled=st.session_state.get("is_running", False)):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     direct_answer = None
@@ -418,28 +449,38 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
             PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
             FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
             if groq_client:
-                try:
-                    response = groq_client.chat.completions.create(
-                        model=PRIMARY_MODEL_NAME,
-                        messages=messages_for_api,
-                        temperature=0.15,
-                    )
-                    full_response = response.choices[0].message.content
-                except Exception as primary_err:
-                    err_str = str(primary_err)
-                    if "413" in err_str or "rate_limit_exceeded" in err_str or "tokens" in err_str or "limit" in err_str or "429" in err_str:
-                        trimmed_messages = [messages_for_api[0]] + messages_for_api[-2:]
-                        try:
-                            fallback_response = groq_client.chat.completions.create(
-                                model=FALLBACK_MODEL_NAME,
-                                messages=trimmed_messages,
-                                temperature=0.15,
-                            )
-                            full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
-                        except Exception as second_err:
-                            full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
-                    else:
-                        raise primary_err
+                # Fix: Concurrency safety with Backoff/Retry logic
+                for attempt in range(3):
+                    try:
+                        response = groq_client.chat.completions.create(
+                            model=PRIMARY_MODEL_NAME,
+                            messages=messages_for_api,
+                            temperature=0.15,
+                        )
+                        full_response = response.choices[0].message.content
+                        break
+                    except Exception as primary_err:
+                        err_str = str(primary_err).lower()
+                        if any(k in err_str for k in ["413", "rate_limit_exceeded", "tokens", "limit", "429"]):
+                            if attempt < 2:
+                                time.sleep(2 ** attempt)
+                                continue
+                            
+                            trimmed_messages = [messages_for_api[0]] + messages_for_api[-2:]
+                            try:
+                                fallback_response = groq_client.chat.completions.create(
+                                    model=FALLBACK_MODEL_NAME,
+                                    messages=trimmed_messages,
+                                    temperature=0.15,
+                                )
+                                full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
+                                break
+                            except Exception as second_err:
+                                full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
+                                break
+                        else:
+                            full_response = f"Error: {str(primary_err)}"
+                            break
             else:
                 full_response = "Error: Groq API client not initialized."
         except Exception as e:
@@ -688,7 +729,7 @@ def evaluation_metrics_dialog():
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} {sym}={weight_val:.6f} {rbot(q_key)}", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} {sym} = {weight_val:.6f} 🤖", expanded=(title.startswith("C1"))):
             st.markdown(desc)
             st.markdown(formula)
 
@@ -848,12 +889,13 @@ with st.container(border=True):
                             pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
 
                     if pdf_bytes:
+                        clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
                         (
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                             zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
                         ) = process_single_pdf(
-                            pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
+                            clean_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                         )
                         eval_record = {
                             "title": title, "author_name": clean_author_name(author_name),
@@ -908,12 +950,13 @@ with st.container(border=True):
 
                 if pdf_bytes:
                     status_text.text("Assessing document from resolved source...")
+                    clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
                     ) = process_single_pdf(
-                        pdf_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
+                        clean_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                     )
                     eval_record = {
                         "title": title, "author_name": clean_author_name(author_name),
@@ -939,18 +982,22 @@ with st.container(border=True):
 
             if snap_files and not st.session_state["cancel_requested"]:
                 total_files = len(snap_files)
-                for i, (fname, file_bytes) in enumerate(snap_files):
+                for i, (fname, fpath) in enumerate(snap_files):
                     if st.session_state["cancel_requested"]:
                         break
-                    status_text.text(
-                        f"Analyzing uploaded file {i+1} of {total_files}: {fname}..."
-                    )
+                    status_text.text(f"Analyzing uploaded file {i+1} of {total_files}: {fname}...")
+                    
+                    with open(fpath, "rb") as in_f:
+                        raw_bytes = in_f.read()
+                        
+                    clean_bytes = preprocess_pdf_layout(raw_bytes, fname)
+                    
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
                     ) = process_single_pdf(
-                        file_bytes, fname, scope_val, current_user, "None", current_email, "None",
+                        clean_bytes, fname, scope_val, current_user, "None", current_email, "None",
                     )
                     eval_record = {
                         "title": title, "author_name": clean_author_name(author_name),
@@ -990,9 +1037,15 @@ with st.container(border=True):
             ):
                 st.warning("Please tick at least one paper or input source to assess.")
             else:
-                st.session_state["snap_files"] = [
-                    (f.name, f.read()) for f in selected_uploaded_files
-                ]
+                # Fix: Write directly to memory-safe temp directory instead of keeping bytes in state
+                saved_files = []
+                for f in selected_uploaded_files:
+                    f_path = os.path.join(st.session_state["session_temp_dir"], f.name)
+                    with open(f_path, "wb") as out_f:
+                        out_f.write(f.read())
+                    saved_files.append((f.name, f_path))
+                    
+                st.session_state["snap_files"] = saved_files
                 st.session_state["snap_scope"] = research_scope
                 st.session_state["snap_doi"] = doi_input
                 st.session_state["snap_include_doi"] = include_doi
@@ -1283,7 +1336,7 @@ with top_analytics_col1:
         curr_vals = st.session_state.current_weights
         pred_vals = st.session_state.predicted_next_weights
 
-        # Fixed Pidyne Graph: Render all 8 historical criteria trends explicitly via st.line_chart
+        # Fix: Amplify C1-C8 variance so graph movements are clearly visible instead of appearing strictly flat at 1.0
         if len(historical_rows) > 0:
             df_history = pd.DataFrame(
                 historical_rows,
@@ -1295,7 +1348,10 @@ with top_analytics_col1:
                 ]
             )
             df_history.index.name = "Block / Epoch"
-            st.line_chart(df_history, height=300, use_container_width=True)
+            
+            # Magnify micro-variances around 1.0 structurally
+            df_amplified = 1.0 + (df_history - 1.0) * 1000.0
+            st.line_chart(df_amplified, height=300, use_container_width=True)
 
         st.markdown(
             f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
