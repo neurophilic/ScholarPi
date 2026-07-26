@@ -2037,4 +2037,4 @@ with scilem_container:
                 full_response = f"Error connecting to Scilem engine: {str(e)}"
 
             st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
-           st.rerun()
+            st.rerun()
