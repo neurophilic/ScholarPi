@@ -78,7 +78,7 @@ def get_author_piq_dict():
 # STREAMLIT UI INITIALIZATION
 # ==========================================
 st.set_page_config(
-    page_title="Pi-Index Assessment Engine (CoARA-Compliant)", layout="wide"
+    page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
 st.sidebar.title("System Access")
