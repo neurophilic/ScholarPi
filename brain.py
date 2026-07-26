@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from groq import Groq
 
 from config import GROQ_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
@@ -501,7 +501,7 @@ def process_single_pdf(
             used_weights = weight_res if weight_res else active_weights
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
-                fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
+                fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
                 used_weights, mdar_score, rrid_count, repro_score, True,
             )
 
