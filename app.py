@@ -867,292 +867,7 @@ with st.container(border=True):
                 st.session_state["cancel_requested"] = False
                 st.rerun()
 
-st.markdown("---")
-
-with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
-    conn_top_ep = get_db_connection()
-    try:
-        cur_te = conn_top_ep.cursor()
-        cur_te.execute(
-            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
-        )
-        top_epoch_data = cur_te.fetchone()
-    except Exception:
-        top_epoch_data = None
-    finally:
-        conn_top_ep.close()
-
-    if top_epoch_data:
-        _, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, _ = top_epoch_data
-    else:
-        tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 0.999645, 0.997347, 0.999278, 0.997645, 1.002110, 1.002609
-
-    st.markdown(
-        r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
-        + tooltip(
-            "Evaluates reasoning structure and penalizes claims unsupported by"
-            " evidence or counterfactual stress failures."
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
-        r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
-        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
-        r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
-    )
-
-    with st.expander(f"C1: Originality ($\varpi_1$ = `{tw1:.6f}`):"):
-        st.markdown(
-            "Semantic distance from literature corpus penalized by generative AI laundering heuristics."
-        )
-        st.markdown(
-            r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
-            r" \times (1 - \lambda_{laundering}) $$"
-        )
-
-    with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
-        st.markdown(
-            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
-        )
-        st.markdown(
-            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
-            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
-            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
-            r" \epsilon}\right) $$"
-        )
-
-    with st.expander(f"C3: Interdisciplinary Synergy ($\varpi_3$ = `{tw3:.6f}`):"):
-        st.markdown(
-            "Shannon entropy of the verified citation network across diverse subfields."
-        )
-        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
-
-    with st.expander(f"C4: Societal & Open Infrastructure Impact ($\varpi_4$ = `{tw4:.6f}`):"):
-        st.markdown(
-            "CoARA WG TIER aligned rewards for public datasets, civic policy integration, and open science."
-        )
-        st.markdown(
-            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
-            r" U_v(\tau, \mathbf{x}) \right] $$"
-        )
-
-    with st.expander(f"C5: Open Science & Executable Reproducibility ($\varpi_5$ = `{tw5:.6f}`):"):
-        st.markdown(
-            "Cryptographic verification of open data/code repositories and sandboxed container execution."
-        )
-        st.markdown(
-            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
-            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
-        )
-
-    with st.expander(f"C6: Literature Integration ($\varpi_6$ = `{tw6:.6f}`):"):
-        st.markdown(
-            "Citation context polarity classification (supporting vs. contrasting engagement)."
-        )
-        st.markdown(
-            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
-            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
-        )
-
-    with st.expander(f"C7: Empirical Density & Validation ($\varpi_7$ = `{tw7:.6f}`):"):
-        st.markdown(
-            "Deterministic extraction of sample sizes, degrees of freedom, and cohort volumes."
-        )
-        st.markdown(
-            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
-            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
-        )
-
-    with st.expander(f"C8: Future Actionability & FAIR ($\varpi_8$ = `{tw8:.6f}`):"):
-        st.markdown(
-            "Strict measurement of adherence to FAIR principles for downstream research cascade."
-        )
-        st.markdown(
-            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
-            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
-        )
-
-st.markdown("---")
-
-# ==================== TOP SIDE-BY-SIDE ANALYTICS (PI-BRAIN ON LEFT, GLOBAL MAP ON RIGHT) ====================
-top_analytics_col1, top_analytics_col2 = st.columns(2)
-
-with top_analytics_col1:
-    st.markdown(
-        "### Pi-Brain LSTM Meta-Learning Forecasts "
-        + tooltip(
-            "An LSTM neural network that trains directly on the block weights to"
-            " predict future shifts in algorithmic evaluation standards."
-        ),
-        unsafe_allow_html=True,
-    )
-
-    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-    def train_pibrain_cached(weight_data, actual_lookback):
-        dataset = PiBlockchainDataset(weight_data, actual_lookback)
-        dataloader = DataLoader(
-            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
-        )
-
-        model = PiBrainLSTM()
-        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
-        if os.path.exists(weights_path):
-            try:
-                model.load_state_dict(torch.load(weights_path, weights_only=True))
-            except Exception:
-                pass
-
-        loss_function = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-        model.train()
-        for epoch in range(200):
-            for seq, target in dataloader:
-                optimizer.zero_grad()
-                loss = loss_function(model(seq), target)
-                loss.backward()
-                optimizer.step()
-
-        model.eval()
-        with torch.no_grad():
-            predicted = (
-                model(
-                    torch.tensor(
-                        weight_data[-actual_lookback:], dtype=torch.float32
-                    ).unsqueeze(0)
-                )
-                .squeeze()
-                .numpy()
-            )
-            torch.save(model.state_dict(), weights_path)
-            return predicted
-
-    conn_pb = get_db_connection()
-    try:
-        cursor_pb = conn_pb.cursor()
-        cursor_pb.execute(
-            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
-            " BY block_height ASC"
-        )
-        historical_rows = cursor_pb.fetchall()
-    finally:
-        conn_pb.close()
-
-    min_blocks_required = 2
-    if len(historical_rows) < min_blocks_required:
-        st.warning(
-            f"Not enough blockchain data to train the meta-model. You need at least"
-            f" {min_blocks_required} blocks (Currently on ledger:"
-            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
-            " block 2."
-        )
-    else:
-        current_block_count = len(historical_rows)
-        lookback_window = max(1, min(5, current_block_count - 1))
-
-        if (
-            "last_trained_blocks" not in st.session_state
-            or st.session_state.last_trained_blocks != current_block_count
-        ):
-            weight_data = np.array(historical_rows, dtype=np.float32)
-            actual_lookback = min(lookback_window, len(weight_data))
-
-            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
-            st.session_state.current_weights = weight_data[-1]
-            st.session_state.last_trained_blocks = current_block_count
-        else:
-            st.info(
-                "Meta-model is cached and up-to-date with the latest blockchain"
-                " ledger."
-            )
-
-        df_compare = pd.DataFrame(
-            {
-                "Current Active Weights": st.session_state.current_weights,
-                "Predicted Next Epoch": st.session_state.predicted_next_weights,
-            },
-            index=[
-                "C1: Originality", "C2: Methodological Rigor",
-                "C3: Interdisciplinary", "C4: Societal Impact",
-                "C5: Open Science", "C6: Literature Integration",
-                "C7: Empirical Density", "C8: Future Actionability",
-            ],
-        )
-        st.bar_chart(df_compare, height=380)
-        st.markdown(
-            f"**Mathematical Constraint Check:** Predicted Sum ="
-            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
-        )
-
-with top_analytics_col2:
-    st.markdown("### Global Map of Science")
-    conn_m = get_db_connection()
-    try:
-        cursor_m = conn_m.cursor()
-        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
-        all_global_authors = []
-        for row in cursor_m.fetchall():
-            if row[0]:
-                cleaned = clean_author_name(row[0])
-                for a in cleaned.split(","):
-                    if a.strip() and not is_likely_institution(a.strip()):
-                        all_global_authors.append(a.strip())
-    finally:
-        conn_m.close()
-    all_global_authors = sorted(list(set(all_global_authors)))
-
-    selected_author_top = None
-    piq_dict, book_dict = get_author_piq_dict()
-
-    if all_global_authors:
-        filter_choice_top = st.selectbox(
-            "Filter Map by Author:",
-            ["All Authors"] + all_global_authors,
-            key=f"top_author_filter_{st.session_state['assessment_update_token']}",
-            format_func=lambda x: (
-                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
-            ),
-        )
-        if filter_choice_top != "All Authors":
-            selected_author_top = filter_choice_top
-
-    interactive_html_top, table_html_top = render_bubble_chart_clean(selected_author_top)
-    if interactive_html_top:
-        components.html(interactive_html_top, height=410, scrolling=True)
-    else:
-        st.info("Awaiting sufficient data for map visualization.")
-
-    with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
-        st.markdown(table_html_top, unsafe_allow_html=True)
-        st.markdown("---")
-        st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
-        search_query_top = st.text_input(
-            "Search Explorer by Author or Book Address:",
-            placeholder="Enter author name or 0x...",
-            key="top_search_query_input"
-        )
-        if piq_dict:
-            leaderboard_data = []
-            for author, piq in piq_dict.items():
-                leaderboard_data.append({
-                    "Contributing Author": author,
-                    "Unique Author Book Address": book_dict.get(author, "None"),
-                    "Total piQ Earned": round(piq, 2),
-                })
-            piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
-            if search_query_top:
-                q_clean = search_query_top.strip().lower()
-                filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
-                st.dataframe(filtered_df, use_container_width=True, height=180)
-            else:
-                st.dataframe(piq_df, use_container_width=True, height=180)
-        else:
-            st.info("No piQ tokens minted yet.")
-
-st.markdown("---")
-
-def render_breakdown_item(item):
+def render_breakdown_item(item, index):
     title = item["title"]
     author_name = clean_author_name(item["author_name"])
     score = item["score"]
@@ -1172,7 +887,13 @@ def render_breakdown_item(item):
     author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
     st.markdown("---")
-    st.subheader(f"{title} by {author_name}")
+    col_hdr_title, col_hdr_close = st.columns([10, 1])
+    with col_hdr_title:
+        st.subheader(f"{title} by {author_name}")
+    with col_hdr_close:
+        if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
+            st.session_state["evaluated_papers_buffer"].pop(index)
+            st.rerun()
 
     with st.expander(
         f"Ledger Data & Dossier Details ({filename})", expanded=False
@@ -1298,7 +1019,6 @@ if (
     st.session_state["evaluated_papers_buffer"]
     or st.session_state.get("download_errors")
 ):
-    st.markdown("---")
     st.markdown("### Active Session Assessment Results")
 
     if st.session_state.get("download_errors"):
@@ -1323,8 +1043,295 @@ if (
                     st.rerun()
         st.markdown("")
 
-    for item in st.session_state["evaluated_papers_buffer"]:
-        render_breakdown_item(item)
+    for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
+        render_breakdown_item(item, item_idx)
+
+with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", expanded=False):
+    conn_top_ep = get_db_connection()
+    try:
+        cur_te = conn_top_ep.cursor()
+        cur_te.execute(
+            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+        )
+        top_epoch_data = cur_te.fetchone()
+    except Exception:
+        top_epoch_data = None
+    finally:
+        conn_top_ep.close()
+
+    if top_epoch_data:
+        _, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, _ = top_epoch_data
+    else:
+        tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 0.999645, 0.997347, 0.999278, 0.997645, 1.002110, 1.002609
+
+    st.markdown(
+        r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
+        + tooltip(
+            "Evaluates reasoning structure and penalizes claims unsupported by"
+            " evidence or counterfactual stress failures."
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
+        r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
+        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
+    )
+
+    with st.expander(f"C1: Originality ($\varpi_1$ = `{tw1:.6f}`):"):
+        st.markdown(
+            "Semantic distance from literature corpus penalized by generative AI laundering heuristics."
+        )
+        st.markdown(
+            r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+            r" \times (1 - \lambda_{laundering}) $$"
+        )
+
+    with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
+        st.markdown(
+            "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
+        )
+        st.markdown(
+            r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot"
+            r" \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r" \epsilon}\right) $$"
+        )
+
+    with st.expander(f"C3: Interdisciplinary Synergy ($\varpi_3$ = `{tw3:.6f}`):"):
+        st.markdown(
+            "Shannon entropy of the verified citation network across diverse subfields."
+        )
+        st.markdown(r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+
+    with st.expander(f"C4: Societal & Open Infrastructure Impact ($\varpi_4$ = `{tw4:.6f}`):"):
+        st.markdown(
+            "CoARA WG TIER aligned rewards for public datasets, civic policy integration, and open science."
+        )
+        st.markdown(
+            r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r" U_v(\tau, \mathbf{x}) \right] $$"
+        )
+
+    with st.expander(f"C5: Open Science & Executable Reproducibility ($\varpi_5$ = `{tw5:.6f}`):"):
+        st.markdown(
+            "Cryptographic verification of open data/code repositories and sandboxed container execution."
+        )
+        st.markdown(
+            r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
+        )
+
+    with st.expander(f"C6: Literature Integration ($\varpi_6$ = `{tw6:.6f}`):"):
+        st.markdown(
+            "Citation context polarity classification (supporting vs. contrasting engagement)."
+        )
+        st.markdown(
+            r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
+        )
+
+    with st.expander(f"C7: Empirical Density & Validation ($\varpi_7$ = `{tw7:.6f}`):"):
+        st.markdown(
+            "Deterministic extraction of sample sizes, degrees of freedom, and cohort volumes."
+        )
+        st.markdown(
+            r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
+        )
+
+    with st.expander(f"C8: Future Actionability & FAIR ($\varpi_8$ = `{tw8:.6f}`):"):
+        st.markdown(
+            "Strict measurement of adherence to FAIR principles for downstream research cascade."
+        )
+        st.markdown(
+            r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
+        )
+
+# ==================== TOP SIDE-BY-SIDE ANALYTICS (PI-BRAIN ON LEFT, GLOBAL MAP ON RIGHT) ====================
+top_analytics_col1, top_analytics_col2 = st.columns(2)
+
+with top_analytics_col1:
+    st.markdown(
+        "### Pi-Brain LSTM Meta-Learning Forecasts "
+        + tooltip(
+            "An LSTM neural network that trains directly on the block weights to"
+            " predict future shifts in algorithmic evaluation standards."
+        ),
+        unsafe_allow_html=True,
+    )
+
+    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
+    def train_pibrain_cached(weight_data, actual_lookback):
+        dataset = PiBlockchainDataset(weight_data, actual_lookback)
+        dataloader = DataLoader(
+            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+        )
+
+        model = PiBrainLSTM()
+        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+        if os.path.exists(weights_path):
+            try:
+                model.load_state_dict(torch.load(weights_path, weights_only=True))
+            except Exception:
+                pass
+
+        loss_function = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(200):
+            for seq, target in dataloader:
+                optimizer.zero_grad()
+                loss = loss_function(model(seq), target)
+                loss.backward()
+                optimizer.step()
+
+        model.eval()
+        with torch.no_grad():
+            predicted = (
+                model(
+                    torch.tensor(
+                        weight_data[-actual_lookback:], dtype=torch.float32
+                    ).unsqueeze(0)
+                )
+                .squeeze()
+                .numpy()
+            )
+            torch.save(model.state_dict(), weights_path)
+            return predicted
+
+    conn_pb = get_db_connection()
+    try:
+        cursor_pb = conn_pb.cursor()
+        cursor_pb.execute(
+            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+            " BY block_height ASC"
+        )
+        historical_rows = cursor_pb.fetchall()
+    finally:
+        conn_pb.close()
+
+    min_blocks_required = 2
+    if len(historical_rows) < min_blocks_required:
+        st.warning(
+            f"Not enough blockchain data to train the meta-model. You need at least"
+            f" {min_blocks_required} blocks (Currently on ledger:"
+            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+            " block 2."
+        )
+    else:
+        current_block_count = len(historical_rows)
+        lookback_window = max(1, min(5, current_block_count - 1))
+
+        if (
+            "last_trained_blocks" not in st.session_state
+            or st.session_state.last_trained_blocks != current_block_count
+        ):
+            weight_data = np.array(historical_rows, dtype=np.float32)
+            actual_lookback = min(lookback_window, len(weight_data))
+
+            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, actual_lookback)
+            st.session_state.current_weights = weight_data[-1]
+            st.session_state.last_trained_blocks = current_block_count
+        else:
+            st.info(
+                "Meta-model is cached and up-to-date with the latest blockchain"
+                " ledger."
+            )
+
+        df_compare = pd.DataFrame(
+            {
+                "Current Active Weights": st.session_state.current_weights,
+                "Predicted Next Epoch": st.session_state.predicted_next_weights,
+            },
+            index=[
+                "C1: Originality", "C2: Methodological Rigor",
+                "C3: Interdisciplinary", "C4: Societal Impact",
+                "C5: Open Science", "C6: Literature Integration",
+                "C7: Empirical Density", "C8: Future Actionability",
+            ],
+        )
+        st.bar_chart(df_compare, height=380)
+        st.markdown(
+            f"**Mathematical Constraint Check:** Predicted Sum ="
+            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
+        )
+
+    with st.expander("Pidyne", expanded=False):
+        st.markdown("""
+        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
+        """)
+
+with top_analytics_col2:
+    st.markdown("### Global Map of Science")
+    conn_m = get_db_connection()
+    try:
+        cursor_m = conn_m.cursor()
+        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
+        all_global_authors = []
+        for row in cursor_m.fetchall():
+            if row[0]:
+                cleaned = clean_author_name(row[0])
+                for a in cleaned.split(","):
+                    if a.strip() and not is_likely_institution(a.strip()):
+                        all_global_authors.append(a.strip())
+    finally:
+        conn_m.close()
+    all_global_authors = sorted(list(set(all_global_authors)))
+
+    selected_author_top = None
+    piq_dict, book_dict = get_author_piq_dict()
+
+    if all_global_authors:
+        filter_choice_top = st.selectbox(
+            "Filter Map by Author:",
+            ["All Authors"] + all_global_authors,
+            key=f"top_author_filter_{st.session_state['assessment_update_token']}",
+            format_func=lambda x: (
+                f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
+            ),
+        )
+        if filter_choice_top != "All Authors":
+            selected_author_top = filter_choice_top
+
+    interactive_html_top, table_html_top = render_bubble_chart_clean(selected_author_top)
+    if interactive_html_top:
+        components.html(interactive_html_top, height=410, scrolling=True)
+    else:
+        st.info("Awaiting sufficient data for map visualization.")
+
+    with st.expander("View Map Legend, Frequency Metrics & Leaderboard"):
+        st.markdown(table_html_top, unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown("### Pi Quotient (piQ) Explorer & Leaderboard")
+        search_query_top = st.text_input(
+            "Search Explorer by Author or Book Address:",
+            placeholder="Enter author name or 0x...",
+            key="top_search_query_input"
+        )
+        if piq_dict:
+            leaderboard_data = []
+            for author, piq in piq_dict.items():
+                leaderboard_data.append({
+                    "Contributing Author": author,
+                    "Unique Author Book Address": book_dict.get(author, "None"),
+                    "Total piQ Earned": round(piq, 2),
+                })
+            piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
+            if search_query_top:
+                q_clean = search_query_top.strip().lower()
+                filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
+                st.dataframe(filtered_df, use_container_width=True, height=180)
+            else:
+                st.dataframe(piq_df, use_container_width=True, height=180)
+        else:
+            st.info("No piQ tokens minted yet.")
 
 st.markdown("---")
 st.markdown(
@@ -1411,7 +1418,6 @@ else:
             })
             st.dataframe(r_df, hide_index=True, use_container_width=True)
 
-
 # ==================== PINAMIC & DECENTRALIZED INFRASTRUCTURE SECTION ====================
 st.markdown("---")
 st.markdown(
@@ -1421,17 +1427,6 @@ st.markdown(
     ),
     unsafe_allow_html=True,
 )
-
-with st.expander(
-    "Detailed Guide: How Pinamic Works (Ledger Consensus & Staking)",
-    expanded=False,
-):
-    st.markdown("""
-    Pinamic integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
-    1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-    2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-    3. **DeSci Peer Attestation & Staking**: Researchers can stake a fraction of their earned soulbound tokens (`piQ`) to either endorse or challenge specific manuscript assessments on-chain (`desci_attestations`).
-    """)
 
 conn = get_db_connection()
 try:
