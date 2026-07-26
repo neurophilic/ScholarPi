@@ -207,7 +207,7 @@ else:
         f" `{st.session_state.orcid_id}`"
     )
     
-    # --- Assessment and Reward History in Sidebar (Updated to query connected ID + default guest ID for seamless viewing) ---
+    # --- Assessment and Reward History in Sidebar ---
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Your Assessment & Reward History")
     
@@ -592,60 +592,60 @@ def evaluation_metrics_dialog():
         r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
     )
 
-    with st.expander(f"C1: Originality (vapri_1 = {tw1:.6f}):"):
+    with st.expander(f"C1: Originality (apri_1 = {tw1:.6f}):"):
         st.markdown("Semantic distance from literature corpus penalized by generative AI laundering heuristics.")
         st.markdown(
-            r"$$ C_1 = vapri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
+            r"$$ C_1 = apri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus})"
             r" \times (1 - \lambda_{laundering}) $$"
         )
 
-    with st.expander(f"C2: Methodological Rigor (vapri_2 = {tw2:.6f}):"):
+    with st.expander(f"C2: Methodological Rigor (apri_2 = {tw2:.6f}):"):
         st.markdown(
             "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
         )
         st.markdown(
-            r"$$ C_2 = vapri_2 \cdot \mathcal{I}_{blinding} + vapri_2 \cdot"
-            r" \mathcal{I}_{randomization} + vapri_2 \cdot \mathcal{I}_{power\_calc}"
-            r" + vapri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
+            r"$$ C_2 = apri_2 \cdot \mathcal{I}_{blinding} + apri_2 \cdot"
+            r" \mathcal{I}_{randomization} + apri_2 \cdot \mathcal{I}_{power\_calc}"
+            r" + apri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} +"
             r" \epsilon}\right) $$"
         )
 
-    with st.expander(f"C3: Interdisciplinary Synergy (vapri_3 = {tw3:.6f}):"):
+    with st.expander(f"C3: Interdisciplinary Synergy (apri_3 = {tw3:.6f}):"):
         st.markdown("Measures cross-disciplinary integration and entropy across scientific domains.")
-        st.markdown(r"$$ C_3 = vapri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
+        st.markdown(r"$$ C_3 = apri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$")
 
-    with st.expander(f"C4: Societal & Open Infrastructure Impact (vapri_4 = {tw4:.6f}):"):
+    with st.expander(f"C4: Societal & Open Infrastructure Impact (apri_4 = {tw4:.6f}):"):
         st.markdown("Evaluates broader societal and open infrastructure contributions.")
         st.markdown(
-            r"$$ C_4 = vapri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
+            r"$$ C_4 = apri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v"
             r" U_v(\tau, \mathbf{x}) \right] $$"
         )
 
-    with st.expander(f"C5: Open Science & Executable Reproducibility (vapri_5 = {tw5:.6f}):"):
+    with st.expander(f"C5: Open Science & Executable Reproducibility (apri_5 = {tw5:.6f}):"):
         st.markdown("Evaluates open data, open code, and containerized reproducibility.")
         st.markdown(
-            r"$$ C_5 = vapri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
+            r"$$ C_5 = apri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2"
             r" \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"
         )
 
-    with st.expander(f"C6: Literature Integration (vapri_6 = {tw6:.6f}):"):
+    with st.expander(f"C6: Literature Integration (apri_6 = {tw6:.6f}):"):
         st.markdown("Evaluates citation polarity and integration with existing foundational literature.")
         st.markdown(
-            r"$$ C_6 = vapri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
+            r"$$ C_6 = apri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}}"
             r" \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"
         )
 
-    with st.expander(f"C7: Empirical Density & Validation (vapri_7 = {tw7:.6f}):"):
+    with st.expander(f"C7: Empirical Density & Validation (apri_7 = {tw7:.6f}):"):
         st.markdown("Assesses empirical sample strength and baseline variance.")
         st.markdown(
-            r"$$ C_7 = vapri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
+            r"$$ C_7 = apri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot"
             r" \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"
         )
 
-    with st.expander(f"C8: Future Actionability & FAIR (vapri_8 = {tw8:.6f}):"):
+    with st.expander(f"C8: Future Actionability & FAIR (apri_8 = {tw8:.6f}):"):
         st.markdown("Evaluates future research actionability and adherence to FAIR principles.")
         st.markdown(
-            r"$$ C_8 = vapri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
+            r"$$ C_8 = apri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}}"
             r" \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"
         )
 
@@ -1235,7 +1235,7 @@ with top_analytics_col1:
         optimizer = optim.Adam(model.parameters(), lr=0.001)
 
         model.train()
-        for epoch in range(250):
+        for epoch in range(300):
             for seq, target in dataloader:
                 optimizer.zero_grad()
                 loss = loss_function(model(seq), target)
@@ -1253,10 +1253,10 @@ with top_analytics_col1:
                 .squeeze()
                 .numpy()
             )
-            # Highly sensitive amplification factor for visible weight shifts
             current_w = weight_data[-1]
-            predicted = current_w + (raw_pred - current_w) * 6.0
-            predicted = np.clip(predicted, 0.05, 5.5)
+            # Exaggerate tiny variations significantly so minor shifts are prominent
+            predicted = current_w + (raw_pred - current_w) * 15.0
+            predicted = np.clip(predicted, 0.01, 7.9)
             predicted = predicted * (8.0 / np.sum(predicted))
             torch.save(model.state_dict(), weights_path)
             return predicted
@@ -1300,10 +1300,18 @@ with top_analytics_col1:
                 " ledger."
             )
 
+        # Scale differences around baseline 1.0 to exaggerate small decimal variations in the chart
+        base_val = 1.0
+        curr_vals = st.session_state.current_weights
+        pred_vals = st.session_state.predicted_next_weights
+        
+        exagg_curr = base_val + (curr_vals - base_val) * 12.0
+        exagg_pred = base_val + (pred_vals - base_val) * 12.0
+
         df_compare = pd.DataFrame(
             {
-                "Current Active Weights": st.session_state.current_weights,
-                "Predicted Next Epoch": st.session_state.predicted_next_weights,
+                "Current Active Weights (Amplified)": exagg_curr,
+                "Predicted Next Epoch (Exaggerated)": exagg_pred,
             },
             index=[
                 "C1: Originality", "C2: Methodological Rigor",
@@ -1314,8 +1322,15 @@ with top_analytics_col1:
         )
         st.bar_chart(df_compare, height=380)
         st.markdown(
-            f"**Mathematical Constraint Check:** Predicted Sum ="
-            f" `{sum(st.session_state.predicted_next_weights):.6f}` / `8.0`"
+            f"**High-Precision Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
+            f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
+            f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
+            f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
+            f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
+            f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
+            f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
+            f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
+            f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
         )
 
     with st.expander("What's Pidyne?", expanded=False):
@@ -1743,7 +1758,7 @@ def framework_workflow_dialog():
     st.markdown("---")
     st.markdown(
         "<div style='text-align: center; color: gray; font-size: 0.9em; padding-bottom: 5px;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 st.markdown("---")
