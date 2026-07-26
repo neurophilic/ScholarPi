@@ -605,6 +605,7 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
         st.markdown("---")
     else:
         tw1 = 1.001328
+        tw2 = 1.000038
 
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$)** "
@@ -634,7 +635,7 @@ with st.expander("Evaluation Metrics, SciScore Reproducibility & Adversarial Log
         r" \times (1 - \lambda_{laundering}) $$"
     )
 
-    with st.expander("C2: Methodological Rigor"):
+    with st.expander(f"C2: Methodological Rigor ($\varpi_2$ = `{tw2:.6f}`):"):
         st.markdown(
             "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore."
         )
