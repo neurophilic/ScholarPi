@@ -249,10 +249,10 @@ else:
 current_user = st.session_state.get("orcid_id", "0000-0000-0000-0000")
 current_email = "None"
 
-# --- Scilem Accessory Chatbot in Sidebar (Prominent, Auto-Updated Knowledge Base) ---
+# --- Scilem Accessory Chatbot in Sidebar (Auto-updated knowledge base, scientific icon, no extra box) ---
 st.sidebar.markdown("---")
 st.sidebar.markdown(
-    "### 🔬 Scilem Assistant "
+    "### 🧬 Scilem Assistant "
     + tooltip("CoARA-aligned decentralized scientific assistant."),
     unsafe_allow_html=True,
 )
@@ -342,7 +342,7 @@ if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input"):
     st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
     st.rerun()
 
-# --- Helper for Refining Subfields and Professional Science Fields (No Interdisciplinary Research) ---
+# --- Helper for Refining Subfields and Professional Science Fields ---
 def refine_science_field(s):
     s_lower = s.lower()
     if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
@@ -1234,7 +1234,7 @@ with top_analytics_col1:
 
         model.eval()
         with torch.no_grad():
-            predicted = (
+            raw_pred = (
                 model(
                     torch.tensor(
                         weight_data[-actual_lookback:], dtype=torch.float32
@@ -1243,6 +1243,11 @@ with top_analytics_col1:
                 .squeeze()
                 .numpy()
             )
+            # Increase sensitivity by amplifying delta from current active weights
+            current_w = weight_data[-1]
+            predicted = current_w + (raw_pred - current_w) * 3.0
+            predicted = np.clip(predicted, 0.1, 4.0)
+            predicted = predicted * (8.0 / np.sum(predicted))
             torch.save(model.state_dict(), weights_path)
             return predicted
 
