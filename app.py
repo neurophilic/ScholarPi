@@ -1278,10 +1278,10 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-# --- Top Analytics Section: Organized via Tabs per Request ---
-tab_desci, tab_map = st.tabs(["DeSci (Pidyne)", "Global Map of Science"])
+# --- Top Analytics Section: Side-by-Side Pidyne Forecast & Global Map of Science ---
+top_analytics_col1, top_analytics_col2 = st.columns(2)
 
-with tab_desci:
+with top_analytics_col1:
     col_fc1, col_fc2 = st.columns([3, 1])
     with col_fc1:
         st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
@@ -1414,7 +1414,7 @@ with tab_desci:
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
         """)
 
-with tab_map:
+with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
     with map_title_col:
         st.markdown(f"### Global Map of Science {rbot('global map of science')}", unsafe_allow_html=True)
