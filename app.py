@@ -412,7 +412,7 @@ with chat_container:
         with st.chat_message(message["role"], avatar=msg_avatar):
             st.markdown(message["content"])
 
-if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilem_sidebar_input", disabled=st.session_state.get("is_running", False)):
+if prompt := st.sidebar.chat_input("Ask Scilem...", key="scilm_sidebar_input", disabled=st.session_state.get("is_running", False)):
     st.session_state.scilm_messages.append({"role": "user", "content": prompt})
     
     direct_answer = None
@@ -644,15 +644,25 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         notebook=False,
     )
     
-    # Using PyVis built-in physics configuration method for reliable slider binding
-    net.barnes_hut(
-        gravitational_constant=repulsion,
-        central_gravity=central_grav,
-        spring_length=spring_len,
-        spring_constant=0.02,
-        damping=0.95,
-        avoid_overlap=2.5
-    )
+    # Using net.set_options with JSON to correctly apply physics parameters without signature mismatch
+    physics_options = f"""{{ 
+        "physics": {{ 
+            "barnesHut": {{ 
+                "gravitationalConstant": {repulsion}, 
+                "centralGravity": {central_grav}, 
+                "springLength": {spring_len}, 
+                "springConstant": 0.02,
+                "damping": 0.95,
+                "avoidOverlap": 2.5 
+            }}, 
+            "stabilization": {{ 
+                "enabled": true, 
+                "iterations": 500,
+                "fit": true
+            }} 
+        }} 
+    }}"""
+    net.set_options(physics_options)
 
     for topic, metrics in topic_aggregates.items():
         avg_weight = metrics["weight_sum"] / metrics["frequency"]
