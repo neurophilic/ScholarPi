@@ -407,10 +407,10 @@ def process_single_pdf(
     email="None",
     provided_doi="None",
     force_proceed=False,
-    force_security_override=False,
 ):
     active_weights = [1.0] * 8
     works_count, cited_by_count, credit_role = 0.0, 0, "Data Curation"
+    warnings_list = []
 
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {
@@ -421,11 +421,11 @@ def process_single_pdf(
                 "C7_Empirical_Density", "C8_Future_Actionability",
             ]
         }
+        warnings_list.append("Binary payload is empty or download/extraction failed.")
         return (
             "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, 
-            "Binary payload is empty or download/extraction failed.", None
+            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list
         )
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -451,21 +451,12 @@ def process_single_pdf(
             for page in doc:
                 text_blocks.append(page.get_text("text", sort=True))
             full_text = "\n".join(text_blocks)
-        except Exception:
-            empty_scores = {
-                k: 0.0
-                for k in [
-                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                    "C7_Empirical_Density", "C8_Future_Actionability",
-                ]
-            }
-            return (
-                "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
-                ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-                file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                0.0, False, "Invalid PDF structure or PyMuPDF parsing exception.", None
-            )
+        except Exception as e:
+            warnings_list.append(f"Invalid PDF structure or PyMuPDF parsing exception: {e}")
+            full_text = ""
+
+        if len(full_text.strip()) < 150:
+            warnings_list.append("Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan).")
 
         scope_alignment = (
             evaluate_scope_alignment(full_text, scope, FALLBACK_MODEL, MAX_TEXT_TOKENS)
@@ -515,12 +506,14 @@ def process_single_pdf(
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-                used_weights, mdar_score, rrid_count, repro_score, True, None, None
+                used_weights, mdar_score, rrid_count, repro_score, True, warnings_list,
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
             full_text, FALLBACK_MODEL
         )
+        if gaming_penalty > 0.40:
+            warnings_list.append(f"Synthetic / AI-laundering gaming penalty ({gaming_penalty:.2f}) exceeds safety threshold (0.40).")
 
         try:
             raw_data = evaluate_pdf_text_ensemble(
@@ -535,20 +528,13 @@ def process_single_pdf(
                 )
                 model_used = FALLBACK_MODEL
             except Exception:
-                empty_scores = {
-                    k: 0.0
-                    for k in [
-                        "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                        "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                        "C7_Empirical_Density", "C8_Future_Actionability",
-                    ]
+                warnings_list.append("LLM text ensemble extraction failed completely.")
+                raw_data = {
+                    "Extracted_Title": filename,
+                    "Extracted_Author": "Unidentified",
+                    "Extracted_Topics": "Core Research Domain",
+                    "Overall_Confidence": 0.0,
                 }
-                return (
-                    "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
-                    ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-                    file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                    reproducibility_score, False, "LLM text ensemble extraction failed completely.", None
-                )
 
         if not isinstance(raw_data, dict):
             raw_data = {
@@ -559,35 +545,14 @@ def process_single_pdf(
             }
 
         confidence = float(raw_data.get("Overall_Confidence", 0.9))
+        if confidence < 0.50:
+            warnings_list.append(f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%).")
+
         extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
         extracted_title_check = str(raw_data.get("Extracted_Title", ""))
 
-        indeterminate_reason = None
-        if len(full_text.strip()) < 150:
-            indeterminate_reason = "Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan)."
-        elif extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]:
-            indeterminate_reason = "Author metadata could not be reliably verified or identified in the document header."
-        elif not extracted_title_check or "failed" in extracted_title_check.lower():
-            indeterminate_reason = "Manuscript title is missing or parser extraction failed."
-        elif confidence < 0.50:
-            indeterminate_reason = f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%)."
-
-        if indeterminate_reason and not force_proceed:
-            empty_scores = {
-                k: 0.0
-                for k in [
-                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                    "C7_Empirical_Density", "C8_Future_Actionability",
-                ]
-            }
-            return (
-                "Indeterminate Format",
-                clean_author_name(extracted_author_check),
-                0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
-                empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                reproducibility_score, False, indeterminate_reason, None
-            )
+        if extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]:
+            warnings_list.append("Author metadata could not be reliably verified or identified in document header.")
 
         title = raw_data.get("Extracted_Title", filename)
         extracted_author = clean_author_name(extracted_author_check)
@@ -665,6 +630,9 @@ def process_single_pdf(
         final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
         formulas_hash = get_formulas_hash()
 
+        if final_score < 60.0:
+            warnings_list.append(f"Final score ({final_score:.2f}) is below quality floor (60.0).")
+
         if total_evals % EPOCH_BLOCK_SIZE == 0:
             active_weights = calculate_model_driven_weights(
                 old_weights, scores, model_used, block_height
@@ -698,20 +666,8 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
-        # --- Comprehensive Anti-Abuse & Security Check Validation ---
-        ANTI_ABUSE_SCORE_FLOOR = 60.0
-        ANTI_ABUSE_GAMING_LIMIT = 0.40
-
-        security_violations = []
-        if final_score < ANTI_ABUSE_SCORE_FLOOR:
-            security_violations.append(f"Final score ({final_score:.2f}) is below the mandatory quality floor ({ANTI_ABUSE_SCORE_FLOOR}).")
-        if gaming_penalty > ANTI_ABUSE_GAMING_LIMIT:
-            security_violations.append(f"Synthetic / AI-laundering gaming penalty ({gaming_penalty:.2f}) exceeds the safety threshold ({ANTI_ABUSE_GAMING_LIMIT}).")
-        if extracted_author == "Unidentified":
-            security_violations.append("Author name is unidentified or unverified (valid human author name required for minting).")
-
         piq_minted = 0.0
-        if not security_violations or force_security_override:
+        if not warnings_list or force_proceed:
             co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
             num_authors = max(1, len(co_authors))
 
@@ -724,22 +680,6 @@ def process_single_pdf(
 
             base_piq = (final_score / 10.0)
             piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
-        else:
-            empty_scores = {
-                k: 0.0
-                for k in [
-                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                    "C7_Empirical_Density", "C8_Future_Actionability",
-                ]
-            }
-            drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
-            rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
-            return (
-                title, extracted_author, final_score, logic_integrity, drift, rec,
-                fields, subfields, scores_dict, file_hash, 0.0, "None", "None",
-                active_weights, 0.85, 4, reproducibility_score, False, None, security_violations
-            )
 
         zk_proof = generate_zk_snark_proof(
             file_hash, final_score, logic_integrity, "None"
@@ -789,5 +729,5 @@ def process_single_pdf(
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, reproducibility_score, False, None, None
+        active_weights, mdar_score, rrid_count, reproducibility_score, False, warnings_list,
     )
