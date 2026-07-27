@@ -82,14 +82,12 @@ def extract_with_llama(paper_text):
 def extract_with_mistral(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
     if OR_API_KEY:
-        # Route Mistral via OpenRouter with valid endpoint slug
         return query_llm_json("mistral", "mistralai/mistral-large", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
     return "mistral", mock_llm_fallback("Mistral-Large", paper_text)
 
 def extract_with_qwen(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
     if OR_API_KEY:
-        # Route Qwen via OpenRouter with valid endpoint slug
         return query_llm_json("qwen", "qwen/qwen-2.5-72b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
     return "qwen", mock_llm_fallback("Qwen-2.5-72B", paper_text)
 
@@ -611,6 +609,8 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
     return [round((w / sum_of_weights) * 8.0, 6) for w in new_weights]
 
 def compute_logical_integrity(extracted_logic_vars):
+    if not isinstance(extracted_logic_vars, dict):
+        return 75.0
     evidence = float(extracted_logic_vars.get("Evidence_Strength", 0.75))
     conclusion_reach = float(extracted_logic_vars.get("Conclusion_Reach", 0.75))
     jumps = float(extracted_logic_vars.get("Logical_Jumps", 0.25))
@@ -754,6 +754,9 @@ def process_single_pdf(
     active_weights = [1.0] * 8
     works_count, cited_by_count, credit_role = 0.0, 0, "Data Curation"
     warnings_list = []
+    logic_integrity = 75.0
+    drift = "N/A"
+    rec = "N/A"
 
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {
@@ -766,7 +769,7 @@ def process_single_pdf(
         }
         warnings_list.append("Binary payload is empty or download/extraction failed.")
         return (
-            "Download/Extraction Failed", "Independent Research Scholar", 0.0, 0.0, "N/A", "N/A",
+            "Download/Extraction Failed", "Independent Research Scholar", 0.0, logic_integrity, drift, rec,
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
             "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", 50.0
         )
@@ -834,6 +837,7 @@ def process_single_pdf(
             c_scores = [c1, c2, c3, c4, c5, c6, c7, c8]
             drift = calculate_complex_drift(scope_alignment, c_scores) if scope.strip() else "N/A"
             rec = get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
+            logic_integrity = logic_score if logic_score is not None else 75.0
             scores_dict = {
                 "C1_Semantic_Originality": c1,
                 "C2_Methodological_Rigor_SciScore": c2,
@@ -1009,7 +1013,7 @@ def process_single_pdf(
                     used_weights = weight_res if weight_res else active_weights
                     warnings_list.append("Duplicate record detected via DOI or Author/Title match.")
                     return (
-                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
+                        title, extracted_author, ex_score, ex_logic if ex_logic is not None else 75.0, drift, rec_spec,
                         fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
                         used_weights, c_mdar_score, c_rrid_count, repro_score, True, warnings_list,
                         json.loads(c_consensus) if c_consensus else consensus_raw,
