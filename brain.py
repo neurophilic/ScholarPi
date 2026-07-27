@@ -35,7 +35,7 @@ from integrations import (
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ---------------------------------------------------------
-# Multi-LLM Consensus Engine (Llama, Mistral, Qwen, Gemini)
+# Multi-LLM Consensus Engine (Robust Quota & Error Handling)
 # ---------------------------------------------------------
 def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     if not api_key or not str(api_key).strip():
@@ -59,9 +59,9 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     except Exception as e:
         err_str = str(e)
         if "402" in err_str or "insufficient credits" in err_str.lower():
-            opinion = f"[{provider_name.upper()} Insufficient Credits]: OpenRouter account requires credit top-up (402). Using structural analysis fallback."
+            opinion = f"[{provider_name.upper()} Insufficient Credits]: Account requires credit top-up (402). Using structural analysis fallback."
         elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate_limit_exceeded" in err_str.lower() or "quota" in err_str.lower():
-            opinion = f"[{provider_name.upper()} Rate Limit / TPD Exceeded]: Daily token or request limit reached. Using structural analysis fallback."
+            opinion = f"[{provider_name.upper()} Rate Limit / Quota Exceeded]: Free tier token or request limit reached. Using structural analysis fallback."
         else:
             opinion = f"Error querying {provider_name.upper()}: {err_str}"
             
@@ -178,7 +178,7 @@ Multi-LLM Raw Consensus Data:
         except Exception as e:
             pass
 
-    report_md = "## Synthesized Evidence Report (Multi-LLM Consensus Synthesis)\n\n"
+    report_md = "## Synthesized Evidence Report (Local Consensus Synthesis)\n\n"
     for provider, data in consensus_results.items():
         if provider != "scilem":
             report_md += f"### {provider.upper()} Assessment (Rating: {data.get('rating', 'N/A')}/100)\n"
