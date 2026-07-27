@@ -280,8 +280,7 @@ def evaluate_scilem_analysis_report(raw_text):
     
     analysis_summary = (
         f"Homegrown Scilem Structural Analysis Report: "
-        f"Analyzed local token embedding projection and structural feature manifold. "
-        f"Note: Scilem does not assign final ratings; all numerical scoring is managed exclusively by Pidyne."
+        f"Analyzed local token embedding projection and structural feature manifold."
     )
     return analysis_summary
 
@@ -321,8 +320,7 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
     analysis_summary = (
         f"Homegrown Scilem Structural Analysis Report: "
         f"Analyzed local token embedding projection. Scilem actively updated its weights "
-        f"by learning from both the raw manuscript input and Pidyne's synthesized evidence report. "
-        f"Note: Scilem does not assign final ratings."
+        f"by learning from both the raw manuscript input and Pidyne's synthesized evidence report."
     )
     return analysis_summary
 
