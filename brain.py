@@ -407,6 +407,7 @@ def process_single_pdf(
     email="None",
     provided_doi="None",
     force_proceed=False,
+    force_security_override=False,
 ):
     active_weights = [1.0] * 8
     works_count, cited_by_count, credit_role = 0.0, 0, "Data Curation"
@@ -424,7 +425,7 @@ def process_single_pdf(
             "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
             "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, 
-            "Binary payload is empty or download/extraction failed.",
+            "Binary payload is empty or download/extraction failed.", None
         )
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -463,7 +464,7 @@ def process_single_pdf(
                 "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
                 ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
                 file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                0.0, False, "Invalid PDF structure or PyMuPDF parsing exception.",
+                0.0, False, "Invalid PDF structure or PyMuPDF parsing exception.", None
             )
 
         scope_alignment = (
@@ -514,7 +515,7 @@ def process_single_pdf(
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-                used_weights, mdar_score, rrid_count, repro_score, True, None,
+                used_weights, mdar_score, rrid_count, repro_score, True, None, None
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
@@ -546,7 +547,7 @@ def process_single_pdf(
                     "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
                     ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
                     file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                    reproducibility_score, False, "LLM text ensemble extraction failed completely.",
+                    reproducibility_score, False, "LLM text ensemble extraction failed completely.", None
                 )
 
         if not isinstance(raw_data, dict):
@@ -561,7 +562,6 @@ def process_single_pdf(
         extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
         extracted_title_check = str(raw_data.get("Extracted_Title", ""))
 
-        # Determine precise indeterminate failure reason
         indeterminate_reason = None
         if len(full_text.strip()) < 150:
             indeterminate_reason = "Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan)."
@@ -586,7 +586,7 @@ def process_single_pdf(
                 clean_author_name(extracted_author_check),
                 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
                 empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                reproducibility_score, False, indeterminate_reason,
+                reproducibility_score, False, indeterminate_reason, None
             )
 
         title = raw_data.get("Extracted_Title", filename)
@@ -698,18 +698,20 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
-        # Anti-Abuse & Anti-Farming Checks
+        # --- Comprehensive Anti-Abuse & Security Check Validation ---
         ANTI_ABUSE_SCORE_FLOOR = 60.0
         ANTI_ABUSE_GAMING_LIMIT = 0.40
 
-        is_abusive_or_low_quality = (
-            final_score < ANTI_ABUSE_SCORE_FLOOR 
-            or gaming_penalty > ANTI_ABUSE_GAMING_LIMIT
-            or extracted_author == "Unidentified"
-        )
+        security_violations = []
+        if final_score < ANTI_ABUSE_SCORE_FLOOR:
+            security_violations.append(f"Final score ({final_score:.2f}) is below the mandatory quality floor ({ANTI_ABUSE_SCORE_FLOOR}).")
+        if gaming_penalty > ANTI_ABUSE_GAMING_LIMIT:
+            security_violations.append(f"Synthetic / AI-laundering gaming penalty ({gaming_penalty:.2f}) exceeds the safety threshold ({ANTI_ABUSE_GAMING_LIMIT}).")
+        if extracted_author == "Unidentified":
+            security_violations.append("Author name is unidentified or unverified (valid human author name required for minting).")
 
         piq_minted = 0.0
-        if not is_abusive_or_low_quality:
+        if not security_violations or force_security_override:
             co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
             num_authors = max(1, len(co_authors))
 
@@ -722,6 +724,23 @@ def process_single_pdf(
 
             base_piq = (final_score / 10.0)
             piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
+        else:
+            # If security violations exist and override is not active, return violation reasons
+            empty_scores = {
+                k: 0.0
+                for k in [
+                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
+                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
+                    "C7_Empirical_Density", "C8_Future_Actionability",
+                ]
+            }
+            drift = calculate_complex_drift(scope_alignment, scores) if scope.strip() else "N/A"
+            rec = get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
+            return (
+                title, extracted_author, final_score, logic_integrity, drift, rec,
+                fields, subfields, scores_dict, file_hash, 0.0, "None", "None",
+                active_weights, 0.85, 4, reproducibility_score, False, None, security_violations
+            )
 
         zk_proof = generate_zk_snark_proof(
             file_hash, final_score, logic_integrity, "None"
@@ -771,5 +790,5 @@ def process_single_pdf(
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, reproducibility_score, False, None,
+        active_weights, mdar_score, rrid_count, reproducibility_score, False, None, None
     )
