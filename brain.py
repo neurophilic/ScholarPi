@@ -22,7 +22,7 @@ from integrations import clean_author_name, is_likely_institution, fetch_author_
 
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-class PiBlockchainDataset(Dataset):
+class PidyneBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
         self.data = data_matrix
         self.lookback = lookback
@@ -37,9 +37,9 @@ class PiBlockchainDataset(Dataset):
             y, dtype=torch.float32
         )
 
-class PiBrainLSTM(nn.Module):
+class PidyneLSTM(nn.Module):
     def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
-        super(PiBrainLSTM, self).__init__()
+        super(PidyneLSTM, self).__init__()
         self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
         self.linear = nn.Sequential(
             nn.Linear(hidden_layer_size, 16),
@@ -89,7 +89,7 @@ def get_evolving_system_context():
     return context_str
 
 def harvest_fine_tuning_data(text_chunk, final_json_output, eval_hash):
-    dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
+    dataset_path = os.path.join(BASE_DIR, "scilem rlhf_dataset.jsonl")
     try:
         record = {
             "prompt": f"Extract Pi-Index Variables from this text:\n{text_chunk[:3000]}",
