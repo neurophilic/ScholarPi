@@ -98,7 +98,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for UI Modifications (Featuring absolute positioning for 'X' button in top-right corner)
+# Custom JS/CSS for UI Modifications (Featuring flexbox Scilem Header with 'X' aligned correctly on the right)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -146,7 +146,7 @@ custom_ui_code = """
 #scilem-drag-handle {
     background: linear-gradient(135deg, #1e293b, #0f172a);
     color: white;
-    padding: 14px 18px;
+    padding: 12px 16px;
     font-weight: 700;
     font-size: 16px;
     cursor: grab;
@@ -154,7 +154,9 @@ custom_ui_code = """
     border-top-right-radius: 12px;
     margin: -1rem -1rem 1rem -1rem;
     user-select: none;
-    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 #scilem-drag-handle:active {
@@ -162,9 +164,6 @@ custom_ui_code = """
 }
 
 #scilem-min-btn {
-    position: absolute;
-    top: 12px;
-    right: 14px;
     background: rgba(255, 255, 255, 0.15);
     color: #ffffff;
     border-radius: 4px;
@@ -1649,9 +1648,9 @@ with bottom_col2:
             book_addr = book_dict.get(author, "None")
             rows_html += f"""
                 <tr>
-                    <td style="text-align: center; font-weight: bold; width: 10%;">{rank}</td>
-                    <td style="font-weight: bold; word-break: break-word;">{author}</td>
-                    <td><code style="font-size: 10px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
+                    <td style="text-align: center; font-weight: bold; width: 8%;"><b>{rank}</b></td>
+                    <td style="font-weight: bold; word-break: break-word; width: 25%;">{author}</td>
+                    <td style="width: 52%;"><code style="font-size: 10px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
                     <td style="text-align: right; font-weight: bold; width: 15%;">{piq:.2f}</td>
                 </tr>
             """
@@ -1702,9 +1701,9 @@ with bottom_col2:
             <table class="leaderboard-table">
                 <thead>
                     <tr>
-                        <th style="text-align: center; width: 10%;">#</th>
-                        <th>Contributing Author</th>
-                        <th>Book Address</th>
+                        <th style="text-align: center; width: 8%;">#</th>
+                        <th style="width: 25%;">Contributing Author</th>
+                        <th style="width: 52%;">Book Address</th>
                         <th style="text-align: right; width: 15%;">piQ</th>
                     </tr>
                 </thead>
