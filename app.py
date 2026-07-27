@@ -98,7 +98,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for UI Modifications (Featuring flexbox Scilem Header with 'X' aligned correctly on the right)
+# Custom JS/CSS for UI Modifications (Featuring absolute positioning for 'X' button in top-right corner)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -146,7 +146,7 @@ custom_ui_code = """
 #scilem-drag-handle {
     background: linear-gradient(135deg, #1e293b, #0f172a);
     color: white;
-    padding: 12px 16px;
+    padding: 14px 18px;
     font-weight: 700;
     font-size: 16px;
     cursor: grab;
@@ -154,9 +154,7 @@ custom_ui_code = """
     border-top-right-radius: 12px;
     margin: -1rem -1rem 1rem -1rem;
     user-select: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    position: relative;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 #scilem-drag-handle:active {
@@ -164,6 +162,9 @@ custom_ui_code = """
 }
 
 #scilem-min-btn {
+    position: absolute;
+    top: 12px;
+    right: 14px;
     background: rgba(255, 255, 255, 0.15);
     color: #ffffff;
     border-radius: 4px;
@@ -1646,13 +1647,12 @@ with bottom_col2:
         rows_html = ""
         for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
             book_addr = book_dict.get(author, "None")
-            short_book = f"{book_addr[:8]}...{book_addr[-6:]}" if len(book_addr) > 16 else book_addr
             rows_html += f"""
                 <tr>
                     <td style="text-align: center; font-weight: bold; width: 10%;">{rank}</td>
-                    <td style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;" title="{author}">{author}</td>
-                    <td><code style="font-size: 11px;">{short_book}</code></td>
-                    <td style="text-align: right; font-weight: bold; width: 20%;">{piq:.2f}</td>
+                    <td style="font-weight: bold; word-break: break-word;">{author}</td>
+                    <td><code style="font-size: 10px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
+                    <td style="text-align: right; font-weight: bold; width: 15%;">{piq:.2f}</td>
                 </tr>
             """
         
@@ -1663,7 +1663,7 @@ with bottom_col2:
         <style>
             body { margin: 0; padding: 0; font-family: sans-serif; }
             .table-container {
-                max-height: 210px;
+                max-height: 220px;
                 overflow-y: auto;
                 overflow-x: hidden;
                 border: 1px solid #e2e8f0;
@@ -1690,6 +1690,7 @@ with bottom_col2:
                 padding: 8px 10px;
                 border-bottom: 1px solid #ecf0f1;
                 color: #2c3e50;
+                vertical-align: middle;
             }
             .leaderboard-table tr:hover {
                 background-color: #f8fafc;
@@ -1704,7 +1705,7 @@ with bottom_col2:
                         <th style="text-align: center; width: 10%;">#</th>
                         <th>Contributing Author</th>
                         <th>Book Address</th>
-                        <th style="text-align: right; width: 20%;">piQ</th>
+                        <th style="text-align: right; width: 15%;">piQ</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1716,7 +1717,7 @@ with bottom_col2:
         </html>
         """
         leaderboard_full_html = leaderboard_template.replace("__ROWS_PLACEHOLDER__", rows_html)
-        components.html(leaderboard_full_html, height=220, scrolling=False)
+        components.html(leaderboard_full_html, height=225, scrolling=False)
     else:
         st.info("No piQ tokens minted yet.")
 
