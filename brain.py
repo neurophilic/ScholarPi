@@ -38,15 +38,15 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 # Multi-LLM Consensus Clients & Extraction Pipeline
 # ---------------------------------------------------------
 multi_clients = {}
-if GROQ_API_KEY:
-    multi_clients["groq"] = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
-if OR_API_KEY:
-    multi_clients["openrouter"] = OpenAI(api_key=OR_API_KEY, base_url="https://openrouter.ai/api/v1")
-if AIN_API_KEY:
-    multi_clients["ainative"] = OpenAI(api_key=AIN_API_KEY, base_url="https://api.ainative.studio/v1")
+if GROQ_API_KEY and str(GROQ_API_KEY).strip():
+    multi_clients["groq"] = OpenAI(api_key=GROQ_API_KEY.strip(), base_url="https://api.groq.com/openai/v1")
+if OR_API_KEY and str(OR_API_KEY).strip():
+    multi_clients["openrouter"] = OpenAI(api_key=OR_API_KEY.strip(), base_url="https://openrouter.ai/api/v1")
+if AIN_API_KEY and str(AIN_API_KEY).strip():
+    multi_clients["ainative"] = OpenAI(api_key=AIN_API_KEY.strip(), base_url="https://api.ainative.studio/v1")
 
 multi_models = {
-    "groq": "llama-3.3-70b-versatile",
+    "groq": PRIMARY_MODEL,
     "openrouter": "mistralai/mistral-7b-instruct",
     "ainative": "google/gemma-2-27b-it"
 }
@@ -54,38 +54,35 @@ multi_models = {
 def extract_with_llm(provider_name, paper_text):
     client = multi_clients.get(provider_name)
     if not client:
-        # Fallback simulation for endpoints without active keys so multi-LLM UI view is populated
+        # Fallback simulation only if the specific key is entirely missing
         return provider_name, {
-            "authors": "Simulated Consensus Author",
-            "title": "Extracted Manuscript Title",
-            "references": [
-                {"citation": "[1]", "authors": "Primary Author et al.", "year": "2025"},
-                {"citation": "[2]", "authors": "Secondary Reference Source", "year": "2024"}
-            ],
-            "opinion": f"Simulated audit feedback from {provider_name}: Methodological layout adheres to baseline standards.",
-            "rating": 78.5
+            "authors": "Unconfigured Endpoint Key",
+            "title": "N/A",
+            "references": [],
+            "opinion": f"Endpoint {provider_name} API key not found in secrets/environment.",
+            "rating": 50.0
         }
     
-    model = multi_models.get(provider_name, "llama-3.3-70b-versatile")
+    model = multi_models.get(provider_name, PRIMARY_MODEL)
     
-    # Isolate bibliography section if present to guarantee reference extraction
+    # Isolate bibliography/reference section for structured parsing
     ref_section = ""
     lower_text = paper_text.lower()
     for keyword in ["references", "bibliography", "works cited"]:
         idx = lower_text.rfind(keyword)
         if idx != -1:
-            ref_section = paper_text[idx:idx+3000]
+            ref_section = paper_text[idx:idx+4000]
             break
     if not ref_section:
-        ref_section = paper_text[-4000:]
+        ref_section = paper_text[-5000:]
 
     prompt = f"""
     Analyze the following academic paper text and extract information strictly in JSON format.
-    Ensure references are fully parsed into a list of objects with keys: "citation", "authors", and "year". Do NOT return 'not specified' if author names or years appear in the text.
+    You must extract real authors, title, references (parsed into a list of objects with keys: "citation", "authors", and "year"), a qualitative critical opinion, and a numerical rating from 0.0 to 100.0. Do NOT output 'not specified' if names or years are available in the text.
     
     1. "authors": List of human authors identified correctly.
     2. "title": Title of the paper.
-    3. "references": List of objects: [{{"citation": "[1]", "authors": "Smith et al.", "year": "2024"}}, ...]
+    3. "references": List of parsed objects: [{{"citation": "[1]", "authors": "Smith et al.", "year": "2024"}}, ...]
     4. "opinion": Critical evaluation and qualitative opinion of the methodology and findings.
     5. "rating": Numerical quality rating from 0.0 to 100.0.
 
