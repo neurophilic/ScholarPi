@@ -94,7 +94,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# Custom JS/CSS for Draggable Scilem Corner Chat Window (Centered Header)
+# Custom JS/CSS for Sidebar Scilem Assistant that becomes Draggable on Click & Drag
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -104,10 +104,7 @@ custom_ui_code = """
 }
 
 [data-testid="stSidebar"] {
-    overflow: hidden !important;
-}
-[data-testid="stSidebar"] > div:first-child {
-    overflow: hidden !important;
+    overflow-y: auto !important;
 }
 
 [data-testid="stChatMessage"]:has(div:contains("👤")) {
@@ -137,7 +134,7 @@ custom_ui_code = """
     padding: 12px 16px;
     font-weight: 700;
     font-size: 15px;
-    cursor: pointer;
+    cursor: grab;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
     margin: -1rem -1rem 0 -1rem;
@@ -146,7 +143,11 @@ custom_ui_code = """
     align-items: center;
     justify-content: center;
     text-align: center;
+    height: 48px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+#scilem-drag-handle:active {
+    cursor: grabbing;
 }
 
 button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
@@ -177,8 +178,9 @@ const parentDoc = window.parent.document;
 parentDoc.addEventListener('click', function(e) {
     let handle = e.target.closest('#scilem-drag-handle');
     if (handle) {
+        // Toggle minimize/expand if clicked without dragging significantly
         let block = handle.closest('[data-draggable="true"]');
-        if (block) {
+        if (block && !window._wasDragging) {
             let isMin = block.getAttribute('data-minimized') === 'true';
             block.setAttribute('data-minimized', isMin ? 'false' : 'true');
             let children = Array.from(block.children);
@@ -221,17 +223,7 @@ function initUI() {
                 block.setAttribute('data-draggable', 'true');
                 block.setAttribute('data-minimized', 'true');
                 
-                block.style.position = 'fixed';
-                block.style.bottom = '20px';
-                block.style.right = '20px';
-                block.style.width = '380px';
-                block.style.backgroundColor = '#ffffff';
-                block.style.border = '1px solid #d0d7de';
-                block.style.borderRadius = '12px';
-                block.style.boxShadow = '0 10px 40px rgba(0,0,0,0.3)';
-                block.style.zIndex = '999999';
-                block.style.padding = '1rem';
-
+                // Initially collapsed in sidebar
                 let children = Array.from(block.children);
                 children.forEach(child => {
                     if (child !== handle && !child.contains(handle)) {
@@ -241,23 +233,42 @@ function initUI() {
                 
                 let isDragging = false;
                 let startX, startY, initialX, initialY;
+                window._wasDragging = false;
 
                 handle.addEventListener('mousedown', function(e) {
                     isDragging = true;
+                    window._wasDragging = false;
                     startX = e.clientX;
                     startY = e.clientY;
                     const rect = block.getBoundingClientRect();
                     initialX = rect.left;
                     initialY = rect.top;
+                    
+                    // Detach to fixed floating position on drag
+                    block.style.position = 'fixed';
+                    block.style.left = initialX + 'px';
+                    block.style.top = initialY + 'px';
                     block.style.bottom = 'auto';
                     block.style.right = 'auto';
+                    block.style.width = '380px';
+                    block.style.backgroundColor = '#ffffff';
+                    block.style.border = '1px solid #d0d7de';
+                    block.style.borderRadius = '12px';
+                    block.style.boxShadow = '0 10px 40px rgba(0,0,0,0.3)';
+                    block.style.zIndex = '999999';
+                    block.style.padding = '1rem';
                     block.style.transition = 'none'; 
                 });
 
                 parentDoc.addEventListener('mousemove', function(e) {
                     if (!isDragging) return;
-                    block.style.left = (initialX + (e.clientX - startX)) + 'px';
-                    block.style.top = (initialY + (e.clientY - startY)) + 'px';
+                    let dx = e.clientX - startX;
+                    let dy = e.clientY - startY;
+                    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                        window._wasDragging = true;
+                    }
+                    block.style.left = (initialX + dx) + 'px';
+                    block.style.top = (initialY + dy) + 'px';
                 });
 
                 parentDoc.addEventListener('mouseup', function() { isDragging = false; });
@@ -427,6 +438,38 @@ st.sidebar.markdown("---")
 with st.sidebar.expander("Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
+
+# Scilem Assistant sitting in the sidebar by default (minimised/draggable)
+scilem_container = st.sidebar.container()
+with scilem_container:
+    st.markdown("""
+    <div id='scilem-drag-handle'>
+        <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
+            <span>Scilem Assistant</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    floating_chat_container = st.container(height=240)
+    with floating_chat_container:
+        for idx, message in enumerate(st.session_state.scilem_messages):
+            msg_avatar = "🧠" if message["role"] == "assistant" else "👤"
+            with st.chat_message(message["role"], avatar=msg_avatar):
+                st.markdown(message["content"])
+
+    with st.form(key="scilem_floating_form", clear_on_submit=False):
+        f_cols = st.columns([3, 1])
+        with f_cols[0]:
+            floating_prompt = st.text_input("Ask Scilem...", value="", label_visibility="collapsed")
+        with f_cols[1]:
+            submitted_floating = st.form_submit_button("Send")
+            if submitted_floating and floating_prompt.strip():
+                st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
+                st.session_state.scilem_messages.append({
+                    "role": "assistant",
+                    "content": f"Scilem active. Synthesizing response regarding: '{floating_prompt.strip()}'."
+                })
+                st.rerun()
 
 def refine_science_field(s):
     s_lower = s.lower()
@@ -715,7 +758,6 @@ def evaluation_metrics_dialog():
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
     st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
-    st.caption("Decentralized Science Assessment Engine with Zero-Knowledge Auditing & Sanitized IPFS Backups")
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
@@ -1570,7 +1612,7 @@ with bottom_col1:
                             "title": u_title,
                             "author_name": u_author,
                             "score": u_score,
-                            "logic_integrity": u_logic,
+                            "logic_integrity": u_logic if u_logic is not None else 75.0,
                             "scores_dict": {
                                 "C1_Semantic_Originality": u_c1, "C2_Methodological_Rigor_SciScore": u_c2,
                                 "C3_Interdisciplinary_Entropy": u_c3, "C4_Societal_Impact": u_c4,
@@ -1656,7 +1698,7 @@ with bottom_col1:
                             "title": r_title,
                             "author_name": r_author,
                             "score": r_score,
-                            "logic_integrity": r_logic,
+                            "logic_integrity": r_logic if r_logic is not None else 75.0,
                             "scores_dict": {
                                 "C1_Semantic_Originality": r_c1, "C2_Methodological_Rigor_SciScore": r_c2,
                                 "C3_Interdisciplinary_Entropy": r_c3, "C4_Societal_Impact": r_c4,
@@ -1854,7 +1896,7 @@ try:
                                     "title": m_title,
                                     "author_name": m_author,
                                     "score": m_score,
-                                    "logic_integrity": m_logic,
+                                    "logic_integrity": m_logic if m_logic is not None else 75.0,
                                     "scores_dict": {
                                         "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
                                         "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
@@ -2026,40 +2068,8 @@ def framework_workflow_dialog():
 
 st.markdown("---")
 
-# Clean, non-floating centered workflow section
+# Clean, non-floating centered workflow button
 col_pad1, col_center, col_pad2 = st.columns([1, 2, 1])
 with col_center:
     if st.button("The Pi-Index Framework Workflow", use_container_width=True):
         framework_workflow_dialog()
-
-# Floating Draggable Scilem Corner Chatbot Window
-scilem_container = st.container()
-with scilem_container:
-    st.markdown("""
-    <div id='scilem-drag-handle'>
-        <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
-            <span>Scilem Assistant</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    floating_chat_container = st.container(height=240)
-    with floating_chat_container:
-        for idx, message in enumerate(st.session_state.scilem_messages):
-            msg_avatar = "🧠" if message["role"] == "assistant" else "👤"
-            with st.chat_message(message["role"], avatar=msg_avatar):
-                st.markdown(message["content"])
-
-    with st.form(key="scilem_floating_form", clear_on_submit=False):
-        f_cols = st.columns([3, 1])
-        with f_cols[0]:
-            floating_prompt = st.text_input("Ask Scilem...", value="", label_visibility="collapsed")
-        with f_cols[1]:
-            submitted_floating = st.form_submit_button("Send")
-            if submitted_floating and floating_prompt.strip():
-                st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
-                st.session_state.scilem_messages.append({
-                    "role": "assistant",
-                    "content": f"Scilem active. Synthesizing response regarding: '{floating_prompt.strip()}'."
-                })
-                st.rerun()
