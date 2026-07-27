@@ -19,13 +19,13 @@ from config import (
 w3 = Web3(Web3.HTTPProvider(WEB3_PROVIDER_URI))
 
 def derive_encryption_key(secret_seed: str) -> bytes:
-    """Derives a deterministic Fernet key for pre-encrypting IPFS backups[cite: 3]."""
+    """Derives a deterministic Fernet key for pre-encrypting IPFS backups."""
     key = hashlib.sha256(secret_seed.encode('utf-8')).digest()
     import base64
     return base64.urlsafe_b64encode(key)
 
 def safe_extract_zip(zip_path: str, extract_to: str):
-    """Secure extraction avoiding zip-slip path traversal vulnerabilities[cite: 3]."""
+    """Secure extraction avoiding zip-slip path traversal vulnerabilities."""
     extract_to = os.path.abspath(extract_to)
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         for member in zip_ref.infolist():
@@ -36,7 +36,7 @@ def safe_extract_zip(zip_path: str, extract_to: str):
             zip_ref.extract(member, extract_to)
 
 def restore_state_from_web3():
-    """Fetches, decrypts, and restores sanitized state archives from IPFS[cite: 3]."""
+    """Fetches, decrypts, and restores sanitized state archives from IPFS."""
     if not w3.is_connected() or not REGISTRY_CONTRACT_ADDRESS:
         return
     try:
@@ -75,16 +75,16 @@ def restore_state_from_web3():
 
 def backup_state_to_web3() -> bool:
     """
-    Remediates IPFS Data Exfiltration[cite: 3]:
+    Remediates IPFS Data Exfiltration:
     Enforces strict manifest exclusion (strips .env, keys, config) and pre-encrypts
-    payloads using AES-256 Fernet before uploading to public IPFS gateways[cite: 3].
+    payloads using AES-256 Fernet before uploading to public IPFS gateways.
     """
     if not w3.is_connected() or not PINATA_API_KEY or not REGISTRY_CONTRACT_ADDRESS or not ETH_ADMIN_PRIVATE_KEY:
         return False
     
     temp_dir = tempfile.mkdtemp()
     try:
-        # Strict Inclusion Manifest: Only backup public state databases and non-sensitive weights[cite: 3]
+        # Strict Inclusion Manifest: Only backup public state databases and non-sensitive weights
         safe_items = ["pi_index.db", "scilem_rlhf_dataset.jsonl", "pidyne_weights.pt"]
         for item in safe_items:
             src = os.path.join(BASE_DIR, item)
@@ -99,7 +99,7 @@ def backup_state_to_web3() -> bool:
                         fp = os.path.join(root, f)
                         zipf.write(fp, os.path.relpath(fp, temp_dir))
 
-        # AES-256 Cryptographic Pre-Encryption[cite: 3]
+        # AES-256 Cryptographic Pre-Encryption
         fernet = Fernet(derive_encryption_key(ETH_ADMIN_PRIVATE_KEY))
         with open(raw_zip_path, 'rb') as fp:
             encrypted_payload = fernet.encrypt(fp.read())
@@ -153,8 +153,8 @@ def validate_block_por(
     formulas_hash: str,
 ):
     """
-    Remediates MD5/Entropy Consensus Failure[cite: 3]:
-    Replaces MD5 timestamp truncation with SHA-256 HMAC signed node identities[cite: 3].
+    Remediates MD5/Entropy Consensus Failure:
+    Replaces MD5 timestamp truncation with SHA-256 HMAC signed node identities.
     """
     secret = (ETH_ADMIN_PRIVATE_KEY or "por_entropy_seed").encode('utf-8')
     node_sig = hmac.new(secret, f"{timestamp}:{block_index}".encode('utf-8'), hashlib.sha256).hexdigest()[:12]
@@ -169,8 +169,8 @@ def validate_block_por(
 
 def generate_zk_snark_proof(eval_hash: str, final_score: float, logic_score: float, email_str="None") -> str:
     """
-    Remediates Mock ZK-Proof Vulnerability[cite: 3]:
-    Constructs an authenticated, time-bound cryptographic proof payload signed via HMAC-SHA256[cite: 3].
+    Remediates Mock ZK-Proof Vulnerability:
+    Constructs an authenticated, time-bound cryptographic proof payload signed via HMAC-SHA256.
     """
     nonce = str(time.time_ns())
     circuit_payload = f"ZK_CIRCUIT_V2:{eval_hash}:{final_score:.4f}:{logic_score:.4f}:{email_str}:{nonce}"
@@ -180,9 +180,9 @@ def generate_zk_snark_proof(eval_hash: str, final_score: float, logic_score: flo
 
 def mint_pi_quotient_token(book_address: str, amount: float, eval_hash: str, zk_proof: str) -> str:
     """
-    Remediates Address Spoofing & Token Locking[cite: 3]:
-    Strictly enforces valid Ethereum checksum addresses (ECDSA)[cite: 3].
-    Rejects unverified plaintext SHA-256 pseudo-addresses[cite: 3].
+    Remediates Address Spoofing & Token Locking:
+    Strictly enforces valid Ethereum checksum addresses (ECDSA).
+    Rejects unverified plaintext SHA-256 pseudo-addresses.
     """
     if not w3.is_connected() or not ETH_ADMIN_PRIVATE_KEY:
         return "Not Connected / Missing Admin Key"
