@@ -96,10 +96,10 @@ def preprocess_pdf_layout(pdf_bytes, fname):
             text_blocks.append(page.get_text("text", sort=True))
         full_text = "\n".join(text_blocks)
         if len(full_text.strip()) > 50:
-            add_log(f"Successfully extracted {len(full_text)} characters.")
+            add_log(f"Successfully extracted {len(full_text)} characters from {fname}.")
             return create_virtual_pdf_from_text(full_text, title=fname)
     except Exception as e:
-        add_log(f"PyMuPDF fallback triggered due to exception: {e}")
+        add_log(f"PyMuPDF fallback triggered for {fname}: {e}")
         logging.warning(f"PyMuPDF layout extraction fallback triggered: {e}")
     return pdf_bytes
 
@@ -445,7 +445,7 @@ current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
 current_email = "None"
 
 st.sidebar.markdown("---")
-with st.sidebar.expander("🖥️ Live System Monitor", expanded=False):
+with st.sidebar.expander("🖥️ Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
 
@@ -791,7 +791,7 @@ if "pending_indeterminate_item" in st.session_state and st.session_state["pendin
                 (
                     title, author_name, score, logic_integrity, drift, rec,
                     fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
                 ) = process_single_pdf(
                     item["file_bytes"], 
                     item["filename"], 
@@ -822,6 +822,60 @@ if "pending_indeterminate_item" in st.session_state and st.session_state["pendin
         if st.button("❌ Discard / Cancel", key="btn_indet_cancel"):
             add_log(f"Indeterminate manuscript discarded: {item['filename']}")
             del st.session_state["pending_indeterminate_item"]
+            st.rerun()
+            
+    st.stop()
+
+# --- Security & Anti-Abuse Violation Interception Handler ---
+if "pending_security_item" in st.session_state and st.session_state["pending_security_item"]:
+    sec_item = st.session_state["pending_security_item"]
+    
+    st.error(
+        f"🛡️ **Security & Anti-Abuse Restrictions Triggered:** Token minting and publishing approval for "
+        f"**{sec_item['filename']}** were restricted due to the following reasons:"
+    )
+    for v_idx, violation in enumerate(sec_item["security_violations"]):
+        st.markdown(f"- **[Violation {v_idx+1}]** {violation}")
+    
+    st.markdown("---")
+    col_skip_sec, col_cancel_sec = st.columns(2)
+    with col_skip_sec:
+        if st.button("🛡️ Skip Security Checks & Force Mint", type="primary", key="btn_sec_skip"):
+            with st.spinner("Bypassing security filters and forcing ledger mint..."):
+                (
+                    title, author_name, score, logic_integrity, drift, rec,
+                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
+                ) = process_single_pdf(
+                    sec_item["file_bytes"], 
+                    sec_item["filename"], 
+                    sec_item["scope"], 
+                    sec_item["user_id"], 
+                    book_address="None",
+                    email=sec_item["email"], 
+                    provided_doi=sec_item["doi"], 
+                    force_security_override=True
+                )
+                
+                eval_record = {
+                    "title": title, "author_name": clean_author_name(author_name),
+                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                    "rec": rec, "fields": fields, "subfields": subfields,
+                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                    "filename": sec_item["filename"],
+                }
+                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                add_log(f"Security checks bypassed successfully. Forced token minting executed for {sec_item['filename']}")
+                
+            del st.session_state["pending_security_item"]
+            st.rerun()
+            
+    with col_cancel_sec:
+        if st.button("❌ Discard / Cancel Submission", key="btn_sec_cancel"):
+            add_log(f"Submission discarded due to security restrictions: {sec_item['filename']}")
+            del st.session_state["pending_security_item"]
             st.rerun()
             
     st.stop()
@@ -982,22 +1036,28 @@ with st.container(border=True):
                         (
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
                         ) = process_single_pdf(
                             clean_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                         )
                         if indeterminate_reason:
                             st.session_state["pending_indeterminate_item"] = {
-                                "file_bytes": clean_bytes,
-                                "filename": fname,
-                                "scope": scope_val,
-                                "user_id": current_user,
-                                "email": current_email,
-                                "doi": p_doi,
+                                "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
+                                "user_id": current_user, "email": current_email, "doi": p_doi,
                                 "indeterminate_reason": indeterminate_reason,
                             }
                             st.session_state["is_running"] = False
                             add_log(f"Indeterminate parsing detected for OpenAlex target: {fname}")
+                            st.rerun()
+
+                        if security_violations:
+                            st.session_state["pending_security_item"] = {
+                                "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
+                                "user_id": current_user, "email": current_email, "doi": p_doi,
+                                "security_violations": security_violations,
+                            }
+                            st.session_state["is_running"] = False
+                            add_log(f"Security violations triggered for OpenAlex target: {fname}")
                             st.rerun()
 
                         eval_record = {
@@ -1013,22 +1073,10 @@ with st.container(border=True):
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
                         add_log(f"Successfully processed and recorded evaluation for {fname}")
                     else:
-                        clean_doi = (
-                            p_doi.replace("https://doi.org/", "").strip()
-                            if p_doi
-                            else "None"
-                        )
-                        doi_url = (
-                            f"https://doi.org/{clean_doi}"
-                            if clean_doi and clean_doi != "None"
-                            else (p.get("pdf_url") or "N/A")
-                        )
-                        err_item = {
-                            "title": p.get("title", "Unknown Title"),
-                            "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A",
-                            "url": doi_url,
-                        }
-                        add_log(f"Publisher access restriction encountered for OpenAlex target.")
+                        clean_doi = p_doi.replace("https://doi.org/", "").strip() if p_doi else "None"
+                        doi_url = f"https://doi.org/{clean_doi}" if clean_doi and clean_doi != "None" else (p.get("pdf_url") or "N/A")
+                        err_item = {"title": p.get("title", "Unknown Title"), "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A", "url": doi_url}
+                        add_log("Publisher access restriction encountered for OpenAlex target.")
                         if err_item not in st.session_state["download_errors"]:
                             st.session_state["download_errors"].append(err_item)
 
@@ -1061,22 +1109,28 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                     )
                     if indeterminate_reason:
                         st.session_state["pending_indeterminate_item"] = {
-                            "file_bytes": clean_bytes,
-                            "filename": fname,
-                            "scope": scope_val,
-                            "user_id": current_user,
-                            "email": current_email,
-                            "doi": doi_snap.strip(),
+                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
+                            "user_id": current_user, "email": current_email, "doi": doi_snap.strip(),
                             "indeterminate_reason": indeterminate_reason,
                         }
                         st.session_state["is_running"] = False
                         add_log(f"Indeterminate parsing detected for DOI: {doi_snap}")
+                        st.rerun()
+
+                    if security_violations:
+                        st.session_state["pending_security_item"] = {
+                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
+                            "user_id": current_user, "email": current_email, "doi": doi_snap.strip(),
+                            "security_violations": security_violations,
+                        }
+                        st.session_state["is_running"] = False
+                        add_log(f"Security violations triggered for DOI: {doi_snap}")
                         st.rerun()
 
                     eval_record = {
@@ -1090,16 +1144,12 @@ with st.container(border=True):
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                    add_log(f"Successfully evaluated and logged DOI source.")
+                    add_log("Successfully evaluated and logged DOI source.")
                 else:
                     clean_doi = doi_snap.replace("https://doi.org/", "").strip()
                     doi_url = f"https://doi.org/{clean_doi}"
-                    err_item = {
-                        "title": f"DOI Input: {clean_doi}",
-                        "doi": clean_doi,
-                        "url": doi_url,
-                    }
-                    add_log(f"Publisher access blocks direct binary extraction for standalone DOI.")
+                    err_item = {"title": f"DOI Input: {clean_doi}", "doi": clean_doi, "url": doi_url}
+                    add_log("Publisher access blocks direct binary extraction for standalone DOI.")
                     if err_item not in st.session_state["download_errors"]:
                         st.session_state["download_errors"].append(err_item)
 
@@ -1119,22 +1169,28 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, "None",
                     )
                     if indeterminate_reason:
                         st.session_state["pending_indeterminate_item"] = {
-                            "file_bytes": clean_bytes,
-                            "filename": fname,
-                            "scope": scope_val,
-                            "user_id": current_user,
-                            "email": current_email,
-                            "doi": "None",
+                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
+                            "user_id": current_user, "email": current_email, "doi": "None",
                             "indeterminate_reason": indeterminate_reason,
                         }
                         st.session_state["is_running"] = False
                         add_log(f"Indeterminate parsing detected for local file: {fname}")
+                        st.rerun()
+
+                    if security_violations:
+                        st.session_state["pending_security_item"] = {
+                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
+                            "user_id": current_user, "email": current_email, "doi": "None",
+                            "security_violations": security_violations,
+                        }
+                        st.session_state["is_running"] = False
+                        add_log(f"Security violations triggered for local file: {fname}")
                         st.rerun()
 
                     eval_record = {
@@ -1165,10 +1221,7 @@ with st.container(border=True):
     else:
         if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
             if not stake_amount:
-                st.error(
-                    "You must agree to the piQ micro-stake to execute the assessment"
-                    " pipeline."
-                )
+                st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
             elif (
                 not selected_uploaded_files
                 and not (include_doi and doi_input.strip())
