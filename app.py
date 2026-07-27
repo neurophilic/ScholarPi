@@ -775,18 +775,18 @@ with col_t2:
 
 st.markdown("")
 
-# --- Indeterminate Format Interception Handler ---
-if "pending_indeterminate_item" in st.session_state and st.session_state["pending_indeterminate_item"]:
-    item = st.session_state["pending_indeterminate_item"]
-    
+# --- Pop-up Modal: Indeterminate Format Interception Handler ---
+@st.dialog("⚠️ Indeterminate Format Interception", width="large")
+def indeterminate_format_dialog(item):
     st.warning(
-        f"⚠️ **Indeterminate Format Detected:** The parser flagged **{item['filename']}** for the following reason:\n\n"
+        f"The parser flagged **{item['filename']}** for the following structural reason:\n\n"
         f"> *{item['indeterminate_reason']}*"
     )
+    st.markdown("You can force override this check, or discard the manuscript.")
     
     col_proceed, col_cancel = st.columns(2)
     with col_proceed:
-        if st.button("🚀 Go ahead anyways", type="primary", key="btn_indet_proceed"):
+        if st.button("🚀 Go ahead anyways", type="primary", key="btn_indet_proceed_modal"):
             with st.spinner("Processing manuscript with forced override..."):
                 (
                     title, author_name, score, logic_integrity, drift, rec,
@@ -819,20 +819,17 @@ if "pending_indeterminate_item" in st.session_state and st.session_state["pendin
             st.rerun()
             
     with col_cancel:
-        if st.button("❌ Discard / Cancel", key="btn_indet_cancel"):
+        if st.button("❌ Discard / Cancel", key="btn_indet_cancel_modal"):
             add_log(f"Indeterminate manuscript discarded: {item['filename']}")
             del st.session_state["pending_indeterminate_item"]
             st.rerun()
-            
-    st.stop()
 
-# --- Security & Anti-Abuse Violation Interception Handler ---
-if "pending_security_item" in st.session_state and st.session_state["pending_security_item"]:
-    sec_item = st.session_state["pending_security_item"]
-    
+# --- Pop-up Modal: Security & Anti-Abuse Violation Interception Handler ---
+@st.dialog("🛡️ Security & Anti-Abuse Restrictions", width="large")
+def security_violations_dialog(sec_item):
     st.error(
-        f"🛡️ **Security & Anti-Abuse Restrictions Triggered:** Token minting and publishing approval for "
-        f"**{sec_item['filename']}** were restricted due to the following reasons:"
+        f"Token minting and publishing approval for **{sec_item['filename']}** "
+        f"were restricted due to the following itemized violations:"
     )
     for v_idx, violation in enumerate(sec_item["security_violations"]):
         st.markdown(f"- **[Violation {v_idx+1}]** {violation}")
@@ -840,7 +837,7 @@ if "pending_security_item" in st.session_state and st.session_state["pending_sec
     st.markdown("---")
     col_skip_sec, col_cancel_sec = st.columns(2)
     with col_skip_sec:
-        if st.button("🛡️ Skip Security Checks & Force Mint", type="primary", key="btn_sec_skip"):
+        if st.button("🛡️ Skip Security Checks & Force Mint", type="primary", key="btn_sec_skip_modal"):
             with st.spinner("Bypassing security filters and forcing ledger mint..."):
                 (
                     title, author_name, score, logic_integrity, drift, rec,
@@ -873,12 +870,17 @@ if "pending_security_item" in st.session_state and st.session_state["pending_sec
             st.rerun()
             
     with col_cancel_sec:
-        if st.button("❌ Discard / Cancel Submission", key="btn_sec_cancel"):
+        if st.button("❌ Discard / Cancel Submission", key="btn_sec_cancel_modal"):
             add_log(f"Submission discarded due to security restrictions: {sec_item['filename']}")
             del st.session_state["pending_security_item"]
             st.rerun()
-            
-    st.stop()
+
+# Automatically trigger pop-up modals if pending items exist
+if "pending_indeterminate_item" in st.session_state and st.session_state["pending_indeterminate_item"]:
+    indeterminate_format_dialog(st.session_state["pending_indeterminate_item"])
+
+if "pending_security_item" in st.session_state and st.session_state["pending_security_item"]:
+    security_violations_dialog(st.session_state["pending_security_item"])
 
 with st.container(border=True):
     selected_uploaded_files = []
@@ -1916,7 +1918,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
