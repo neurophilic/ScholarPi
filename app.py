@@ -178,7 +178,6 @@ const parentDoc = window.parent.document;
 parentDoc.addEventListener('click', function(e) {
     let handle = e.target.closest('#scilem-drag-handle');
     if (handle) {
-        // Toggle minimize/expand if clicked without dragging significantly
         let block = handle.closest('[data-draggable="true"]');
         if (block && !window._wasDragging) {
             let isMin = block.getAttribute('data-minimized') === 'true';
@@ -223,7 +222,6 @@ function initUI() {
                 block.setAttribute('data-draggable', 'true');
                 block.setAttribute('data-minimized', 'true');
                 
-                // Initially collapsed in sidebar
                 let children = Array.from(block.children);
                 children.forEach(child => {
                     if (child !== handle && !child.contains(handle)) {
@@ -244,7 +242,6 @@ function initUI() {
                     initialX = rect.left;
                     initialY = rect.top;
                     
-                    // Detach to fixed floating position on drag
                     block.style.position = 'fixed';
                     block.style.left = initialX + 'px';
                     block.style.top = initialY + 'px';
@@ -352,7 +349,6 @@ if "scilem_messages" not in st.session_state:
         }
     ]
 
-# Initialize Default Session States for Authentication
 if "is_authenticated" not in st.session_state:
     st.session_state.is_authenticated = False
     st.session_state.auth_method = "Anonymous"
@@ -439,7 +435,6 @@ with st.sidebar.expander("Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
 
-# Scilem Assistant sitting in the sidebar by default (minimised/draggable)
 scilem_container = st.sidebar.container()
 with scilem_container:
     st.markdown("""
@@ -1113,64 +1108,72 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
-    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM & Scilem Extractions", "Merged Evidence Report"])
+    # --- Section 1: Overview & Ledger ---
+    st.markdown("### Overview & Ledger")
+    st.write(f"**File Name:** `{filename}`")
+    st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
+    st.write(f"**Unique Book Address:** `{author_book}`")
+    st.write(f"**piQ Minted:** `{piq}`")
+    st.markdown(f"**zk-SNARK Proof:** `{zk_proof}`", unsafe_allow_html=True)
+    
+    tx_url = safe_get_sepolia_url(tx_hash)
+    tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
+    if tx_url:
+        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
+    else:
+        st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-    with tab_overview:
-        st.write(f"**File Name:** `{filename}`")
-        st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
-        st.write(f"**Unique Book Address:** `{author_book}`")
-        st.write(f"**piQ Minted:** `{piq}`")
-        st.markdown(f"**zk-SNARK Proof:** `{zk_proof}`", unsafe_allow_html=True)
-        
-        tx_url = safe_get_sepolia_url(tx_hash)
-        tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
-        if tx_url:
-            st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
-        else:
-            st.write(f"**Tx Hash:** `{tx_disp_val}`")
+    st.markdown(f"**Executable Reproducibility Score:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
+    st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
 
-        st.markdown(f"**Executable Reproducibility Score:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
-        st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
+    st.markdown("---")
 
-    with tab_llms:
-        st.markdown("### Independent Model Extractions (Llama, Mistral, Qwen, Gemini, Scilem)")
-        if consensus_raw and isinstance(consensus_raw, dict):
-            llm_cols = st.columns(2)
-            target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"]
-            for idx, llm_key in enumerate(target_llms):
-                col = llm_cols[idx % 2]
-                with col:
-                    data = consensus_raw.get(llm_key, {})
-                    with st.expander(f"Model: {llm_key.upper()} (Rating: {data.get('rating', 'N/A')}/100)", expanded=True):
-                        st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
-                        st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
-                        st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
-                        refs = data.get("references", [])
-                        if refs:
-                            st.markdown(f"**References ({len(refs)}):**")
-                            for r in refs[:3]:
-                                if isinstance(r, dict):
-                                    st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
-                                else:
-                                    st.markdown(f"- {r}")
-        else:
-            st.info("No individual LLM raw opinion payloads stored.")
+    # --- Section 2: Multi-LLM & Scilem Extractions ---
+    st.markdown("### Multi-LLM & Scilem Extractions")
+    if consensus_raw and isinstance(consensus_raw, dict):
+        llm_cols = st.columns(2)
+        target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"]
+        for idx, llm_key in enumerate(target_llms):
+            col = llm_cols[idx % 2]
+            with col:
+                data = consensus_raw.get(llm_key, {})
+                with st.container(border=True):
+                    st.markdown(f"**Model: {llm_key.upper()} (Rating: {data.get('rating', 'N/A')}/100)**")
+                    st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
+                    st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
+                    st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                    refs = data.get("references", [])
+                    if refs:
+                        st.markdown(f"**References ({len(refs)}):**")
+                        for r in refs[:3]:
+                            if isinstance(r, dict):
+                                st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
+                            else:
+                                st.markdown(f"- {r}")
+    else:
+        st.info("No individual LLM raw opinion payloads stored.")
 
-    with tab_report:
-        st.markdown("### Synthesized Evidence Report (Pidyne Input)")
-        if evidence_report_text:
-            st.markdown(evidence_report_text)
-            st.download_button(
-                label="Download Final Evidence Report (.md)",
-                data=evidence_report_text,
-                file_name=f"Evidence_Report_{eval_hash[:10]}.md",
-                mime="text/markdown",
-                use_container_width=True,
-                key=f"dl_report_modal_{eval_hash}_{time.time()}"
-            )
-        else:
-            st.info("No merged evidence report generated for this manuscript.")
+    st.markdown("---")
 
+    # --- Section 3: Merged Evidence Report ---
+    st.markdown("### Synthesized Evidence Report (Pidyne Input)")
+    if evidence_report_text:
+        st.markdown(evidence_report_text)
+        st.download_button(
+            label="Download Final Evidence Report (.md)",
+            data=evidence_report_text,
+            file_name=f"Evidence_Report_{eval_hash[:10]}.md",
+            mime="text/markdown",
+            use_container_width=True,
+            key=f"dl_report_modal_{eval_hash}_{time.time()}"
+        )
+    else:
+        st.info("No merged evidence report generated for this manuscript.")
+
+    st.markdown("---")
+
+    # --- Section 4: Criteria Breakdown & Score Matrix ---
+    st.markdown("### Criteria Breakdown & Score Matrix")
     breakdown_df = pd.DataFrame({
         "Criterion": [
             "C1: Semantic Originality",
@@ -1316,7 +1319,6 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-# Analytics Section
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
@@ -1546,7 +1548,6 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-# Bottom Section: Assessed Papers & Leaderboard
 bottom_col1, bottom_col2 = st.columns(2, vertical_alignment="top")
 
 with bottom_col1:
@@ -2068,7 +2069,6 @@ def framework_workflow_dialog():
 
 st.markdown("---")
 
-# Clean, non-floating centered workflow button
 col_pad1, col_center, col_pad2 = st.columns([1, 2, 1])
 with col_center:
     if st.button("The Pi-Index Framework Workflow", use_container_width=True):
