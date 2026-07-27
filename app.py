@@ -1522,7 +1522,7 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-# --- Side-by-Side Section: Latest Assessed Papers / History & Pi Quotient (piQ) Leaderboard ---
+# --- Side-by-Side Section: Latest Assessed Papers & Pi Quotient Leaderboard ---
 bottom_col1, bottom_col2 = st.columns(2, vertical_alignment="top")
 
 with bottom_col1:
@@ -1533,7 +1533,8 @@ with bottom_col1:
             cur_h.execute(
                 """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
                           p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                          b.block_height, b.block_hash
+                          b.block_height, b.block_hash, p.mdar_adherence_score, 
+                          p.rrid_valid_count, p.reproducibility_score
                    FROM papers_assessment p
                    LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                    WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
@@ -1551,7 +1552,7 @@ with bottom_col1:
                 (
                     u_title, u_author, u_filename, u_score, u_logic,
                     u_piq, u_tx, u_zk, u_hash, u_time,
-                    u_block_height, u_block_hash
+                    u_block_height, u_block_hash, u_mdar, u_rrid, u_repro
                 ) = uh
 
                 u_author_clean = clean_author_name(u_author)
@@ -1564,20 +1565,19 @@ with bottom_col1:
                     f"[{idx+1}] {u_title[:50]}... — *{u_author_clean}* (Score: **{u_score:.2f}** | piQ: `{u_piq}`)",
                     expanded=False,
                 ):
-                    st.write(f"**Title:** {u_title}")
-                    st.write(f"**Author(s):** {u_author_clean}")
-                    st.write(f"**Timestamp:** `{u_time}`")
-                    st.write(f"**Evaluation Hash (Eval Hash):** `{u_hash}`")
-                    st.write(f"**Block Height:** `{u_block_height if u_block_height is not None else 'Pending'}`")
-                    st.write(f"**Block Hash:** `{u_block_hash if u_block_hash is not None else 'Pending'}`")
-                    st.write(f"**Unique Author Book Address:** `{u_book}`")
-                    st.write(f"**piQ Rewards Earned:** `{u_piq} piQ`")
-                    st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{u_zk}`", unsafe_allow_html=True)
+                    st.write(f"**File Name:** {u_filename if u_filename else 'N/A'}")
+                    st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
+                    st.write(f"**Unique Author Book Address (eth_book):** `{u_book}`")
+                    st.write(f"**piQ Minted:** `{u_piq}`")
+                    st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{u_zk}`", unsafe_allow_html=True)
                     
                     if u_tx_url:
-                        st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({u_tx_url})")
+                        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({u_tx_url})")
                     else:
                         st.write(f"**Tx Hash:** `{tx_disp_val}`")
+
+                    st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{u_repro * 100:.1f}%`", unsafe_allow_html=True)
+                    st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{u_mdar * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
         else:
             st.info("No assessment history or rewards found linked to this authenticated ID.")
     else:
@@ -1621,49 +1621,24 @@ with bottom_col1:
                     f"[{idx+1}] {r_title[:50]}... — *{r_author_clean}* (Score: **{r_score:.2f}**)",
                     expanded=False,
                 ):
-                    st.write(f"**Title:** {r_title}")
-                    st.write(f"**Author(s):** {r_author_clean}")
-                    st.write(f"**Timestamp:** `{r_time}`")
-                    st.write(f"**Evaluation Hash (Eval Hash):** `{r_hash}`")
-                    st.write(f"**Block Height:** `{r_block_height if r_block_height is not None else 'Pending'}`")
-                    st.write(f"**Block Hash:** `{r_block_hash if r_block_hash is not None else 'Pending'}`")
-                    st.write(f"**Unique Author Book Address:** `{r_book}`")
+                    st.write(f"**File Name:** {r_filename if r_filename else 'N/A'}")
+                    st.write(f"**Evaluation Hash (Paper Address):** `{r_hash}`")
+                    st.write(f"**Unique Author Book Address (eth_book):** `{r_book}`")
                     st.write(f"**piQ Minted:** `{r_piq}`")
-                    st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{r_zk}`", unsafe_allow_html=True)
+                    st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{r_zk}`", unsafe_allow_html=True)
                     
                     if r_tx_url:
-                        st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({r_tx_url})")
+                        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({r_tx_url})")
                     else:
                         st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                    st.write(
-                        f"**Logic Integrity:** `{r_logic:.1f}%` | **Reproducibility:**"
-                        f" `{r_repro * 100:.1f}%` | **MDAR Adherence:**"
-                        f" `{r_mdar * 100:.1f}%`"
-                    )
-
-                    r_df = pd.DataFrame({
-                        "Criterion": [
-                            "C1: Semantic Originality",
-                            "C2: Methodological Rigor (SciScore)",
-                            "C3: Interdisciplinary Entropy",
-                            "C4: Societal Impact",
-                            "C5: Open Science & Repro",
-                            "C6: Literature Integration",
-                            "C7: Empirical Density",
-                            "C8: Future Actionability & FAIR",
-                        ],
-                        "Score (0-100)": [
-                            r_c1, r_c2, r_c3, r_c4,
-                            r_c5, r_c6, r_c7, r_c8,
-                        ],
-                    })
-                    st.dataframe(r_df, hide_index=True, use_container_width=True)
+                    st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{r_repro * 100:.1f}%`", unsafe_allow_html=True)
+                    st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{r_mdar * 100:.1f}%` | **Valid RRIDs:** `{r_rrid}`", unsafe_allow_html=True)
 
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
     search_query_top = st.text_input(
-        "Search Explorer by Author or Book Address:",
+        "Search Leaderboard by Author or Book Address:",
         placeholder="Enter author name or 0x...",
         key="top_search_query_input"
     )
@@ -1758,46 +1733,19 @@ try:
                             f" **{m_score:.2f}** | {m_time[:16]})",
                             expanded=True,
                         ):
-                            st.write(f"**Title:** {m_title}")
-                            st.write(f"**Author(s):** {m_author_clean}")
-                            st.write(f"**Timestamp:** `{m_time}`")
-                            st.write(f"**Evaluation Hash (Eval Hash):** `{m_hash}`")
-                            st.write(f"**Block Height:** `{m_block_height if m_block_height is not None else 'Pending'}`")
-                            st.write(f"**Block Hash:** `{m_block_hash if m_block_hash is not None else 'Pending'}`")
-                            st.markdown(f"**Proof-of-Research {rbot('proof-of-research')} (PoR):** `{m_por}`", unsafe_allow_html=True)
-                            st.write(f"**Formulas State Hash:** `{m_form}`")
-                            st.write(f"**Unique Author Book Address:** `{m_book}`")
+                            st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
+                            st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
+                            st.write(f"**Unique Author Book Address (eth_book):** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{m_zk}`", unsafe_allow_html=True)
+                            st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{m_zk}`", unsafe_allow_html=True)
                             
                             if m_tx_url:
-                                st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({m_tx_url})")
+                                st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
                             else:
                                 st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                            st.write(
-                                f"**Logic Integrity:** `{m_logic:.1f}%` | **Reproducibility:**"
-                                f" `{m_repro * 100:.1f}%` | **MDAR Adherence:**"
-                                f" `{m_mdar * 100:.1f}%`"
-                            )
-
-                            m_df = pd.DataFrame({
-                                "Criterion": [
-                                    "C1: Semantic Originality",
-                                    "C2: Methodological Rigor (SciScore)",
-                                    "C3: Interdisciplinary Entropy",
-                                    "C4: Societal Impact",
-                                    "C5: Open Science & Repro",
-                                    "C6: Literature Integration",
-                                    "C7: Empirical Density",
-                                    "C8: Future Actionability & FAIR",
-                                ],
-                                "Score (0-100)": [
-                                    m_c1, m_c2, m_c3, m_c4,
-                                    m_c5, m_c6, m_c7, m_c8,
-                                ],
-                            })
-                            st.dataframe(m_df, hide_index=True, use_container_width=True)
+                            st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
+                            st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
                 else:
                     st.error(
                         "No records matching that evaluation hash, block hash, paper name, or author name were found on the ledger."
