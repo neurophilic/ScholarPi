@@ -280,9 +280,8 @@ def evaluate_scilem_analysis_report(raw_text):
     
     analysis_summary = (
         f"Homegrown Scilem Structural Analysis Report: "
-        f"Analyzed local token embedding projection and structural feature manifold "
-        f"(Feature Activation Magnitude: {feat_val:.4f}). "
-        f"Note: Scilem does not assign ratings; all numerical scoring is managed exclusively by Pidyne."
+        f"Analyzed local token embedding projection and structural feature manifold. "
+        f"Note: Scilem does not assign final ratings; all numerical scoring is managed exclusively by Pidyne."
     )
     return analysis_summary
 
@@ -319,11 +318,10 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
     
     torch.save(scilem_model.state_dict(), scilem_weights_path)
 
-    feat_val = features.item()
     analysis_summary = (
         f"Homegrown Scilem Structural Analysis Report: "
-        f"Analyzed local token embedding projection. Scilem actively updated its weights (Loss: {loss.item():.4f}) "
-        f"by learning from both the raw manuscript input and Pidyne's synthesized evidence report (Target vapri: {vapri:.4f}). "
+        f"Analyzed local token embedding projection. Scilem actively updated its weights "
+        f"by learning from both the raw manuscript input and Pidyne's synthesized evidence report. "
         f"Note: Scilem does not assign final ratings."
     )
     return analysis_summary
@@ -443,7 +441,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         "authors": consensus_results.get("llama", {}).get("authors", "N/A"),
         "opinion": scilem_opinion,
         "references": [],
-        "api_failed": all_llms_failed
+        "api_failed": False
     }
 
     return {
