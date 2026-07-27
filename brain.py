@@ -196,7 +196,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     evolving_context = get_evolving_system_context()
     
     prompt = f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and audit variables.
-CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
+CRITICAL EQUITY & NORMALIZATION INSIGHT:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles.
 
 {evolving_context}
@@ -482,7 +482,7 @@ def process_single_pdf(
             else 0.0
         )
 
-        if cached_result:
+        if cached_result and not force_proceed:
             score, logic_score, title, fields_str, subfields_str, author_name, *rest = (
                 cached_result
             )
@@ -567,7 +567,13 @@ def process_single_pdf(
                 "Overall_Confidence": 0.0,
             }
 
-        confidence = raw_data.get("Overall_Confidence", 1.0)
+        confidence = float(raw_data.get("Overall_Confidence", 1.0))
+        extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
+        
+        # Robust heuristic override: if author or title resolution failed completely, force low confidence
+        if extracted_author_check.lower() in ["unidentified", "unknown", "none", ""]:
+            confidence = min(confidence, 0.40)
+
         if confidence < 0.50 and not force_proceed:
             empty_scores = {
                 k: 0.0
@@ -579,16 +585,14 @@ def process_single_pdf(
             }
             return (
                 "Indeterminate Format (Upload JSON Manifest)",
-                clean_author_name(raw_data.get("Extracted_Author", "Unidentified")),
+                clean_author_name(extracted_author_check),
                 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
                 empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
                 reproducibility_score, False, True,  # is_indeterminate = True
             )
 
         title = raw_data.get("Extracted_Title", filename)
-        extracted_author = clean_author_name(
-            str(raw_data.get("Extracted_Author", ""))
-        )
+        extracted_author = clean_author_name(extracted_author_check)
         extracted_topics = str(
             raw_data.get("Extracted_Topics", "Core Research Domain")
         ).strip()
