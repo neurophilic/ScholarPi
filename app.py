@@ -202,13 +202,6 @@ iframe {
 const parentDoc = window.parent.document;
 
 parentDoc.addEventListener('click', function(e) {
-    if (e.target && e.target.id === 'scilem-close-btn') {
-        let block = e.target.closest('[data-draggable="true"]');
-        if (block) block.style.display = 'none';
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-    }
     if (e.target && e.target.id === 'scilem-min-btn') {
         let block = e.target.closest('[data-draggable="true"]');
         if (block) {
@@ -275,7 +268,7 @@ function initUI() {
                 let startX, startY, initialX, initialY;
 
                 handle.addEventListener('mousedown', function(e) {
-                    if (e.target.id === 'scilem-close-btn' || e.target.id === 'scilem-min-btn') return;
+                    if (e.target.id === 'scilem-min-btn') return;
                     isDragging = true;
                     startX = e.clientX;
                     startY = e.clientY;
@@ -1962,7 +1955,6 @@ with scilem_container:
         <span class='robot-icon'>🤖</span> Scilem Assistant
         <div style='margin-left: auto; display: flex; gap: 8px; font-weight: normal;'>
             <span id='scilem-min-btn' title='Minimize/Expand' style='cursor: pointer; padding: 0 6px;'>_</span>
-            <span id='scilem-close-btn' title='Close' style='cursor: pointer; padding: 0 6px;'>&times;</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
