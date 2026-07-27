@@ -1191,38 +1191,6 @@ def more_details_dialog(item):
     if evidence_report_text:
         st.markdown(evidence_report_text)
         
-        if (
-            "LLM APIs failed" in evidence_report_text 
-            or "No consensus generated" in evidence_report_text 
-            or "External LLM APIs are inactive" in evidence_report_text
-            or "rate/credit limits" in evidence_report_text
-        ):
-            if st.button("Use Scilem Instead", key=f"use_scilem_fallback_{eval_hash}"):
-                try:
-                    f_path = os.path.join(st.session_state.get("session_temp_dir", ""), filename)
-                    if os.path.exists(f_path):
-                        with open(f_path, "rb") as f:
-                            bdata = f.read()
-                        import fitz
-                        doc = fitz.open(stream=bdata, filetype="pdf")
-                        txt = "\n".join([p.get_text("text", sort=True) for p in doc])
-                    else:
-                        txt = filename
-                    
-                    new_report = generate_scilem_fallback_report(txt)
-                    item["evidence_report_text"] = new_report
-                    evidence_report_text = new_report
-                    
-                    conn = get_db_connection()
-                    cur = conn.cursor()
-                    cur.execute("UPDATE papers_assessment SET evidence_report = ? WHERE eval_hash = ?", (new_report, eval_hash))
-                    conn.commit()
-                    conn.close()
-                    
-                    st.success("Successfully generated and applied Scilem fallback evidence report!")
-                except Exception as e:
-                    st.error(f"Failed to generate Scilem report: {e}")
-
         st.download_button(
             label="Download Final Evidence Report (.md)",
             data=evidence_report_text,
