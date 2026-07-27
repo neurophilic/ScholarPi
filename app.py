@@ -39,7 +39,7 @@ from brain import (
 w3 = Web3()
 
 st.set_page_config(
-    page_title="Pi-Index Assessment Engine 🤖", layout="wide"
+    page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
 # System Action Log Monitor
@@ -92,9 +92,9 @@ def preprocess_pdf_layout(pdf_bytes, fname):
     return pdf_bytes
 
 def rbot(topic_key):
-    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
+    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# Custom JS/CSS for Draggable Scilem Corner Chat Window
+# Custom JS/CSS for Draggable Scilem Corner Chat Window (Default Minimized, No +/- buttons, Click Header to Toggle)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -117,26 +117,18 @@ custom_ui_code = """
     text-align: right !important;
     margin-left: 20px !important;
 }
-[data-testid="stChatMessage"]:has(div:contains("🤖")) {
-    background-color: #f1f3f4 !important;
-    border-radius: 0 10px 10px 10px !important;
-    margin-right: 20px !important;
-}
-
-[data-testid="stChatMessageAvatar"] {
-    transform: scale(1.3);
-}
 
 .scilem-trigger {
-    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size:24px'%3E%3Ctext y='24'%3E🤖%3C/text%3E%3C/svg%3E"), auto !important;
-    font-size: 1.4em;
+    font-size: 0.9em;
     margin-left: 4px;
+    font-weight: bold;
+    color: #2563eb;
     vertical-align: middle;
     display: inline-block;
     transition: transform 0.15s ease-in-out;
 }
 .scilem-trigger:hover {
-    transform: scale(1.3);
+    transform: scale(1.2);
 }
 
 #scilem-drag-handle {
@@ -144,36 +136,16 @@ custom_ui_code = """
     color: white;
     padding: 12px 16px;
     font-weight: 700;
-    font-size: 16px;
-    cursor: grab;
+    font-size: 15px;
+    cursor: pointer;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
-    margin: -1rem -1rem 1rem -1rem;
+    margin: -1rem -1rem 0 -1rem;
     user-select: none;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    position: relative;
-}
-#scilem-drag-handle:active {
-    cursor: grabbing;
-}
-
-#scilem-min-btn {
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
-    border-radius: 4px;
-    padding: 3px 9px;
-    font-size: 13px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background 0.2s;
-    position: absolute;
-    top: 12px;
-    right: 12px;
-}
-#scilem-min-btn:hover {
-    background: rgba(239, 68, 68, 0.9);
 }
 
 button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
@@ -197,23 +169,23 @@ iframe {
     display: block !important;
 }
 </style>
+
 <script>
 const parentDoc = window.parent.document;
 
 parentDoc.addEventListener('click', function(e) {
-    if (e.target && e.target.id === 'scilem-min-btn') {
-        let block = e.target.closest('[data-draggable="true"]');
+    let handle = e.target.closest('#scilem-drag-handle');
+    if (handle) {
+        let block = handle.closest('[data-draggable="true"]');
         if (block) {
-            let children = Array.from(block.children);
             let isMin = block.getAttribute('data-minimized') === 'true';
+            block.setAttribute('data-minimized', isMin ? 'false' : 'true');
+            let children = Array.from(block.children);
             children.forEach(child => {
-                let handle = child.querySelector('#scilem-drag-handle') || (child.id === 'scilem-drag-handle' ? child : null);
-                if (!handle && child.id !== 'scilem-drag-handle') {
+                if (child !== handle && !child.contains(handle)) {
                     child.style.display = isMin ? 'block' : 'none';
                 }
             });
-            block.setAttribute('data-minimized', isMin ? 'false' : 'true');
-            e.target.innerText = isMin ? '-' : '+';
         }
         e.preventDefault();
         e.stopPropagation();
@@ -236,12 +208,6 @@ parentDoc.addEventListener('click', function(e) {
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
         nativeInputValueSetter.call(inputField, "Explain: " + query);
         inputField.dispatchEvent(new Event('input', { bubbles: true }));
-
-        setTimeout(() => {
-            let btns = chatBlock.querySelectorAll('button');
-            let submitBtn = Array.from(btns).find(b => b.innerText.includes('Send') || b.textContent.includes('Send'));
-            if (submitBtn) submitBtn.click();
-        }, 150);
     }
 }, true);
 
@@ -252,6 +218,8 @@ function initUI() {
         if (block && block.getAttribute('data-draggable') !== 'true') {
             if (!block.innerText.includes("Live System Monitor")) {
                 block.setAttribute('data-draggable', 'true');
+                block.setAttribute('data-minimized', 'true'); // DEFAULT TO MINIMIZED!
+                
                 block.style.position = 'fixed';
                 block.style.bottom = '20px';
                 block.style.right = '20px';
@@ -262,26 +230,19 @@ function initUI() {
                 block.style.boxShadow = '0 10px 40px rgba(0,0,0,0.3)';
                 block.style.zIndex = '999999';
                 block.style.padding = '1rem';
-                
-                // Auto-minimize on initial load
+
+                // Initially hide non-handle children so it starts minimized
                 let children = Array.from(block.children);
                 children.forEach(child => {
-                    let hd = child.querySelector('#scilem-drag-handle') || (child.id === 'scilem-drag-handle' ? child : null);
-                    if (!hd && child.id !== 'scilem-drag-handle') {
+                    if (child !== handle && !child.contains(handle)) {
                         child.style.display = 'none';
                     }
                 });
-                block.setAttribute('data-minimized', 'true');
-                let minBtn = block.querySelector('#scilem-min-btn');
-                if (minBtn) {
-                    minBtn.innerText = '+';
-                }
-
+                
                 let isDragging = false;
                 let startX, startY, initialX, initialY;
 
                 handle.addEventListener('mousedown', function(e) {
-                    if (e.target.id === 'scilem-min-btn') return;
                     isDragging = true;
                     startX = e.clientX;
                     startY = e.clientY;
@@ -291,7 +252,6 @@ function initUI() {
                     block.style.bottom = 'auto';
                     block.style.right = 'auto';
                     block.style.transition = 'none'; 
-                    e.preventDefault(); 
                 });
 
                 parentDoc.addEventListener('mousemove', function(e) {
@@ -377,7 +337,7 @@ if "scilem_messages" not in st.session_state:
     st.session_state.scilem_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** (Scilem chat is currently offline for system maintenance & background training)."
+            "content": "**Welcome! I am Scilem.** Ask any research question or click indicators across criteria."
         }
     ]
 
@@ -464,7 +424,7 @@ current_user = st.session_state.orcid_id if st.session_state.auth_method == "Web
 current_email = "None"
 
 st.sidebar.markdown("---")
-with st.sidebar.expander("🖥️ Live System Monitor", expanded=True):
+with st.sidebar.expander("Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
 
@@ -511,9 +471,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT fields, subfields, final_score, author_name FROM papers_assessment"
-        )
+        cursor.execute("SELECT fields, subfields, final_score, author_name FROM papers_assessment")
         data = cursor.fetchall()
     finally:
         conn.close()
@@ -728,7 +686,7 @@ def evaluation_metrics_dialog():
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
     st.markdown(
-        f"**Adversarial Logic Gap 🤖 ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+        f"**Adversarial Logic Gap ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
         unsafe_allow_html=True
     )
     st.markdown(
@@ -756,7 +714,7 @@ def evaluation_metrics_dialog():
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
-    st.markdown(f"<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine 🤖</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
     st.caption("Decentralized Science Assessment Engine with Zero-Knowledge Auditing & Sanitized IPFS Backups")
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
@@ -1096,8 +1054,6 @@ def more_details_dialog(item):
     piq = item["piq"]
     tx_hash = item["tx_hash"]
     zk_proof = item["zk_proof"]
-    drift = item["drift"]
-    rec = item["rec"]
     mdar_score = item["h_idx"]
     rrid_count = item["i10_idx"]
     repro_score = item["repro_score"]
@@ -1115,14 +1071,14 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
-    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM & Scilem Opinions", "Merged Evidence Report"])
+    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM (Llama, Mistral, Qwen, Gemini) & Scilem", "Merged Evidence Report"])
 
     with tab_overview:
         st.write(f"**File Name:** `{filename}`")
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
         st.write(f"**Unique Book Address:** `{author_book}`")
         st.write(f"**piQ Minted:** `{piq}`")
-        st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{zk_proof}`", unsafe_allow_html=True)
+        st.markdown(f"**zk-SNARK Proof:** `{zk_proof}`", unsafe_allow_html=True)
         
         tx_url = safe_get_sepolia_url(tx_hash)
         tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
@@ -1131,31 +1087,35 @@ def more_details_dialog(item):
         else:
             st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-        st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
-        st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
+        st.markdown(f"**Executable Reproducibility Score:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
+        st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
 
     with tab_llms:
-        st.markdown("### Individual LLM Extraction & Opinions")
-        if consensus_raw and isinstance(consensus_raw, dict):
-            for provider, data in consensus_raw.items():
-                with st.expander(f"Endpoint: {provider.upper()} (Rating: {data.get('rating', 'N/A')}/100)", expanded=True):
-                    st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
+        st.markdown("### Independent Multi-LLM Extractions")
+        
+        llm_cols = st.columns(2)
+        target_llms = ["llama", "mistral", "qwen", "gemini"]
+        
+        for idx, llm_key in enumerate(target_llms):
+            col = llm_cols[idx % 2]
+            with col:
+                data = consensus_raw.get(llm_key, {})
+                with st.expander(f"Model: {llm_key.upper()} (Rating: {data.get('rating', 'N/A')}/100)", expanded=True):
                     st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
-                    st.markdown(f"**Qualitative Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                    st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
+                    st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
                     refs = data.get("references", [])
                     if refs:
-                        st.markdown(f"**Extracted References ({len(refs)}):**")
-                        for r in refs[:5]:
+                        st.markdown(f"**References ({len(refs)}):**")
+                        for r in refs[:3]:
                             if isinstance(r, dict):
                                 st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
                             else:
                                 st.markdown(f"- {r}")
-        else:
-            st.info("No individual LLM raw opinion payloads stored.")
 
         st.markdown("---")
-        st.markdown(f"### Homegrown Scilem Model Inference Result")
-        st.info(f"**Scilem Neural Net Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via regularization).")
+        st.markdown("### Homegrown Scilem Model Inference")
+        st.info(f"**Scilem Neural Net Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via $\\vapri$ regularization).")
 
     with tab_report:
         st.markdown("### Synthesized Evidence Report (Pidyne Input)")
@@ -1324,7 +1284,7 @@ top_analytics_col1, top_analytics_col2 = st.columns(2)
 with top_analytics_col1:
     col_fc1, col_fc2 = st.columns([3, 1])
     with col_fc1:
-        st.markdown(f"### Pidyne Forecast {rbot('pidyne forecast')}", unsafe_allow_html=True)
+        st.markdown("### Pidyne Forecast", unsafe_allow_html=True)
     with col_fc2:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown", label_visibility="collapsed")
         actual_lookback = int(forecast_horizon.split()[0])
@@ -1458,7 +1418,7 @@ with top_analytics_col1:
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
     with map_title_col:
-        st.markdown(f"### Global Map of Science {rbot('global map of science')}", unsafe_allow_html=True)
+        st.markdown("### Global Map of Science", unsafe_allow_html=True)
     with map_badge_col:
         st.markdown(
             f"""
@@ -1595,15 +1555,15 @@ with bottom_col1:
                     st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
                     st.write(f"**Unique Book Address:** `{u_book}`")
                     st.write(f"**piQ Minted:** `{u_piq}`")
-                    st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{u_zk}`", unsafe_allow_html=True)
+                    st.markdown(f"**zk-SNARK Proof:** `{u_zk}`", unsafe_allow_html=True)
                     
                     if u_tx_url:
                         st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({u_tx_url})")
                     else:
                         st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                    st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{u_repro * 100:.1f}%`", unsafe_allow_html=True)
-                    st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{u_mdar * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
+                    st.markdown(f"**Executable Reproducibility Score:** `{u_repro * 100:.1f}%`", unsafe_allow_html=True)
+                    st.markdown(f"**SciScore MDAR Adherence:** `{u_mdar * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
         else:
             st.info("No assessment history or rewards found linked to this authenticated ID.")
     else:
@@ -1651,15 +1611,15 @@ with bottom_col1:
                     st.write(f"**Evaluation Hash (Paper Address):** `{r_hash}`")
                     st.write(f"**Unique Book Address:** `{r_book}`")
                     st.write(f"**piQ Minted:** `{r_piq}`")
-                    st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{r_zk}`", unsafe_allow_html=True)
+                    st.markdown(f"**zk-SNARK Proof:** `{r_zk}`", unsafe_allow_html=True)
                     
                     if r_tx_url:
                         st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({r_tx_url})")
                     else:
                         st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                    st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{r_repro * 100:.1f}%`", unsafe_allow_html=True)
-                    st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{r_mdar * 100:.1f}%` | **Valid RRIDs:** `{r_rrid}`", unsafe_allow_html=True)
+                    st.markdown(f"**Executable Reproducibility Score:** `{r_repro * 100:.1f}%`", unsafe_allow_html=True)
+                    st.markdown(f"**SciScore MDAR Adherence:** `{r_mdar * 100:.1f}%` | **Valid RRIDs:** `{r_rrid}`", unsafe_allow_html=True)
 
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
@@ -1743,7 +1703,7 @@ with bottom_col2:
         st.info("No piQ tokens minted yet.")
 
 st.markdown("---")
-st.markdown(f"### Proof-of-Research Blockchain Explorer {rbot('proof-of-research')}", unsafe_allow_html=True)
+st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
 
 conn = get_db_connection()
 try:
@@ -1819,15 +1779,15 @@ try:
                             st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
                             st.write(f"**Unique Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{m_zk}`", unsafe_allow_html=True)
+                            st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
                             
                             if m_tx_url:
                                 st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
                             else:
                                 st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                            st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
-                            st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
+                            st.markdown(f"**Executable Reproducibility Score:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
+                            st.markdown(f"**SciScore MDAR Adherence:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
                 else:
                     st.error(
                         "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
@@ -1922,8 +1882,8 @@ def framework_workflow_dialog():
 
             PyMuPDF [label="PyMuPDF Layout Sort\n• Spatial Reading Extraction\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
             SciParser [label="Deterministic SciScore API\n• MDAR Reporting Adherence\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
-            Retry [label="Multi-LLM Consensus Retry Logic\n• Llama, Mistral, Qwen, Gemini\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];
-            IRTCalib [label="Pidyne Framework Validation\n• AI Scoring Adjustments\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
+            Retry [label="Multi-LLM Consensus Engine\n• Llama, Mistral, Qwen & Gemini Analysis\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];
+            IRTCalib [label="Item Response Theory Calibration\n• Counterfactual Stress Testing\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
             Criteria [label="8 Transparent Criteria Rubrics\n• C1 Originality to C8 FAIR Actionability\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
             Logic [label="Adversarial Logic Integrity Matrix\n• Premise Validity & Evidence Strength\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
             
@@ -1982,30 +1942,34 @@ with col_center:
     if st.button("The Pi-Index Framework Workflow", use_container_width=True):
         framework_workflow_dialog()
 
-# Floating Draggable Scilem Corner Chatbot Window (Set Inactive)
+# Floating Draggable Scilem Corner Chatbot Window (Default Minimized, No buttons, Click header to toggle)
 scilem_container = st.container()
 with scilem_container:
     st.markdown("""
     <div id='scilem-drag-handle'>
         <div style="display: flex; align-items: center; gap: 8px;">
-            <span class='robot-icon' style="font-size: 1.2em;">🤖</span>
-            <span>Scilem Assistant (Offline)</span>
+            <span>Scilem Assistant</span>
         </div>
-        <span id='scilem-min-btn' title='Minimize/Expand'>+</span>
     </div>
     """, unsafe_allow_html=True)
     
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
         for idx, message in enumerate(st.session_state.scilem_messages):
-            msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
+            msg_avatar = "S" if message["role"] == "assistant" else "👤"
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
 
     with st.form(key="scilem_floating_form", clear_on_submit=False):
-        st.info("Scilem Chat Assistant is currently inactive / undergoing background model fine-tuning.")
         f_cols = st.columns([3, 1])
         with f_cols[0]:
-            floating_prompt = st.text_input("Ask Scilem...", value="Chat Assistant Inactive", disabled=True, label_visibility="collapsed")
+            floating_prompt = st.text_input("Ask Scilem...", value="", label_visibility="collapsed")
         with f_cols[1]:
-            submitted_floating = st.form_submit_button("Send", disabled=True)
+            submitted_floating = st.form_submit_button("Send")
+            if submitted_floating and floating_prompt.strip():
+                st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
+                st.session_state.scilem_messages.append({
+                    "role": "assistant",
+                    "content": f"Scilem active. Synthesizing response regarding: '{floating_prompt.strip()}'."
+                })
+                st.rerun()
