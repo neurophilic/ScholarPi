@@ -423,7 +423,8 @@ def process_single_pdf(
         return (
             "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, False,
+            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, 
+            "Binary payload is empty or download/extraction failed.",
         )
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -462,7 +463,7 @@ def process_single_pdf(
                 "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
                 ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
                 file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                0.0, False, False,
+                0.0, False, "Invalid PDF structure or PyMuPDF parsing exception.",
             )
 
         scope_alignment = (
@@ -513,7 +514,7 @@ def process_single_pdf(
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-                used_weights, mdar_score, rrid_count, repro_score, True, False,
+                used_weights, mdar_score, rrid_count, repro_score, True, None,
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
@@ -545,7 +546,7 @@ def process_single_pdf(
                     "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
                     ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
                     file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                    reproducibility_score, False, False,
+                    reproducibility_score, False, "LLM text ensemble extraction failed completely.",
                 )
 
         if not isinstance(raw_data, dict):
@@ -560,15 +561,18 @@ def process_single_pdf(
         extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
         extracted_title_check = str(raw_data.get("Extracted_Title", ""))
 
-        if (
-            extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]
-            or not extracted_title_check
-            or "failed" in extracted_title_check.lower()
-            or len(full_text.strip()) < 150
-        ):
-            confidence = 0.35
+        # Determine precise indeterminate failure reason
+        indeterminate_reason = None
+        if len(full_text.strip()) < 150:
+            indeterminate_reason = "Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan)."
+        elif extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]:
+            indeterminate_reason = "Author metadata could not be reliably verified or identified in the document header."
+        elif not extracted_title_check or "failed" in extracted_title_check.lower():
+            indeterminate_reason = "Manuscript title is missing or parser extraction failed."
+        elif confidence < 0.50:
+            indeterminate_reason = f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%)."
 
-        if confidence < 0.50 and not force_proceed:
+        if indeterminate_reason and not force_proceed:
             empty_scores = {
                 k: 0.0
                 for k in [
@@ -578,11 +582,11 @@ def process_single_pdf(
                 ]
             }
             return (
-                "Indeterminate Format (Upload JSON Manifest)",
+                "Indeterminate Format",
                 clean_author_name(extracted_author_check),
                 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
                 empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                reproducibility_score, False, True,
+                reproducibility_score, False, indeterminate_reason,
             )
 
         title = raw_data.get("Extracted_Title", filename)
@@ -694,8 +698,7 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
-        # --- ANTI-ABUSE & ANTI-FARMING CHECKS ---
-        # 1. Quality Floor & Gaming Penalty Zero-Out
+        # Anti-Abuse & Anti-Farming Checks
         ANTI_ABUSE_SCORE_FLOOR = 60.0
         ANTI_ABUSE_GAMING_LIMIT = 0.40
 
@@ -707,11 +710,9 @@ def process_single_pdf(
 
         piq_minted = 0.0
         if not is_abusive_or_low_quality:
-            # 2. Co-Author Count and Splitting
             co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
             num_authors = max(1, len(co_authors))
 
-            # 3. Epoch Velocity Cap & Diminishing Returns Decay Factor
             cursor.execute(
                 "SELECT COUNT(*) FROM papers_assessment WHERE user_id = ?",
                 (user_id,)
@@ -719,7 +720,6 @@ def process_single_pdf(
             user_submission_count = cursor.fetchone()[0]
             decay_multiplier = 1.0 / math.sqrt(user_submission_count + 1)
 
-            # Calculate final split piQ with logarithmic velocity decay
             base_piq = (final_score / 10.0)
             piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
 
@@ -771,5 +771,5 @@ def process_single_pdf(
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, reproducibility_score, False, False,
+        active_weights, mdar_score, rrid_count, reproducibility_score, False, None,
     )
