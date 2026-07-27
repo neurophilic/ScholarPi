@@ -94,7 +94,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# Custom JS/CSS for Draggable Scilem Corner Chat Window (Default Minimized, No +/- buttons, Click Header to Toggle)
+# Custom JS/CSS for Draggable Scilem Corner Chat Window
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -1060,7 +1060,6 @@ def more_details_dialog(item):
     warnings = item.get("warnings", [])
     consensus_raw = item.get("consensus_raw", {})
     evidence_report_text = item.get("evidence_report_text", "")
-    scilem_rating = item.get("scilem_rating", 50.0)
     author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
     st.subheader(f"{title} by {author_name}")
@@ -1070,7 +1069,7 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
-    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM & Scilem Reports", "Merged Evidence Report"])
+    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM & Scilem Extractions", "Merged Evidence Report"])
 
     with tab_overview:
         st.write(f"**File Name:** `{filename}`")
@@ -1090,10 +1089,10 @@ def more_details_dialog(item):
         st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
 
     with tab_llms:
-        st.markdown("### Independent Multi-LLM Extractions (Llama, Mistral, Qwen, Gemini)")
+        st.markdown("### Independent Model Extractions (Llama, Mistral, Qwen, Gemini, Scilem)")
         if consensus_raw and isinstance(consensus_raw, dict):
             llm_cols = st.columns(2)
-            target_llms = ["llama", "mistral", "qwen", "gemini"]
+            target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"]
             for idx, llm_key in enumerate(target_llms):
                 col = llm_cols[idx % 2]
                 with col:
@@ -1112,10 +1111,6 @@ def more_details_dialog(item):
                                     st.markdown(f"- {r}")
         else:
             st.info("No individual LLM raw opinion payloads stored.")
-
-        st.markdown("---")
-        st.markdown("### Scilem Neural Net Report & Inference")
-        st.info(f"**Scilem Model Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via regularization).")
 
     with tab_report:
         st.markdown("### Synthesized Evidence Report (Pidyne Input)")
@@ -1182,7 +1177,6 @@ def more_details_dialog(item):
 **Logic Integrity Score:** {logic_integrity:.1f}%
 **SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
 **Valid RRIDs Count:** {rrid_count}
-**Scilem Model Score:** {scilem_rating:.2f} / 100
 """
     st.download_button(
         label=f"Download Research Integrity Dossier ({filename})",
@@ -1974,7 +1968,7 @@ def framework_workflow_dialog():
 
             PyMuPDF [label="PyMuPDF Layout Sort\n• Spatial Reading Extraction\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
             SciParser [label="Deterministic SciScore API\n• MDAR Reporting Adherence\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
-            Retry [label="Multi-LLM Consensus Engine\n• Llama, Mistral, Qwen & Gemini Analysis\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];
+            Retry [label="Multi-LLM Consensus Engine\n• Llama, Mistral, Qwen, Gemini & Scilem Analysis\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];
             IRTCalib [label="Item Response Theory Calibration\n• Counterfactual Stress Testing\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
             Criteria [label="8 Transparent Criteria Rubrics\n• C1 Originality to C8 FAIR Actionability\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
             Logic [label="Adversarial Logic Integrity Matrix\n• Premise Validity & Evidence Strength\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
@@ -2034,7 +2028,7 @@ with col_center:
     if st.button("The Pi-Index Framework Workflow", use_container_width=True):
         framework_workflow_dialog()
 
-# Floating Draggable Scilem Corner Chatbot Window (Default Minimized, No buttons, Click header to toggle)
+# Floating Draggable Scilem Corner Chatbot Window
 scilem_container = st.container()
 with scilem_container:
     st.markdown("""
