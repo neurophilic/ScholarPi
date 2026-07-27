@@ -462,7 +462,6 @@ with scilem_container:
             submitted_floating = st.form_submit_button("Send")
             if submitted_floating and floating_prompt.strip():
                 st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
-                # Live neural network evaluation response tied to Scilem's current weights
                 scilem_neural_reply = evaluate_scilem_analysis_report(floating_prompt)
                 st.session_state.scilem_messages.append({
                     "role": "assistant",
@@ -470,7 +469,6 @@ with scilem_container:
                 })
                 st.rerun()
 
-    # Owner-only Web3 authenticated Scilem reset control
     if (
         st.session_state.is_authenticated 
         and st.session_state.auth_method == "Web3" 
@@ -1164,7 +1162,10 @@ def more_details_dialog(item):
                 data = consensus_raw.get(llm_key, {})
                 with st.container(border=True):
                     st.markdown(f"**Model: {llm_key.upper()}**")
-                    if data.get('api_failed', False):
+                    if llm_key == "scilem":
+                        st.markdown(f"**Engine Status:** Active (Local PyTorch Neural Network)")
+                        st.markdown(f"**Structural Analysis:** {data.get('opinion', 'N/A')}")
+                    elif data.get('api_failed', False):
                         st.markdown(f"**Status:** Rate / Credit Limit Hit")
                         st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
                     else:
