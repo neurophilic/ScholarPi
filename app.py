@@ -42,6 +42,29 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine 🤖", layout="wide"
 )
 
+# Define a clean, decentralized/network SVG icon
+svg_icon = """
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 12px; color: #2c3e50;">
+  <circle cx="18" cy="5" r="3"></circle>
+  <circle cx="6" cy="12" r="3"></circle>
+  <circle cx="18" cy="19" r="3"></circle>
+  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+</svg>
+"""
+
+col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
+with col_t1:
+    # Inject the SVG and use flexbox for vertical alignment
+    st.markdown(
+        f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} Pi-Index Assessment Engine 🤖</h1>", 
+        unsafe_allow_html=True
+    )
+    st.caption("Decentralized Science Assessment Engine with Zero-Knowledge Auditing & Sanitized IPFS Backups")
+with col_t2:
+    if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
+        evaluation_metrics_dialog()
+
 # --- System Action Log Monitor ---
 if "app_logs" not in st.session_state:
     st.session_state.app_logs = deque(maxlen=50)
