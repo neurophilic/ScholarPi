@@ -54,7 +54,7 @@ except FileNotFoundError:
     svg_icon = "🤖" # Fallback emoji if the file is missing
 
 st.markdown(
-    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} </h1>", 
+    f"<h1>{svg_icon} </h1>", 
     unsafe_allow_html=True
 )
 
