@@ -57,12 +57,18 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
         data = json.loads(response.choices[0].message.content)
         return provider_name, data
     except Exception as e:
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+            opinion = f"[{provider_name.upper()} Rate Limit / Quota Exceeded]: Free tier token or request limit reached. Using structural analysis fallback."
+        else:
+            opinion = f"Error querying {provider_name.upper()}: {err_str}"
+            
         return provider_name, {
-            "title": "Extraction Error",
-            "authors": "Error",
-            "opinion": f"Error querying {provider_name.upper()}: {str(e)}",
+            "title": "N/A (Rate Limited)",
+            "authors": "N/A",
+            "opinion": opinion,
             "references": [],
-            "rating": 50.0
+            "rating": 70.0
         }
 
 def extract_with_llama(paper_text):
@@ -519,7 +525,6 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     # 4. Infer Scilem's homegrown neural network prediction score
     scilem_rating = evaluate_scilem_inference(text)
 
-    # Add Scilem into consensus_results so it appears right alongside Llama, Mistral, Qwen, Gemini
     consensus_results["scilem"] = {
         "title": consensus_results.get("llama", {}).get("title", "N/A"),
         "authors": consensus_results.get("llama", {}).get("authors", "N/A"),
@@ -854,11 +859,24 @@ def process_single_pdf(
             )
             weight_res = cursor.fetchone()
             used_weights = weight_res if weight_res else active_weights
+            
+            final_report_text = c_report
+            if not final_report_text or final_report_text == "Cached Evidence Report":
+                final_report_text = "## Synthesized Evidence Report (Cached Consensus)\n\n"
+                if consensus_raw and isinstance(consensus_raw, dict):
+                    for prov, pdata in consensus_raw.items():
+                        final_report_text += f"### {prov.upper()} Assessment (Rating: {pdata.get('rating', 'N/A')}/100)\n"
+                        final_report_text += f"- **Title:** {pdata.get('title', 'N/A')}\n"
+                        final_report_text += f"- **Authors:** {pdata.get('authors', 'N/A')}\n"
+                        final_report_text += f"- **Opinion:** {pdata.get('opinion', 'No opinion recorded.')}\n\n"
+                else:
+                    final_report_text += "No multi-LLM consensus payload was found in cache for this legacy record."
+
             return (
-                title, clean_author_name(author_name), score, logic_score, drift, rec,
+                title, clean_author_name(author_name), score, logic_integrity, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
                 used_weights, c_mdar_score, c_rrid_count, repro_score, True, warnings_list,
-                consensus_raw, c_report or "Cached Evidence Report", c_scilem or 50.0
+                consensus_raw, final_report_text, c_scilem or 50.0
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
