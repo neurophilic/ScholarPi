@@ -181,13 +181,13 @@ def extract_unpublished_authors_fallback(text):
                 ]
             ):
                 return clean_line
-    return "Unidentified"
+    return ""
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     if not groq_client:
         return {
             "Extracted_Title": "Parsing Failed (No API Key)",
-            "Extracted_Author": "Unidentified",
+            "Extracted_Author": "",
             "Extracted_Topics": "Core Research Domain",
             "Overall_Confidence": 0.0,
         }
@@ -203,7 +203,7 @@ CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 
 CRITICAL INSTRUCTION FOR AUTHORS & TOPICS:
 - Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of HUMAN author names (no brackets, no quotes, no "et al."). 
-- NEVER output universities, departments, institutions, or organizational affiliations as authors. Output ONLY human author names. If none found, output "Unidentified".
+- NEVER output universities, departments, institutions, or organizational affiliations as authors. Output ONLY human author names. If none found, output an empty string.
 - Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered in this paper. Output as a comma-separated list of strings.
 
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
@@ -246,7 +246,7 @@ Return ONLY a valid JSON object. Text: {text}"""
         
     return {
         "Extracted_Title": "Parsing Failed",
-        "Extracted_Author": "Unidentified",
+        "Extracted_Author": "",
         "Extracted_Topics": "Core Research Domain",
         "Overall_Confidence": 0.0,
     }
@@ -423,7 +423,7 @@ def process_single_pdf(
         }
         warnings_list.append("Binary payload is empty or download/extraction failed.")
         return (
-            "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
+            "Download/Extraction Failed", "Independent Research Scholar", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
             "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list
         )
@@ -531,7 +531,7 @@ def process_single_pdf(
                 warnings_list.append("LLM text ensemble extraction failed completely.")
                 raw_data = {
                     "Extracted_Title": filename,
-                    "Extracted_Author": "Unidentified",
+                    "Extracted_Author": "",
                     "Extracted_Topics": "Core Research Domain",
                     "Overall_Confidence": 0.0,
                 }
@@ -539,7 +539,7 @@ def process_single_pdf(
         if not isinstance(raw_data, dict):
             raw_data = {
                 "Extracted_Title": filename,
-                "Extracted_Author": "Unidentified",
+                "Extracted_Author": "",
                 "Extracted_Topics": "Core Research Domain",
                 "Overall_Confidence": 0.0,
             }
@@ -548,40 +548,36 @@ def process_single_pdf(
         if confidence < 0.50:
             warnings_list.append(f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%).")
 
-        extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
+        extracted_author_check = str(raw_data.get("Extracted_Author", "")).strip()
         extracted_title_check = str(raw_data.get("Extracted_Title", ""))
 
-        if extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]:
-            warnings_list.append("Author metadata could not be reliably verified or identified in document header.")
+        if not extracted_title_check or "failed" in extracted_title_check.lower():
+            warnings_list.append("Manuscript title is missing or parser extraction failed.")
+
+        # Robust author fallback to prevent "Unidentified"
+        extracted_author = ""
+        if extracted_author_check and extracted_author_check.lower() not in ["unidentified", "unknown", "none", "", "research scholar"]:
+            extracted_author = extracted_author_check
+        elif pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"] and not is_likely_institution(pdf_meta_author):
+            extracted_author = pdf_meta_author.strip()
+        else:
+            extracted_author = extract_unpublished_authors_fallback(full_text)
+
+        if not extracted_author or is_likely_institution(extracted_author) or extracted_author.lower() in ["unidentified", "unknown", "none", "research scholar"]:
+            # Derive cleanly from filename or default to Independent Research Scholar
+            base_fname = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
+            extracted_author = base_fname if len(base_fname) > 3 and "pdf" not in base_fname.lower() else "Independent Research Scholar"
+            warnings_list.append("Author metadata could not be reliably verified; derived fallback from filename.")
+
+        extracted_author = clean_author_name(extracted_author)
 
         title = raw_data.get("Extracted_Title", filename)
-        extracted_author = clean_author_name(extracted_author_check)
+        if not title or title == filename:
+            title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
+
         extracted_topics = str(
             raw_data.get("Extracted_Topics", "Core Research Domain")
         ).strip()
-
-        if (
-            is_likely_institution(extracted_author)
-            or not extracted_author
-            or extracted_author.lower()
-            in [
-                "unknown", "unknown author", "none", "n/a",
-                "research scholar", "unidentified",
-            ]
-            or extracted_author == os.path.splitext(filename)[0]
-        ):
-            if (
-                pdf_meta_author.strip()
-                and pdf_meta_author.lower() not in ["unknown", "none"]
-                and not is_likely_institution(pdf_meta_author)
-            ):
-                extracted_author = clean_author_name(pdf_meta_author.strip())
-            else:
-                extracted_author = clean_author_name(
-                    extract_unpublished_authors_fallback(full_text)
-                )
-                if is_likely_institution(extracted_author):
-                    extracted_author = "Unidentified"
 
         if isinstance(extracted_topics, str):
             subfields = [
@@ -611,6 +607,7 @@ def process_single_pdf(
             epoch_data[0], epoch_data[1], epoch_data[2:],
         )
 
+        # UNCONDITIONAL C1-C8 EVALUATION
         variables = raw_data if isinstance(raw_data, dict) else {}
         scores_dict = compute_formulaic_criteria(
             variables, reproducibility_score, sciscore_adherence=0.82
@@ -687,7 +684,7 @@ def process_single_pdf(
         )
         unique_author_book = (
             "0x" + hashlib.sha256(extracted_author.encode()).hexdigest()[:40]
-            if extracted_author != "Unidentified"
+            if extracted_author != "Independent Research Scholar"
             else book_address
         )
         tx_hash = mint_pi_quotient_token(
