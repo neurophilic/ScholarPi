@@ -360,7 +360,7 @@ if "scilem_messages" not in st.session_state:
     st.session_state.scilem_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
+            "content": "**Welcome! I am Scilem.** (Scilem chat is currently offline for system maintenance & background training)."
         }
     ]
 
@@ -450,37 +450,6 @@ st.sidebar.markdown("---")
 with st.sidebar.expander("🖥️ Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
-
-SCILEM_KNOWLEDGE_BASE = {
-    "authenticate": "Connect to your Web3 wallet or Academic ID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
-    "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
-    "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
-    "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
-    "proof-of-research": "Manages decentralized consensus, ledger weights, and smart contract audit proofs. It validates evaluations directly on the blockchain.",
-    "adversarial logic gap": "Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
-    "c1: originality": "Semantic distance from literature corpus penalized by generative AI laundering heuristics.",
-    "c2: methodological rigor": "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.",
-    "c3: interdisciplinary synergy": "Measures cross-disciplinary integration and entropy across scientific domains.",
-    "c4: societal impact": "Evaluates broader societal and open infrastructure contributions.",
-    "c5: open science": "Evaluates open data, open code, and containerized reproducibility.",
-    "c6: literature integration": "Evaluates citation polarity and integration with existing foundational literature.",
-    "c7: empirical density": "Assesses empirical sample strength and baseline variance.",
-    "c8: future actionability": "Evaluates future research actionability and adherence to FAIR principles.",
-    "pi-index": "Automated peer-review framework powered by neural networks, SciScore reproducibility metrics, and multidimensional blockchain consensus.",
-    "global map of science": "A PyVis network cartography displaying domains and subfields of assessed papers, scaled by average weights.",
-    "zk-snark": "Zero-Knowledge Succinct Non-Interactive Argument of Knowledge. A cryptographic proof that an evaluation occurred exactly per guidelines without revealing reviewer identity.",
-    "sciscore mdar": "SciScore evaluates adherence to the Materials Design Analysis Reporting (MDAR) framework to ensure rigor.",
-    "executable reproducibility score": "An audit metric calculating whether code, data, and software environments (C5 & C7) can reliably execute independent results."
-}
-
-if "last_analyzed_tracked" not in st.session_state:
-    st.session_state["last_analyzed_tracked"] = total_analyzed_count
-elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
-    st.session_state["last_analyzed_tracked"] = total_analyzed_count
-    st.session_state.scilem_messages.append({
-        "role": "assistant",
-        "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
-    })
 
 def refine_science_field(s):
     s_lower = s.lower()
@@ -935,6 +904,7 @@ with st.container(border=True):
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                             zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                            consensus_raw, evidence_report_text, scilem_rating
                         ) = process_single_pdf(
                             clean_bytes, fname, scope_val, current_user, current_user, current_email, p_doi,
                         )
@@ -947,6 +917,8 @@ with st.container(border=True):
                             "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                             "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
                             "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                            "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                            "scilem_rating": scilem_rating
                         }
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -989,6 +961,7 @@ with st.container(border=True):
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                        consensus_raw, evidence_report_text, scilem_rating
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, current_user, current_email, doi_snap.strip(),
                     )
@@ -1001,6 +974,8 @@ with st.container(border=True):
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
                         "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                        "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                        "scilem_rating": scilem_rating
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -1030,6 +1005,7 @@ with st.container(border=True):
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                        consensus_raw, evidence_report_text, scilem_rating
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, current_user, current_email, "None",
                     )
@@ -1042,6 +1018,8 @@ with st.container(border=True):
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
                         "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                        "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                        "scilem_rating": scilem_rating
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -1108,6 +1086,9 @@ def more_details_dialog(item):
     repro_score = item["repro_score"]
     filename = item["filename"]
     warnings = item.get("warnings", [])
+    consensus_raw = item.get("consensus_raw", {})
+    evidence_report_text = item.get("evidence_report_text", "")
+    scilem_rating = item.get("scilem_rating", 50.0)
     author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
     st.subheader(f"{title} by {author_name}")
@@ -1117,7 +1098,9 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
-    with st.expander(f"Ledger Data & Dossier Details ({filename})", expanded=True):
+    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM & Scilem Opinions", "Merged Evidence Report"])
+
+    with tab_overview:
         st.write(f"**File Name:** `{filename}`")
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
         st.write(f"**Unique Book Address:** `{author_book}`")
@@ -1134,10 +1117,40 @@ def more_details_dialog(item):
         st.markdown(f"**Executable Reproducibility Score {rbot('executable reproducibility score')}:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
         st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
 
-    scope_val = st.session_state.get("snap_scope", "")
-    if scope_val.strip() and drift != "N/A" and rec != "N/A":
-        st.markdown(f"**Scope Drift:** `{drift:.2f}%`")
-        st.markdown(f"**Recommendation Tier:** `{rec}`")
+    with tab_llms:
+        st.markdown("### Individual LLM Extraction & Opinions")
+        if consensus_raw and isinstance(consensus_raw, dict):
+            for provider, data in consensus_raw.items():
+                with st.expander(f"Endpoint: {provider.upper()} (Rating: {data.get('rating', 'N/A')}/100)", expanded=True):
+                    st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
+                    st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
+                    st.markdown(f"**Qualitative Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                    refs = data.get("references", [])
+                    if refs:
+                        st.markdown(f"**Extracted References ({len(refs)}):**")
+                        for r in refs[:5]:
+                            st.markdown(f"- {r}")
+        else:
+            st.info("No individual LLM raw opinion payloads stored.")
+
+        st.markdown("---")
+        st.markdown(f"### Homegrown Scilem Model Inference Result")
+        st.info(f"**Scilem Neural Net Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via $\\vapri$ regularization).")
+
+    with tab_report:
+        st.markdown("### Synthesized Evidence Report (Pidyne Input)")
+        if evidence_report_text:
+            st.markdown(evidence_report_text)
+            st.download_button(
+                label="Download Final Evidence Report (.md)",
+                data=evidence_report_text,
+                file_name=f"Evidence_Report_{eval_hash[:10]}.md",
+                mime="text/markdown",
+                use_container_width=True,
+                key=f"dl_report_modal_{eval_hash}_{time.time()}"
+            )
+        else:
+            st.info("No merged evidence report generated for this manuscript.")
 
     breakdown_df = pd.DataFrame({
         "Criterion": [
@@ -1178,12 +1191,6 @@ def more_details_dialog(item):
         f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from"
         f" {logic_integrity:.1f}% raw logic score)"
     )
-    st.markdown(
-        f"**Final Pi-Index (Base * Logic Multiplier):** `{score:.2f}`"
-        f" &nbsp;|&nbsp; **MDAR Adherence:** `{mdar_score * 100:.1f}%`"
-        f" &nbsp;|&nbsp; **Valid RRIDs:** `{rrid_count}` &nbsp;|&nbsp; **File:**"
-        f" `{filename}`"
-    )
 
     dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
 **Title:** {title}
@@ -1193,10 +1200,9 @@ def more_details_dialog(item):
 **Unique Book Address:** {author_book}
 **Final Pi-Index Score:** {score:.2f} / 100
 **Logic Integrity Score:** {logic_integrity:.1f}%
-**Executable Reproducibility Score:** {repro_score * 100:.1f}%
 **SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
 **Valid RRIDs Count:** {rrid_count}
-**Warnings Flagged:** {len(warnings)}
+**Scilem Model Score:** {scilem_rating:.2f} / 100
 """
     st.download_button(
         label=f"Download Research Integrity Dossier ({filename})",
@@ -1956,14 +1962,14 @@ with col_center:
     if st.button("The Pi-Index Framework Workflow", use_container_width=True):
         framework_workflow_dialog()
 
-# Floating Draggable Scilem Corner Chatbot Window
+# Floating Draggable Scilem Corner Chatbot Window (Set Inactive)
 scilem_container = st.container()
 with scilem_container:
     st.markdown("""
     <div id='scilem-drag-handle'>
         <div style="display: flex; align-items: center; gap: 8px;">
             <span class='robot-icon' style="font-size: 1.2em;">🤖</span>
-            <span>Scilem Assistant</span>
+            <span>Scilem Assistant (Offline)</span>
         </div>
         <span id='scilem-min-btn' title='Minimize/Expand'>-</span>
     </div>
@@ -1976,111 +1982,10 @@ with scilem_container:
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
 
-    with st.form(key="scilem_floating_form", clear_on_submit=True):
+    with st.form(key="scilem_floating_form", clear_on_submit=False):
+        st.info("Scilem Chat Assistant is currently inactive / undergoing background model fine-tuning.")
         f_cols = st.columns([3, 1])
         with f_cols[0]:
-            floating_prompt = st.text_input("Ask Scilem...", placeholder="Ask a question...", label_visibility="collapsed")
+            floating_prompt = st.text_input("Ask Scilem...", value="Chat Assistant Inactive", disabled=True, label_visibility="collapsed")
         with f_cols[1]:
-            submitted_floating = st.form_submit_button("Send")
-
-    if submitted_floating and floating_prompt:
-        st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
-        
-        direct_answer = None
-        if floating_prompt.startswith("Explain:"):
-            query_topic = floating_prompt.replace("Explain:", "").strip().lower()
-            for key, explanation in SCILEM_KNOWLEDGE_BASE.items():
-                if key in query_topic:
-                    direct_answer = explanation
-                    break
-
-        if direct_answer:
-            st.session_state.scilem_messages.append({"role": "assistant", "content": f"{direct_answer}"})
-            st.rerun()
-        else:
-            rag_context = ""
-            few_shot_examples = ""
-            try:
-                dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
-                if os.path.exists(dataset_path):
-                    with open(dataset_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
-                        query_terms = set(floating_prompt.lower().split())
-                        relevant_lines = [l for l in lines if any(t in l.lower() for t in query_terms if len(t) > 3)]
-                        if not relevant_lines:
-                            relevant_lines = lines[-5:]
-                        rag_context = "".join(relevant_lines[-5:])
-            except Exception:
-                rag_context = "No decentralized data accessible."
-
-            try:
-                conn_rag = get_db_connection()
-                cur_rag = conn_rag.cursor()
-                cur_rag.execute("SELECT title, author_name, final_score FROM papers_assessment ORDER BY final_score DESC LIMIT 1")
-                top_paper = cur_rag.fetchone()
-                conn_rag.close()
-                if top_paper:
-                    few_shot_examples = f"Exemplar Reference Paper: '{top_paper[0]}' by {top_paper[1]} (Score: {top_paper[2]:.2f}/100)"
-            except Exception:
-                pass
-
-            scilem_sys_prompt = (
-                "You are Scilem, an advanced Scientific LLM aligned with CoARA guidelines and the Pi-Index Whitepaper. "
-                "Explain app features clearly and concisely. You just received a user action or query.\n\n"
-                f"DECENTRALIZED LEDGER CONTEXT (RAG):\n{rag_context}\n\n"
-                f"TOP-SCOURING EXEMPLAR:\n{few_shot_examples}"
-            )
-
-            messages_for_api = [{"role": "system", "content": scilem_sys_prompt}] + [
-                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilem_messages
-            ]
-
-            full_response = ""
-            try:
-                from brain import groq_client
-                PRIMARY_MODEL_NAME = "llama-3.3-70b-versatile"
-                FALLBACK_MODEL_NAME = "llama-3.1-8b-instant"
-                if groq_client:
-                    add_log("Dispatching query to Scilem AI Engine...")
-                    for attempt in range(3):
-                        try:
-                            response = groq_client.chat.completions.create(
-                                model=PRIMARY_MODEL_NAME,
-                                messages=messages_for_api,
-                                temperature=0.15,
-                            )
-                            full_response = response.choices[0].message.content
-                            add_log("Scilem response generated.")
-                            break
-                        except Exception as primary_err:
-                            err_str = str(primary_err).lower()
-                            if any(k in err_str for k in ["413", "rate_limit_exceeded", "tokens", "limit", "429"]):
-                                if attempt < 2:
-                                    add_log(f"Rate limit hit. Retrying in {2**attempt}s...")
-                                    time.sleep(2 ** attempt)
-                                    continue
-                                
-                                trimmed_messages = [messages_for_api[0]] + messages_for_api[-2:]
-                                try:
-                                    fallback_response = groq_client.chat.completions.create(
-                                        model=FALLBACK_MODEL_NAME,
-                                        messages=trimmed_messages,
-                                        temperature=0.15,
-                                    )
-                                    full_response = fallback_response.choices[0].message.content + "\n\n*(Payload automatically trimmed to fit TPM rate limits).* "
-                                    add_log("Scilem fallback model executed successfully.")
-                                    break
-                                except Exception as second_err:
-                                    full_response = f"Error: Token limit exceeded and fallback failed: {str(second_err)}"
-                                    add_log("Scilem fallback model failed.")
-                                    break
-                            else:
-                                full_response = f"Error: {str(primary_err)}"
-                                break
-                else:
-                    full_response = "Error: Groq API client not initialized."
-            except Exception as e:
-                full_response = f"Error connecting to Scilem engine: {str(e)}"
-
-            st.session_state.scilem_messages.append({"role": "assistant", "content": full_response})
-            st.rerun()
+            submitted_floating = st.form_submit_button("Send", disabled=True)
