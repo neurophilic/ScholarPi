@@ -1,3 +1,4 @@
+name=app.py
 import os
 import re
 import json
@@ -1503,6 +1504,11 @@ with top_analytics_col1:
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
         """)
 
+    # Evaluation Metrics placed directly under Pidyne Forecast
+    st.markdown("### Evaluation Metrics")
+    if st.button("Open Evaluation Metrics, SciScore & Logic Engine", use_container_width=True, key="eval_metrics_under_pidyne"):
+        evaluation_metrics_dialog()
+
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
     with map_title_col:
@@ -1964,7 +1970,7 @@ try:
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
 
-        # Side-by-Side layout for Explorer Tools and Recent Ledger Proofs & Transactions
+        # Side-by-side layout: Left column for Blockchain Explorer / Search, Right column for Recent Transactions Table
         exp_col_left, exp_col_right = st.columns(2, vertical_alignment="top")
 
         with exp_col_left:
