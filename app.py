@@ -881,6 +881,49 @@ with st.container(border=True):
         key=f"stake_chk_{st.session_state['reset_token']}",
     )
 
+    # --- Pending Indeterminate Format Review Handler ---
+    if "pending_indeterminate_item" in st.session_state and st.session_state["pending_indeterminate_item"]:
+        item = st.session_state["pending_indeterminate_item"]
+        st.warning(
+            f"⚠️ **Low Parsing Confidence Warning (< 50%)**\n\n"
+            f"The document **{item['filename']}** has a non-standard layout, scanned text, or missing metadata headers. "
+            f"Proceeding automatically may result in inaccurate scoring. You can inspect the file or choose to go ahead anyway."
+        )
+        col_proceed, col_discard = st.columns([2, 2])
+        with col_proceed:
+            if st.button("Go ahead anyways", type="primary", key="btn_force_proceed"):
+                with st.spinner("Processing document with forced fallback..."):
+                    (
+                        title, author_name, score, logic_integrity, drift, rec,
+                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
+                    ) = process_single_pdf(
+                        item["file_bytes"], item["filename"], item["scope"], 
+                        item["user_id"], "None", item["email"], item["doi"], force_proceed=True
+                    )
+                    eval_record = {
+                        "title": title, "author_name": clean_author_name(author_name),
+                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                        "rec": rec, "fields": fields, "subfields": subfields,
+                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                        "filename": item["filename"],
+                    }
+                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                    add_log(f"User forced processing for low-confidence document: {item['filename']}")
+                    del st.session_state["pending_indeterminate_item"]
+                    st.success("Document processed successfully via forced fallback.")
+                    time.sleep(1)
+                    st.rerun()
+        with col_discard:
+            if st.button("Discard / Cancel", key="btn_discard_indeterminate"):
+                add_log(f"User discarded low-confidence document: {item['filename']}")
+                del st.session_state["pending_indeterminate_item"]
+                st.info("Document assessment discarded.")
+                st.rerun()
+
     if st.session_state["is_running"]:
         col_run, col_stop = st.columns([4, 1])
         with col_run:
@@ -933,10 +976,23 @@ with st.container(border=True):
                         (
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
                         ) = process_single_pdf(
                             clean_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                         )
+                        if is_indeterminate:
+                            st.session_state["pending_indeterminate_item"] = {
+                                "file_bytes": clean_bytes,
+                                "filename": fname,
+                                "scope": scope_val,
+                                "user_id": current_user,
+                                "email": current_email,
+                                "doi": p_doi,
+                            }
+                            st.session_state["is_running"] = False
+                            add_log(f"Low parsing confidence detected for OpenAlex target: {fname}")
+                            st.rerun()
+
                         eval_record = {
                             "title": title, "author_name": clean_author_name(author_name),
                             "score": score, "logic_integrity": logic_integrity, "drift": drift,
@@ -998,10 +1054,23 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                     )
+                    if is_indeterminate:
+                        st.session_state["pending_indeterminate_item"] = {
+                            "file_bytes": clean_bytes,
+                            "filename": fname,
+                            "scope": scope_val,
+                            "user_id": current_user,
+                            "email": current_email,
+                            "doi": doi_snap.strip(),
+                        }
+                        st.session_state["is_running"] = False
+                        add_log(f"Low parsing confidence detected for DOI: {doi_snap}")
+                        st.rerun()
+
                     eval_record = {
                         "title": title, "author_name": clean_author_name(author_name),
                         "score": score, "logic_integrity": logic_integrity, "drift": drift,
@@ -1042,10 +1111,23 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, "None",
                     )
+                    if is_indeterminate:
+                        st.session_state["pending_indeterminate_item"] = {
+                            "file_bytes": clean_bytes,
+                            "filename": fname,
+                            "scope": scope_val,
+                            "user_id": current_user,
+                            "email": current_email,
+                            "doi": "None",
+                        }
+                        st.session_state["is_running"] = False
+                        add_log(f"Low parsing confidence detected for local file: {fname}")
+                        st.rerun()
+
                     eval_record = {
                         "title": title, "author_name": clean_author_name(author_name),
                         "score": score, "logic_integrity": logic_integrity, "drift": drift,
@@ -1647,7 +1729,7 @@ with bottom_col2:
                 "Total piQ Earned": round(piq, 2),
             })
         piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
-        st.dataframe(piq_df, use_container_width=True, height=420)
+        st.dataframe(piq_df, use_container_width=True, height=210)
     else:
         st.info("No piQ tokens minted yet.")
 
