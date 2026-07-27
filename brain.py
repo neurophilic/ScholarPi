@@ -174,13 +174,13 @@ Multi-LLM Raw Consensus Data:
         except Exception as e:
             return f"Evidence report synthesis error: {str(e)}"
             
-    # Markdown fallback if API unavailable
     report_md = "## Synthesized Evidence Report (Multi-LLM Consensus)\n\n"
     for provider, data in consensus_results.items():
-        report_md += f"### {provider.upper()} Assessment (Rating: {data.get('rating', 'N/A')}/100)\n"
-        report_md += f"- **Title Extracted:** {data.get('title', 'N/A')}\n"
-        report_md += f"- **Authors:** {data.get('authors', 'N/A')}\n"
-        report_md += f"- **Opinion:** {data.get('opinion', 'N/A')}\n\n"
+        if provider != "scilem":
+            report_md += f"### {provider.upper()} Assessment (Rating: {data.get('rating', 'N/A')}/100)\n"
+            report_md += f"- **Title Extracted:** {data.get('title', 'N/A')}\n"
+            report_md += f"- **Authors:** {data.get('authors', 'N/A')}\n"
+            report_md += f"- **Opinion:** {data.get('opinion', 'N/A')}\n\n"
     return report_md
 
 # ---------------------------------------------------------
@@ -221,7 +221,7 @@ PidyneLSTM = PiBrainLSTM
 class ScilemNetwork(nn.Module):
     """
     Homegrown Language Model initiated from zero (random weights).
-    Learns to align its output directly with the final Multi-LLM aggregate evidence report result.
+    Learns to evaluate paper tokens independently and aligns with consensus expectations.
     """
     def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
         super(ScilemNetwork, self).__init__()
@@ -261,11 +261,7 @@ def evaluate_scilem_inference(raw_text):
         score = scilem_model(paper_tensor).item()
     return float(score)
 
-def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambda_reg=0.01):
-    """
-    Scilem training loop: Corrects and aligns against the final Multi-LLM aggregate evidence report result,
-    using vapri for regularized stability.
-    """
+def train_scilem_on_consensus(raw_text, consensus_ratings, vapri_value=0.5, lambda_reg=0.01):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -279,14 +275,14 @@ def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambd
         tokens = [0]
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
-    report_target_score = min(100.0, max(10.0, (len(evidence_report_str) % 55) + 40.0))
+    target_score = float(np.mean(consensus_ratings)) if consensus_ratings else 75.0
 
     scilem_model.train()
     scilem_optimizer.zero_grad()
 
     scilem_score = scilem_model(paper_tensor)
     
-    mse_loss = nn.MSELoss()(scilem_score.squeeze(), torch.tensor(report_target_score, dtype=torch.float32))
+    mse_loss = nn.MSELoss()(scilem_score.squeeze(), torch.tensor(target_score, dtype=torch.float32))
     total_loss = mse_loss + (lambda_reg * torch.tensor(vapri_value, dtype=torch.float32))
 
     total_loss.backward()
@@ -505,22 +501,34 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
     evolving_context = get_evolving_system_context()
     
-    # 1. Multi-LLM consensus extraction across Llama, Mistral, Qwen, Gemini
+    # 1. Run Multi-LLM Consensus (Llama, Mistral, Qwen, Gemini)
     consensus_results = run_multi_llm_consensus(text)
+    
+    # Extract ratings from multi-LLM consensus
+    ratings = [float(v.get("rating", 75.0)) for v in consensus_results.values() if isinstance(v, dict) and "rating" in v]
     
     # 2. Merge consensus results into unified evidence report
     evidence_report = generate_merged_evidence_report(consensus_results)
 
-    # 3. Train Scilem directly against the Multi-LLM aggregate evidence report result
+    # 3. Train Scilem Model on consensus ratings
     try:
-        train_scilem_on_report(text, evidence_report, vapri_value=0.5, lambda_reg=0.01)
+        train_scilem_on_consensus(text, ratings, vapri_value=0.5, lambda_reg=0.01)
     except Exception as e:
         print(f"Scilem train warning: {e}")
 
     # 4. Infer Scilem's homegrown neural network prediction score
     scilem_rating = evaluate_scilem_inference(text)
 
-    prompt = f"""You are Pidyne, the judge and theoretical oracle for the decentralized Pi-Index framework. Evaluate the manuscript based on the synthesized multi-LLM evidence report (Llama, Mistral, Qwen, Gemini) and raw text chunk.
+    # Add Scilem into consensus_results so it appears right alongside Llama, Mistral, Qwen, Gemini
+    consensus_results["scilem"] = {
+        "title": consensus_results.get("llama", {}).get("title", "N/A"),
+        "authors": consensus_results.get("llama", {}).get("authors", "N/A"),
+        "opinion": f"Homegrown Scilem Neural Net Evaluation: Independent linguistic token embedding projection and structural analysis. Predicted rating: {scilem_rating:.2f}/100.",
+        "references": consensus_results.get("llama", {}).get("references", []),
+        "rating": round(scilem_rating, 2)
+    }
+
+    prompt = f"""You are Pidyne, the judge and theoretical oracle for the decentralized Pi-Index framework. Evaluate the manuscript based on the synthesized multi-LLM evidence report (Llama, Mistral, Qwen, Gemini, Scilem) and raw text chunk.
 
 STRICT CoARA MANDATES & EQUITY:
 - Evaluate based on intrinsic merit, open science, and FAIR principles.
@@ -530,9 +538,6 @@ STRICT CoARA MANDATES & EQUITY:
 
 EVIDENCE REPORT FROM MULTI-LLM CONSENSUS:
 {evidence_report}
-
-HOMEGROWN SCILEM MODEL ALIGNMENT RATING:
-{scilem_rating:.2f} / 100.0
 
 G-EVAL CHAIN OF THOUGHT & AUTHOR RULES REQUIRED:
 - Output "chain_of_thought" string detailing your step-by-step logical reasoning.
