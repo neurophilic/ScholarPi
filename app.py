@@ -467,7 +467,7 @@ with scilem_container:
                 })
                 st.rerun()
 
-    # Owner-only Web3 authenticated Scilem reset control (using standard button outside the form)
+    # Owner-only Web3 authenticated Scilem reset control
     if (
         st.session_state.is_authenticated 
         and st.session_state.auth_method == "Web3" 
@@ -484,7 +484,9 @@ with scilem_container:
                 }
             ]
             add_log(msg)
+            st.toast(msg, icon="🧠")
             st.success(msg)
+            time.sleep(0.5)
             st.rerun()
 
 def refine_science_field(s):
