@@ -88,12 +88,12 @@ def build_multi_llm_prompt(paper_text):
 
     return f"""
 Analyze the manuscript excerpts below and respond strictly in JSON format.
-Your qualitative opinion and evaluation must be structured across the 8 core Pi-Index criteria (C1: Semantic Originality, C2: Methodological Rigor/SciScore, C3: Interdisciplinary Entropy, C4: Societal Impact, C5: Open Science/Reproducibility, C6: Literature Integration, C7: Empirical Density, and C8: Future Actionability/FAIR).[cite: 3]
+Your qualitative opinion and evaluation must be structured across the 8 core Pi-Index criteria (C1: Semantic Originality, C2: Methodological Rigor/SciScore, C3: Interdisciplinary Entropy, C4: Societal Impact, C5: Open Science/Reproducibility, C6: Literature Integration, C7: Empirical Density, and C8: Future Actionability/FAIR).
 
 Keys required in JSON:
 1. "title": Title of the paper.
 2. "authors": String of real human author names.
-3. "opinion": Detailed qualitative evaluation addressing the 8 core criteria[cite: 3].
+3. "opinion": Detailed qualitative evaluation addressing the 8 core criteria.
 4. "references": List of objects: [{{"citation": "[1]", "authors": "Smith et al.", "year": "2024"}}, ...]
 
 --- FRONT MATTER ---
@@ -157,7 +157,7 @@ def generate_pidyne_judgement(consensus_results):
             prompt += f"- Criteria Opinion: {data.get('opinion', 'N/A')}\n\n"
             
     prompt += """
-Based on these independent opinions, generate a final Synthesized Evidence Report (in Markdown) and provide a final AI Rating (from 0.0 to 100.0) reflecting the manuscript's overall validity across the 8 criteria[cite: 3].
+Based on these independent opinions, generate a final Synthesized Evidence Report (in Markdown) and provide a final AI Rating (from 0.0 to 100.0) reflecting the manuscript's overall validity across the 8 criteria.
 Respond strictly in JSON format with keys:
 1. "evidence_report": string containing the synthesized markdown report.
 2. "ai_rating": float between 0.0 and 100.0.
@@ -282,7 +282,7 @@ def evaluate_scilem_analysis_report(raw_text):
         f"Homegrown Scilem Structural Analysis Report: "
         f"Analyzed local token embedding projection and structural feature manifold "
         f"(Feature Activation Magnitude: {feat_val:.4f}). "
-        f"Note: Scilem does not assign ratings; all numerical scoring is managed exclusively by Pidyne[cite: 3]."
+        f"Note: Scilem does not assign ratings; all numerical scoring is managed exclusively by Pidyne."
     )
     return analysis_summary
 
@@ -324,9 +324,20 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
         f"Homegrown Scilem Structural Analysis Report: "
         f"Analyzed local token embedding projection. Scilem actively updated its weights (Loss: {loss.item():.4f}) "
         f"by learning from both the raw manuscript input and Pidyne's synthesized evidence report (Target vapri: {vapri:.4f}). "
-        f"Note: Scilem does not assign final ratings[cite: 3]."
+        f"Note: Scilem does not assign final ratings."
     )
     return analysis_summary
+
+def reset_scilem():
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
+    if os.path.exists(scilem_weights_path):
+        try:
+            os.remove(scilem_weights_path)
+        except Exception:
+            pass
+    global scilem_model
+    scilem_model = ScilemNetwork()
+    return "Scilem weights and state successfully reset to baseline."
 
 # ---------------------------------------------------------
 # Utilities & Sanitization
@@ -397,21 +408,6 @@ def adaptive_chunking(text, max_tokens):
     front_matter = text[: int(max_tokens * 0.4)]
     back_matter = text[-int(max_tokens * 0.6) :]
     return front_matter + "\n...[TRUNCATED FOR TOKEN LIMITS]...\n" + back_matter
-
-def evaluate_discriminator_and_divergence(text, model):
-    return 0.0, 0.85
-
-def evaluate_scope_alignment(text, scope, model, text_limit):
-    return 0.0
-
-def extract_unpublished_authors_fallback(text):
-    first_2k = text[:2500]
-    lines = [line.strip() for line in first_2k.split("\n") if line.strip()]
-    for line in lines[1:12]:
-        clean_line = re.sub(r"[\d\*\†\‡\§\¶\(\)]", "", line).strip()
-        if re.match(r"^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+", clean_line):
-            return clean_line
-    return ""
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
