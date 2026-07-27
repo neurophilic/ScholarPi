@@ -37,6 +37,8 @@ class PiBlockchainDataset(Dataset):
             y, dtype=torch.float32
         )
 
+PidyneBlockchainDataset = PiBlockchainDataset
+
 class PiBrainLSTM(nn.Module):
     def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
         super(PiBrainLSTM, self).__init__()
@@ -51,6 +53,8 @@ class PiBrainLSTM(nn.Module):
         lstm_out, _ = self.lstm(x)
         predictions = self.linear(lstm_out[:, -1, :])
         return torch.softmax(predictions, dim=-1) * 8.0
+
+PidyneLSTM = PiBrainLSTM
 
 def get_evolving_system_context():
     conn = get_db_connection()
