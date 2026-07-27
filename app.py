@@ -881,49 +881,6 @@ with st.container(border=True):
         key=f"stake_chk_{st.session_state['reset_token']}",
     )
 
-    # --- Pending Indeterminate Format Review Handler ---
-    if "pending_indeterminate_item" in st.session_state and st.session_state["pending_indeterminate_item"]:
-        item = st.session_state["pending_indeterminate_item"]
-        st.warning(
-            f"⚠️ **Low Parsing Confidence Warning (< 50%)**\n\n"
-            f"The document **{item['filename']}** has a non-standard layout, scanned text, or missing metadata headers. "
-            f"Proceeding automatically may result in inaccurate scoring. You can inspect the file or choose to go ahead anyway."
-        )
-        col_proceed, col_discard = st.columns([2, 2])
-        with col_proceed:
-            if st.button("Go ahead anyways", type="primary", key="btn_force_proceed"):
-                with st.spinner("Processing document with forced fallback..."):
-                    (
-                        title, author_name, score, logic_integrity, drift, rec,
-                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
-                    ) = process_single_pdf(
-                        item["file_bytes"], item["filename"], item["scope"], 
-                        item["user_id"], "None", item["email"], item["doi"], force_proceed=True
-                    )
-                    eval_record = {
-                        "title": title, "author_name": clean_author_name(author_name),
-                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                        "rec": rec, "fields": fields, "subfields": subfields,
-                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": item["filename"],
-                    }
-                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                    add_log(f"User forced processing for low-confidence document: {item['filename']}")
-                    del st.session_state["pending_indeterminate_item"]
-                    st.success("Document processed successfully via forced fallback.")
-                    time.sleep(1)
-                    st.rerun()
-        with col_discard:
-            if st.button("Discard / Cancel", key="btn_discard_indeterminate"):
-                add_log(f"User discarded low-confidence document: {item['filename']}")
-                del st.session_state["pending_indeterminate_item"]
-                st.info("Document assessment discarded.")
-                st.rerun()
-
     if st.session_state["is_running"]:
         col_run, col_stop = st.columns([4, 1])
         with col_run:
@@ -1211,7 +1168,7 @@ def more_details_dialog(item):
     with st.expander(f"Ledger Data & Dossier Details ({filename})", expanded=True):
         st.write(f"**File Name:** `{filename}`")
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
-        st.write(f"**Unique Author Book Address:** `{author_book}`")
+        st.write(f"**Unique Book Address:** `{author_book}`")
         st.write(f"**piQ Minted:** `{piq}`")
         st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{zk_proof}`", unsafe_allow_html=True)
         
@@ -1281,7 +1238,7 @@ def more_details_dialog(item):
 **Author:** {author_name}
 **File Name:** {filename}
 **Evaluation Hash (Paper Address):** {eval_hash}
-**Unique Author Book Address:** {author_book}
+**Unique Book Address:** {author_book}
 **Final Pi-Index Score:** {score:.2f} / 100
 **Logic Integrity Score:** {logic_integrity:.1f}%
 **Executable Reproducibility Score:** {repro_score * 100:.1f}%
@@ -1650,7 +1607,7 @@ with bottom_col1:
                 ):
                     st.write(f"**File Name:** {u_filename if u_filename else 'N/A'}")
                     st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
-                    st.write(f"**Unique Author Book Address:** `{u_book}`")
+                    st.write(f"**Unique Book Address:** `{u_book}`")
                     st.write(f"**piQ Minted:** `{u_piq}`")
                     st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{u_zk}`", unsafe_allow_html=True)
                     
@@ -1706,7 +1663,7 @@ with bottom_col1:
                 ):
                     st.write(f"**File Name:** {r_filename if r_filename else 'N/A'}")
                     st.write(f"**Evaluation Hash (Paper Address):** `{r_hash}`")
-                    st.write(f"**Unique Author Book Address:** `{r_book}`")
+                    st.write(f"**Unique Book Address:** `{r_book}`")
                     st.write(f"**piQ Minted:** `{r_piq}`")
                     st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{r_zk}`", unsafe_allow_html=True)
                     
@@ -1725,7 +1682,7 @@ with bottom_col2:
         for author, piq in piq_dict.items():
             leaderboard_data.append({
                 "Contributing Author": author,
-                "Unique Author Book Address": book_dict.get(author, "None"),
+                "Unique Book Address": book_dict.get(author, "None"),
                 "Total piQ Earned": round(piq, 2),
             })
         piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
@@ -1808,7 +1765,7 @@ try:
                         ):
                             st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
                             st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
-                            st.write(f"**Unique Author Book Address:** `{m_book}`")
+                            st.write(f"**Unique Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
                             st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{m_zk}`", unsafe_allow_html=True)
                             
