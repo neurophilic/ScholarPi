@@ -6,8 +6,8 @@ import hashlib
 # ==========================================
 PRIMARY_MODEL = "llama-3.3-70b-versatile"
 FALLBACK_MODEL = "llama-3.1-8b-instant"
-MAX_TEXT_TOKENS = 12000
-EPOCH_BLOCK_SIZE = 1
+MAX_TEXT_TOKENS = 15000
+EPOCH_BLOCK_SIZE = 5
 
 WEB3_PROVIDER_URI = os.getenv(
     "WEB3_PROVIDER_URI", "https://ethereum-sepolia-rpc.publicnode.com"
