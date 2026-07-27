@@ -109,7 +109,6 @@ def rbot(topic_key):
 # Custom JS/CSS for UI Modifications
 custom_ui_code = """
 <style>
-/* 1. Globally hide Streamlit's default anchor link icons on all markdown headers */
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
 .stMarkdown h4 a, .stMarkdown h5 a, .stMarkdown h6 a,
 [data-testid="stHeaderActionElements"] {
@@ -136,12 +135,10 @@ custom_ui_code = """
     margin-right: 20px !important;
 }
 
-/* Larger Robot Chat Avatars */
 [data-testid="stChatMessageAvatar"] {
     transform: scale(1.3);
 }
 
-/* Robot Cursor on Hover */
 .scilem-trigger {
     cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size:24px'%3E%3Ctext y='24'%3E🤖%3C/text%3E%3C/svg%3E"), auto !important;
     font-size: 1.4em;
@@ -783,8 +780,8 @@ if "pending_indeterminate_item" in st.session_state and st.session_state["pendin
     item = st.session_state["pending_indeterminate_item"]
     
     st.warning(
-        f"⚠️ **Indeterminate Format Detected:** The parser could not reliably verify "
-        f"the structure, title, or author metadata for **{item['filename']}** (confidence < 50% or sparse text layer)."
+        f"⚠️ **Indeterminate Format Detected:** The parser flagged **{item['filename']}** for the following reason:\n\n"
+        f"> *{item['indeterminate_reason']}*"
     )
     
     col_proceed, col_cancel = st.columns(2)
@@ -794,7 +791,7 @@ if "pending_indeterminate_item" in st.session_state and st.session_state["pendin
                 (
                     title, author_name, score, logic_integrity, drift, rec,
                     fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason
                 ) = process_single_pdf(
                     item["file_bytes"], 
                     item["filename"], 
@@ -827,7 +824,7 @@ if "pending_indeterminate_item" in st.session_state and st.session_state["pendin
             del st.session_state["pending_indeterminate_item"]
             st.rerun()
             
-    st.stop()  # Pause normal app rendering until the user resolves the prompt
+    st.stop()
 
 with st.container(border=True):
     selected_uploaded_files = []
@@ -985,11 +982,11 @@ with st.container(border=True):
                         (
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason,
                         ) = process_single_pdf(
                             clean_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                         )
-                        if is_indeterminate:
+                        if indeterminate_reason:
                             st.session_state["pending_indeterminate_item"] = {
                                 "file_bytes": clean_bytes,
                                 "filename": fname,
@@ -997,9 +994,10 @@ with st.container(border=True):
                                 "user_id": current_user,
                                 "email": current_email,
                                 "doi": p_doi,
+                                "indeterminate_reason": indeterminate_reason,
                             }
                             st.session_state["is_running"] = False
-                            add_log(f"Low parsing confidence detected for OpenAlex target: {fname}")
+                            add_log(f"Indeterminate parsing detected for OpenAlex target: {fname}")
                             st.rerun()
 
                         eval_record = {
@@ -1063,11 +1061,11 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason,
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                     )
-                    if is_indeterminate:
+                    if indeterminate_reason:
                         st.session_state["pending_indeterminate_item"] = {
                             "file_bytes": clean_bytes,
                             "filename": fname,
@@ -1075,9 +1073,10 @@ with st.container(border=True):
                             "user_id": current_user,
                             "email": current_email,
                             "doi": doi_snap.strip(),
+                            "indeterminate_reason": indeterminate_reason,
                         }
                         st.session_state["is_running"] = False
-                        add_log(f"Low parsing confidence detected for DOI: {doi_snap}")
+                        add_log(f"Indeterminate parsing detected for DOI: {doi_snap}")
                         st.rerun()
 
                     eval_record = {
@@ -1120,11 +1119,11 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason,
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, "None",
                     )
-                    if is_indeterminate:
+                    if indeterminate_reason:
                         st.session_state["pending_indeterminate_item"] = {
                             "file_bytes": clean_bytes,
                             "filename": fname,
@@ -1132,9 +1131,10 @@ with st.container(border=True):
                             "user_id": current_user,
                             "email": current_email,
                             "doi": "None",
+                            "indeterminate_reason": indeterminate_reason,
                         }
                         st.session_state["is_running"] = False
-                        add_log(f"Low parsing confidence detected for local file: {fname}")
+                        add_log(f"Indeterminate parsing detected for local file: {fname}")
                         st.rerun()
 
                     eval_record = {
@@ -1863,7 +1863,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
