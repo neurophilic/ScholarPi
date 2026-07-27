@@ -12,3 +12,4 @@ pyvis
 beautifulsoup4
 tabulate
 cryptography
+networkx
