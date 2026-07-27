@@ -1190,7 +1190,6 @@ def more_details_dialog(item):
     if evidence_report_text:
         st.markdown(evidence_report_text)
         
-        # Ensured "Use Scilem Instead" button appears reliably under API failure or fallback conditions
         if (
             "LLM APIs failed" in evidence_report_text 
             or "No consensus generated" in evidence_report_text 
@@ -1219,8 +1218,7 @@ def more_details_dialog(item):
                     conn.commit()
                     conn.close()
                     
-                    st.success("Successfully generated and applied Scilem fallback evidence report!")
-                    st.rerun()
+                    st.success("Successfully generated and applied Scilem fallback evidence report! Click outside to close or view updated report.")
                 except Exception as e:
                     st.error(f"Failed to generate Scilem report: {e}")
 
