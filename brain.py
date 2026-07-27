@@ -200,7 +200,6 @@ Respond strictly in JSON format with keys:
         rating = 75.0
     else:
         raw_rep = data.get("evidence_report", "Synthesized Evidence Report generated successfully.")
-        # Ensure title consistency and avoid duplication
         if raw_rep.startswith("Synthesized Evidence Report"):
             evidence_report = raw_rep
         else:
@@ -444,7 +443,6 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
 
     scilem_opinion = train_scilem_on_input_and_report(text, evidence_report)
 
-    # Always include Scilem output cleanly inside the unified Synthesized Evidence Report
     if scilem_opinion not in evidence_report:
         evidence_report += f"\n\n### Scilem Homegrown Neural Engine Integration\n- {scilem_opinion}"
 
