@@ -943,7 +943,7 @@ with st.container(border=True):
                             "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                             "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                             "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname, "warnings": warnings_list,
+                            "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
                         }
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -997,7 +997,7 @@ with st.container(border=True):
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname, "warnings": warnings_list,
+                        "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -1038,7 +1038,7 @@ with st.container(border=True):
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname, "warnings": warnings_list,
+                        "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -1218,21 +1218,32 @@ def render_breakdown_item(item, index):
     piq = item["piq"]
     scores_dict = item["scores_dict"]
     warnings = item.get("warnings", [])
+    acknowledged = item.get("warnings_acknowledged", False)
 
     with st.container(border=True):
         col_info, col_actions = st.columns([6, 4])
         with col_info:
-            warn_badge = f" ⚠️ *({len(warnings)} warning checks)*" if warnings else ""
+            if warnings and not acknowledged:
+                warn_badge = f" ⚠️ *({len(warnings)} warning checks active)*"
+            elif warnings and acknowledged:
+                warn_badge = f" 🛡️ *({len(warnings)} warning checks acknowledged)*"
+            else:
+                warn_badge = ""
+
             st.markdown(f"**{title}** — *{author_name}*{warn_badge}")
             st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
+            
             if warnings:
-                with st.expander(f"View {len(warnings)} Warning Check(s)", expanded=False):
+                with st.expander(f"View Warning Checks ({len(warnings)})", expanded=not acknowledged):
                     for w in warnings:
                         st.markdown(f"- {w}")
-                    if st.button("Dismiss Warnings / Skip Checks", key=f"dismiss_warn_{index}_{eval_hash}"):
-                        item["warnings"] = []
-                        add_log(f"Warnings dismissed for {item['filename']}")
-                        st.rerun()
+                    if not acknowledged:
+                        if st.button("Acknowledge Warnings / Dismiss Flag", key=f"ack_warn_{index}_{eval_hash}"):
+                            item["warnings_acknowledged"] = True
+                            add_log(f"Warnings acknowledged for {item['filename']}")
+                            st.rerun()
+                    else:
+                        st.caption("Warnings acknowledged. Paper evaluated normally with piQ minted.")
         with col_actions:
             c_det, c_strat, c_del = st.columns([3, 3, 1])
             with c_det:
