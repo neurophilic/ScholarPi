@@ -38,8 +38,7 @@ from brain import (
 
 w3 = Web3()
 
-# Replace with your actual connected Web3 Ethereum Wallet address (checksum format)
-OWNER_ID = "0xYourEthereumWalletAddressHere"
+OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"
 
 st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
@@ -468,8 +467,14 @@ with scilem_container:
                 })
                 st.rerun()
 
-    # Owner-only Web3 authenticated Scilem reset control
-    if st.session_state.is_authenticated and st.session_state.auth_method == "Web3" and w3.is_address(current_user) and w3.to_checksum_address(current_user) == w3.to_checksum_address(OWNER_ID):
+    # Owner-only Web3 authenticated Scilem reset control (safe lowercase address check)
+    if (
+        st.session_state.is_authenticated 
+        and st.session_state.auth_method == "Web3" 
+        and w3.is_address(current_user) 
+        and w3.is_address(OWNER_ID) 
+        and current_user.lower() == OWNER_ID.lower()
+    ):
         if st.form_submit_button("Reset Scilem (Owner)"):
             msg = reset_scilem()
             st.session_state.scilem_messages = [
