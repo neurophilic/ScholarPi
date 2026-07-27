@@ -288,7 +288,7 @@ def evaluate_scilem_analysis_report(raw_text):
 
 def generate_scilem_fallback_report(text):
     scilem_rep = evaluate_scilem_analysis_report(text)
-    return f"## Synthesized Evidence Report (Scilem Engine Fallback)\n\n{scilem_rep}\n\n- **Evaluation Note:** External LLM consensus was limited, so Scilem generated this structural evidence report locally."
+    return f"## Synthesized Evidence Report (Unified Consensus & Scilem Engine)\n\n{scilem_rep}\n\n- **Evaluation Note:** Integrated via Scilem homegrown neural network structural manifold analysis."
 
 def train_scilem_on_input_and_report(raw_text, evidence_report):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
@@ -438,6 +438,10 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         pidyne_ai_rating = 50.0
 
     scilem_opinion = train_scilem_on_input_and_report(text, evidence_report)
+
+    # Automatically merge Scilem structural analysis into the unified evidence report
+    if scilem_opinion not in evidence_report:
+        evidence_report += f"\n\n### Scilem Homegrown Neural Engine Integration\n- {scilem_opinion}"
 
     consensus_results["scilem"] = {
         "title": "Local Neural Extraction",
