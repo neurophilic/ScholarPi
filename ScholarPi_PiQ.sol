@@ -11,10 +11,9 @@ contract ScholarPi_PiQ_Token {
 
     mapping(address => uint256) public balanceOf;
     
-    // THE REPLAY ATTACK DEFENSE: Permanently tracks assessed paper hashes
+    // REPLAY ATTACK DEFENSE: Permanently tracks assessed paper hashes
     mapping(string => bool) public hasBeenAssessed;
 
-    // Events for the DeSci Index
     event Mint(address indexed researcher, uint256 amount, string evalHash);
     event SlashingApplied(address indexed researcher, uint256 penaltyAmount, string reason);
 
@@ -28,7 +27,7 @@ contract ScholarPi_PiQ_Token {
     }
 
     /**
-     * @dev Mints piQ to the researcher. Reverts instantly if the evalHash was already assessed.
+     * @dev Mints piQ to researcher. Reverts if evalHash was already assessed.
      */
     function verifyProofAndMint(
         address researcher, 
@@ -36,13 +35,9 @@ contract ScholarPi_PiQ_Token {
         string memory evalHash, 
         bytes memory zkProof
     ) public onlyAdmin {
-        // 1. Double-Minting / Replay Attack Prevention
         require(!hasBeenAssessed[evalHash], "Fraud Detected: This manuscript hash has already claimed piQ.");
-        
-        // 2. Mock ZK-Proof Verification (In production, integrate Halo2/SnarkJS verifier here)
         require(zkProof.length > 0, "Invalid Zero-Knowledge Proof payload.");
 
-        // 3. State Updates
         hasBeenAssessed[evalHash] = true;
         
         uint256 mintedAmount = amount * (10 ** uint256(decimals));
@@ -53,7 +48,7 @@ contract ScholarPi_PiQ_Token {
     }
 
     /**
-     * @dev Continuous Legitimacy Auditing: Slashing function triggered by human peer consensus.
+     * @dev Continuous Legitimacy Auditing: Slashing function triggered by peer consensus.
      */
     function slashTokens(
         address researcher, 
