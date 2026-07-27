@@ -71,6 +71,9 @@ def enforce_database_schema():
             "credit_taxonomy_roles": "TEXT DEFAULT 'None'",
             "reproducibility_score": "REAL DEFAULT 0.0",
             "doi": "TEXT DEFAULT 'None'",
+            "consensus_data": "TEXT DEFAULT '{}'",
+            "evidence_report": "TEXT DEFAULT ''",
+            "scilem_score": "REAL DEFAULT 50.0",
         }
 
         cursor.execute("PRAGMA table_info(papers_assessment)")
@@ -81,6 +84,14 @@ def enforce_database_schema():
                     cursor.execute(f"ALTER TABLE papers_assessment ADD COLUMN {col} {dtype}")
                 except Exception:
                     pass
+
+        # Performance Indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_eval_hash ON papers_assessment(eval_hash)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_eth_book ON papers_assessment(eth_book)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_author_name ON papers_assessment(author_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_papers_doi ON papers_assessment(doi)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_por_eval_hash ON blockchain_por_weights(eval_hash)")
+
         conn.commit()
     finally:
         conn.close()
