@@ -167,14 +167,14 @@ Respond strictly in JSON format with keys:
     elif OR_API_KEY:
         _, data = query_llm_json("pidyne", "meta-llama/llama-3.3-70b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
     else:
-        data = {"evidence_report": "LLM APIs failed. No consensus generated.", "ai_rating": 50.0}
+        data = {"evidence_report": "External LLM APIs are inactive or limited. Scilem homegrown neural network is operating independently.", "ai_rating": 50.0}
 
     try:
         rating = float(data.get("ai_rating", 50.0))
     except:
         rating = 50.0
         
-    return data.get("evidence_report", "LLM APIs failed. No consensus generated."), rating
+    return data.get("evidence_report", "External LLM APIs are inactive or limited. Scilem homegrown neural network is operating independently."), rating
 
 def generate_merged_evidence_report(consensus_results):
     failed_llms = []
@@ -190,7 +190,7 @@ def generate_merged_evidence_report(consensus_results):
     all_providers_count = len([k for k in consensus_results.keys() if k != "scilem"])
     
     if len(failed_llms) == all_providers_count:
-        return f"LLM APIs failed. No consensus generated."
+        return f"External LLM APIs failed. No consensus generated."
     
     report_md = ""
     if failed_llms:
@@ -287,7 +287,7 @@ def evaluate_scilem_analysis_report(raw_text):
 
 def generate_scilem_fallback_report(text):
     scilem_rep = evaluate_scilem_analysis_report(text)
-    return f"## Synthesized Evidence Report (Scilem Engine Fallback)\n\n{scilem_rep}\n\n- **Evaluation Note:** External LLM consensus failed due to rate limits/quotas. Scilem homegrown neural network generated this structural evidence report locally."
+    return f"## Synthesized Evidence Report (Scilem Engine Fallback)\n\n{scilem_rep}\n\n- **Evaluation Note:** External LLM consensus was limited, so Scilem generated this structural evidence report locally."
 
 def train_scilem_on_input_and_report(raw_text, evidence_report):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
@@ -426,27 +426,41 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
     consensus_results = run_multi_llm_consensus(text)
     
-    all_llms_failed = all(isinstance(v, dict) and v.get("api_failed", False) for k, v in consensus_results.items())
+    successful_llms = [
+        k for k, v in consensus_results.items() 
+        if k != "scilem" and not v.get("api_failed", False)
+    ]
     
-    if not all_llms_failed:
+    if successful_llms:
         evidence_report, pidyne_ai_rating = generate_pidyne_judgement(consensus_results)
     else:
-        evidence_report = "LLM APIs failed. No consensus generated."
+        evidence_report = "External LLM APIs are inactive or limited. Scilem homegrown neural network is operating independently."
         pidyne_ai_rating = 50.0
 
     scilem_opinion = train_scilem_on_input_and_report(text, evidence_report)
 
     consensus_results["scilem"] = {
-        "title": consensus_results.get("llama", {}).get("title", "N/A"),
-        "authors": consensus_results.get("llama", {}).get("authors", "N/A"),
+        "title": "Local Neural Extraction",
+        "authors": "Homegrown Scilem Network",
         "opinion": scilem_opinion,
         "references": [],
         "api_failed": False
     }
 
+    best_title = "Parsed via Local Heuristics"
+    best_author = "Independent Research Scholar"
+    for l_key in successful_llms:
+        t_val = consensus_results.get(l_key, {}).get("title", "")
+        a_val = consensus_results.get(l_key, {}).get("authors", "")
+        if t_val and "N/A" not in t_val:
+            best_title = t_val
+        if a_val and "N/A" not in a_val:
+            best_author = a_val
+            break
+
     return {
-        "Extracted_Title": consensus_results.get("llama", {}).get("title", "Parsed via Local Heuristics"),
-        "Extracted_Author": consensus_results.get("llama", {}).get("authors", "Independent Research Scholar"),
+        "Extracted_Title": best_title,
+        "Extracted_Author": best_author,
         "Extracted_Topics": "Core Research Domain",
         "Overall_Confidence": 0.85,
         "_consensus_raw": consensus_results,
@@ -529,10 +543,14 @@ def process_single_pdf(
         consensus_raw = raw_data.get("_consensus_raw", {})
         evidence_report = raw_data.get("_evidence_report", "")
 
-        all_llms_failed = all(isinstance(v, dict) and v.get("api_failed", False) for k, v in consensus_raw.items() if k != "scilem")
+        successful_llms = [
+            k for k, v in consensus_raw.items() 
+            if k != "scilem" and not v.get("api_failed", False)
+        ]
+        all_llms_failed = not bool(successful_llms)
         
         if all_llms_failed:
-            warnings_list.append("⚠️ **CRITICAL WARNING FLAG:** External LLM consensus was completely inactive due to API quota exhaustion / rate limits. **Scoring completed via local heuristics only. Publishing to blockchain and minting piQ tokens has been blocked.**")
+            warnings_list.append("⚠️ **CRITICAL WARNING FLAG:** External LLM consensus was inactive due to API limits. **Scoring completed via local heuristics and Scilem neural engine. Publishing to blockchain and minting piQ tokens has been blocked.**")
             piq_minted = 0.0
             tx_hash = "Blocked_Due_To_API_Limits"
             zk_proof = "Blocked_Proof"
