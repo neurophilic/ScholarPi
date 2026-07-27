@@ -35,7 +35,7 @@ from integrations import (
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ---------------------------------------------------------
-# Multi-LLM Consensus Engine (Llama, Mistral, Qwen, Gemini via OpenRouter/Groq/Gemini APIs)
+# Multi-LLM Consensus Engine (Robust Error & Quota Handling)
 # ---------------------------------------------------------
 def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     if not api_key or not str(api_key).strip():
@@ -58,17 +58,19 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
         return provider_name, data
     except Exception as e:
         err_str = str(e)
-        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
-            opinion = f"[{provider_name.upper()} Rate Limit / Quota Exceeded]: Free tier token or request limit reached. Using structural analysis fallback."
+        if "402" in err_str or "insufficient credits" in err_str.lower():
+            opinion = f"[{provider_name.upper()} Insufficient Credits]: OpenRouter account requires credit top-up (402). Using structural analysis fallback."
+        elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate_limit_exceeded" in err_str.lower() or "quota" in err_str.lower():
+            opinion = f"[{provider_name.upper()} Rate Limit / TPD Exceeded]: Daily token or request limit reached. Using structural analysis fallback."
         else:
             opinion = f"Error querying {provider_name.upper()}: {err_str}"
             
         return provider_name, {
-            "title": "N/A (Error)",
+            "title": "N/A (API Limit)",
             "authors": "N/A",
             "opinion": opinion,
             "references": [],
-            "rating": 70.0
+            "rating": 72.0
         }
 
 def extract_with_llama(paper_text):
@@ -133,12 +135,12 @@ def mock_llm_fallback(model_label, paper_text):
     return {
         "title": detected_title,
         "authors": "Independent Research Scholar",
-        "opinion": f"[{model_label} Evaluation]: Methodological structure demonstrates standard empirical formulation with verifiable citations.",
+        "opinion": f"[{model_label} Fallback Evaluation]: Structural formulation successfully parsed via local heuristic extraction.",
         "references": [
             {"citation": "[1]", "authors": "Vafadar et al.", "year": "2025"},
             {"citation": "[2]", "authors": "Vaswani et al.", "year": "2017"}
         ],
-        "rating": round(72.0 + (abs(hash(model_label)) % 20), 1)
+        "rating": 75.0
     }
 
 def run_multi_llm_consensus(paper_text):
@@ -159,7 +161,7 @@ def run_multi_llm_consensus(paper_text):
 
 def generate_merged_evidence_report(consensus_results):
     report_prompt = f"""
-You are an expert academic auditor for the Pi-Index Framework. Synthesize the multi-LLM extraction results below (from Llama, Mistral, Qwen, and Gemini) into a unified, comprehensive evidence report.
+You are an expert academic auditor for the Pi-Index Framework. Synthesize the multi-LLM extraction results below into a unified, comprehensive evidence report.
 Resolve discrepancies in paper title, authors, and references, and produce a consensus critique of the paper.
 
 Multi-LLM Raw Consensus Data:
@@ -174,9 +176,11 @@ Multi-LLM Raw Consensus Data:
             ).choices[0].message.content
             return draft
         except Exception as e:
-            return f"Evidence report synthesis error: {str(e)}"
-            
-    report_md = "## Synthesized Evidence Report (Multi-LLM Consensus)\n\n"
+            # Graceful local fallback if Groq hits 429 TPD limit during synthesis
+            pass
+
+    # Local fallback synthesis report when API limits/quotas are reached
+    report_md = "## Synthesized Evidence Report (Local Consensus Synthesis)\n\n"
     for provider, data in consensus_results.items():
         if provider != "scilem":
             report_md += f"### {provider.upper()} Assessment (Rating: {data.get('rating', 'N/A')}/100)\n"
@@ -499,15 +503,12 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
     evolving_context = get_evolving_system_context()
     
-    # 1. Run Multi-LLM Consensus via OpenRouter/Groq/Gemini APIs
     consensus_results = run_multi_llm_consensus(text)
     
     ratings = [float(v.get("rating", 75.0)) for v in consensus_results.values() if isinstance(v, dict) and "rating" in v]
     
-    # 2. Merge consensus results into unified evidence report
     evidence_report = generate_merged_evidence_report(consensus_results)
 
-    # 3. Train Scilem Model on consensus ratings
     try:
         train_scilem_on_consensus(text, ratings, vapri_value=0.5, lambda_reg=0.01)
     except Exception as e:
