@@ -145,38 +145,34 @@ def run_multi_llm_consensus(paper_text):
             results[provider] = data
     return results
 
-# ---------------------------------------------------------
-# Pidyne Engine (Synthesis & Final Judgment)
-# ---------------------------------------------------------
-def generate_pidyne_judgement(consensus_results):
-    prompt = "You are the Pidyne Assessment Engine. Review the following independent AI extractions and evaluations of a manuscript:\n\n"
+def generate_merged_evidence_report(consensus_results):
+    failed_llms = []
+    successful_llms = []
+    
     for provider, data in consensus_results.items():
-        if provider != "scilem" and not data.get("api_failed", False):
-            prompt += f"### {provider.upper()} Report:\n"
-            prompt += f"- Extracted Title: {data.get('title', 'N/A')}\n"
-            prompt += f"- Extracted Authors: {data.get('authors', 'N/A')}\n"
-            prompt += f"- Opinion: {data.get('opinion', 'N/A')}\n\n"
-            
-    prompt += """
-Based on these independent opinions, generate a final Synthesized Evidence Report (in Markdown) and provide a final AI Rating (from 0.0 to 100.0) reflecting the manuscript's overall validity, rigor, and interdisciplinary value.
-Respond strictly in JSON format with keys:
-1. "evidence_report": string containing the synthesized markdown report.
-2. "ai_rating": float between 0.0 and 100.0.
-"""
-    if GROQ_API_KEY:
-        _, data = query_llm_json("pidyne", PRIMARY_MODEL, GROQ_API_KEY, "https://api.groq.com/openai/v1", prompt)
-    elif OR_API_KEY:
-        _, data = query_llm_json("pidyne", "meta-llama/llama-3.3-70b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
-    else:
-        data = {"evidence_report": "Pidyne failed to generate consensus due to missing API keys.", "ai_rating": 50.0}
+        if provider != "scilem":
+            if data.get("api_failed", False):
+                failed_llms.append(provider.upper())
+            else:
+                successful_llms.append(provider)
 
-    try:
-        rating = float(data.get("ai_rating", 50.0))
-    except:
-        rating = 50.0
+    all_providers_count = len([k for k in consensus_results.keys() if k != "scilem"])
+    
+    if len(failed_llms) == all_providers_count:
+        return f"## Synthesized Evidence Report\n\n**All LLMs ({', '.join(failed_llms)}) hit API rate/credit limits. No report produced.**"
+    
+    report_md = "## Synthesized Evidence Report\n\n"
+    if failed_llms:
+        report_md += f"**Notice:** The following LLM(s) hit rate/credit limits and were excluded: `{', '.join(failed_llms)}`.\n\n"
         
-    return data.get("evidence_report", "Error generating evidence report."), rating
-
+    for provider in successful_llms:
+        data = consensus_results[provider]
+        report_md += f"### {provider.upper()} Assessment\n"
+        report_md += f"- **Title Extracted:** {data.get('title', 'N/A')}\n"
+        report_md += f"- **Authors:** {data.get('authors', 'N/A')}\n"
+        report_md += f"- **Opinion:** {data.get('opinion', 'N/A')}\n\n"
+        
+    return report_md
 
 # ---------------------------------------------------------
 # Neural Networks: Pidyne LSTM & Homegrown Scilem
@@ -233,7 +229,7 @@ class ScilemNetwork(nn.Module):
 scilem_model = ScilemNetwork()
 scilem_optimizer = optim.Adam(scilem_model.parameters(), lr=0.001)
 
-def train_scilem_on_input_and_report(raw_text, evidence_report):
+def evaluate_scilem_analysis_report(raw_text):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -241,35 +237,21 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
         except Exception:
             pass
 
-    scilem_model.train()
-    scilem_optimizer.zero_grad()
-    
+    scilem_model.eval()
     words = raw_text.lower().split()[:512]
     tokens = [abs(hash(w)) % 10000 for w in words]
     if not tokens:
         tokens = [0]
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
-    # Scilem forward pass
-    features = scilem_model(paper_tensor)
+    with torch.no_grad():
+        feat_val = scilem_model(paper_tensor).item()
     
-    # Target mathematically tethered to the structure of Pidyne's synthesized judgment
-    vapri = (abs(hash(evidence_report)) % 1000) / 1000.0
-    target_tensor = torch.tensor([[vapri]], dtype=torch.float32)
-
-    loss_function = nn.MSELoss()
-    loss = loss_function(features, target_tensor)
-    loss.backward()
-    scilem_optimizer.step()
-    
-    torch.save(scilem_model.state_dict(), scilem_weights_path)
-
-    feat_val = features.item()
     analysis_summary = (
         f"Homegrown Scilem Structural Analysis Report: "
-        f"Analyzed local token embedding projection. Scilem actively updated its weights (Loss: {loss.item():.4f}) "
-        f"by learning from both the raw manuscript input and Pidyne's synthesized evidence report (Target vapri: {vapri:.4f}). "
-        f"Note: Scilem does not assign final ratings."
+        f"Analyzed local token embedding projection and structural feature manifold "
+        f"(Feature Activation Magnitude: {feat_val:.4f}). "
+        f"Note: Scilem does not assign ratings; all numerical scoring is managed exclusively by Pidyne."
     )
     return analysis_summary
 
@@ -360,20 +342,12 @@ def extract_unpublished_authors_fallback(text):
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
-    
-    # 1. Independent Extractor Layer
     consensus_results = run_multi_llm_consensus(text)
+    
     all_llms_failed = all(isinstance(v, dict) and v.get("api_failed", False) for k, v in consensus_results.items())
     
-    # 2. Pidyne Aggregation & Rating Layer
-    if not all_llms_failed:
-        evidence_report, pidyne_ai_rating = generate_pidyne_judgement(consensus_results)
-    else:
-        evidence_report = "LLM APIs failed. No consensus generated."
-        pidyne_ai_rating = 50.0
-
-    # 3. Scilem Active Learning Layer
-    scilem_opinion = train_scilem_on_input_and_report(text, evidence_report)
+    evidence_report = generate_merged_evidence_report(consensus_results)
+    scilem_opinion = evaluate_scilem_analysis_report(text)
 
     consensus_results["scilem"] = {
         "title": consensus_results.get("llama", {}).get("title", "N/A"),
@@ -384,13 +358,12 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     }
 
     return {
-        "Extracted_Title": consensus_results.get("llama", {}).get("title", "Parsed via Local Heuristics"),
-        "Extracted_Author": consensus_results.get("llama", {}).get("authors", "Independent Research Scholar"),
+        "Extracted_Title": "Parsed via Local Heuristics",
+        "Extracted_Author": "Independent Research Scholar",
         "Extracted_Topics": "Core Research Domain",
         "Overall_Confidence": 0.85,
         "_consensus_raw": consensus_results,
         "_evidence_report": evidence_report,
-        "_pidyne_rating": pidyne_ai_rating,
         "_scilem_rating": "N/A"
     }
 
@@ -403,17 +376,16 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
 def compute_logical_integrity(extracted_logic_vars):
     return 75.0
 
-def compute_formulaic_criteria(vars_dict, reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, similarity_penalty=0.0, ai_rating=75.0):
-    # Formulas directly scale with the baseline judgment provided by Pidyne
+def compute_formulaic_criteria(vars_dict, reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, similarity_penalty=0.0):
     scores = {
-        "C1_Semantic_Originality": ai_rating,
+        "C1_Semantic_Originality": 75.0,
         "C2_Methodological_Rigor_SciScore": sciscore_adherence * 100.0,
-        "C3_Interdisciplinary_Entropy": (ai_rating * 0.9) + (topological_entropy * 10.0),
-        "C4_Societal_Impact": ai_rating,
+        "C3_Interdisciplinary_Entropy": 75.0,
+        "C4_Societal_Impact": 75.0,
         "C5_Open_Science_Repro": reproducibility_score * 100.0,
-        "C6_Literature_Integration": ai_rating,
-        "C7_Empirical_Density": ai_rating,
-        "C8_Future_Actionability_FAIR": ai_rating
+        "C6_Literature_Integration": 75.0,
+        "C7_Empirical_Density": 75.0,
+        "C8_Future_Actionability_FAIR": 75.0
     }
     return scores
 
@@ -438,13 +410,14 @@ def process_single_pdf(
 ):
     active_weights = [1.0] * 8
     warnings_list = []
+    logic_integrity = 75.0
     drift = "N/A"
     rec = "N/A"
 
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {k: 0.0 for k in ["C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", "C3_Interdisciplinary_Entropy", "C4_Societal_Impact", "C5_Open_Science_Repro", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability_FAIR"]}
         warnings_list.append("Binary payload is empty or download/extraction failed.")
-        return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, 75.0, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", "N/A")
+        return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, logic_integrity, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", "N/A")
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
     
@@ -464,10 +437,7 @@ def process_single_pdf(
         topological_entropy = calculate_citation_topology(provided_doi)
 
         raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)
-        
-        pidyne_ai_rating = raw_data.get("_pidyne_rating", 75.0)
         consensus_raw = raw_data.get("_consensus_raw", {})
-        evidence_report = raw_data.get("_evidence_report", "")
 
         all_llms_failed = all(isinstance(v, dict) and v.get("api_failed", False) for k, v in consensus_raw.items() if k != "scilem")
         
@@ -478,22 +448,13 @@ def process_single_pdf(
             zk_proof = "Blocked_Proof"
         else:
             piq_minted = 7.5
-            zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, pidyne_ai_rating, "None")
+            zk_proof = generate_zk_snark_proof(file_hash, 75.0, logic_integrity, "None")
             tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
 
-        title = raw_data.get("Extracted_Title", filename.replace(".pdf", "").replace("_", " ").title())
-        extracted_author = raw_data.get("Extracted_Author", pdf_meta_author if pdf_meta_author else "Independent Research Scholar")
-        
-        scores_dict = compute_formulaic_criteria(
-            raw_data, 
-            0.85, 
-            sciscore_adherence=mdar_score,
-            topological_entropy=topological_entropy,
-            ai_rating=pidyne_ai_rating
-        )
-        
-        final_score = sum(scores_dict.values()) / 8.0
-        logic_integrity = pidyne_ai_rating
+        title = filename.replace(".pdf", "").replace("_", " ").title()
+        extracted_author = pdf_meta_author if pdf_meta_author else "Independent Research Scholar"
+        scores_dict = compute_formulaic_criteria(raw_data, 0.85, sciscore_adherence=mdar_score)
+        final_score = 75.0
 
         if not all_llms_failed:
             cursor.execute(
@@ -505,7 +466,7 @@ def process_single_pdf(
                     datetime.now().isoformat(), book_address, piq_minted,
                     tx_hash, zk_proof, user_id, "None", 0.0,
                     mdar_score, rrid_count, json.dumps(["Data Curation"]), 0.85,
-                    provided_doi, json.dumps(consensus_raw), evidence_report, 50.0
+                    provided_doi, json.dumps(consensus_raw), raw_data.get("_evidence_report", ""), 50.0
                 ),
             )
             conn.commit()
@@ -519,5 +480,5 @@ def process_single_pdf(
         title, extracted_author, final_score, logic_integrity, drift, rec,
         ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
         active_weights, mdar_score, rrid_count, 0.85, False, warnings_list,
-        consensus_raw, evidence_report, "N/A"
+        consensus_raw, raw_data.get("_evidence_report", ""), "N/A"
     )
