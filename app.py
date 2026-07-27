@@ -42,7 +42,7 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine 🤖", layout="wide"
 )
 
-
+"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
   <defs>
     <style>
@@ -80,7 +80,7 @@ st.set_page_config(
     <path class="dark" d="M 230,370 C 230,358 240,355 250,355 C 260,355 270,358 270,370 C 270,382 260,385 250,385 C 240,385 230,382 230,370 Z" />
   </g>
 </svg>
-
+"""
 
 st.markdown(
     f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} </h1>", 
