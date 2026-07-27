@@ -13,7 +13,7 @@ def clean_author_name(author_str):
             parsed = json.loads(author_str.replace("'", '"'))
             if isinstance(parsed, list):
                 return ", ".join([str(a).strip() for a in parsed if str(a).strip()])
-    except:
+    except Exception:
         pass
     cleaned = (
         author_str.replace("[", "")
