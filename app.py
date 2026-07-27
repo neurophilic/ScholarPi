@@ -94,7 +94,6 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# Custom JS/CSS for Sidebar Scilem Assistant that becomes Draggable on Click & Drag
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -1138,7 +1137,7 @@ def more_details_dialog(item):
             with col:
                 data = consensus_raw.get(llm_key, {})
                 with st.container(border=True):
-                    st.markdown(f"**Model: {llm_key.upper()} (Rating: {data.get('rating', 'N/A')}/100)**")
+                    st.markdown(f"**Model: {llm_key.upper()}**")
                     st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
                     st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
                     st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
