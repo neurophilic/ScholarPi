@@ -36,13 +36,9 @@ PINATA_API_KEY = get_secret("PINATA_API_KEY")
 PINATA_SECRET_API_KEY = get_secret("PINATA_SECRET_API_KEY")
 REGISTRY_CONTRACT_ADDRESS = get_secret("REGISTRY_CONTRACT_ADDRESS")
 
-# Multi-LLM API Keys
-OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
-GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
-MISTRAL_API_KEY = get_secret("MISTRAL_API_KEY")
-QWEN_API_KEY = get_secret("QWEN_API_KEY")
+# Strict adherence: Only OpenRouter, Gemini, and Llama (Groq) keys
 OR_API_KEY = get_secret("OR_API_KEY")
-AIN_API_KEY = get_secret("AIN_API_KEY")
+GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
 
 GENESIS_BLOCK_CONFIG = {
     "block_height": 1,
@@ -54,7 +50,7 @@ GENESIS_BLOCK_CONFIG = {
     "model_used": "none",
     "por_proof": "Genesis_Proof_Anchor",
     "formulas_hash": hashlib.sha256(
-        b"C1:Semantic_Originality|C2:MDAR_Rigor|C3:Citation_Entropy|C4:Open_Infrastructure|C5:Containerized_Execution|C6:Citation_Polarity|C7:Empirical_Density|C8:FAIR_Actionability|CoARA_Dossier_v2.0"
+        b"C1:Semantic_Originality|C2:MDAR_Rigor|C3:Citation_Entropy|C4:Open_Infrastructure|C5:Containerized_Execution|C6:Citation_Polarity|C7:Empirical_Density|C8:Future_Actionability_FAIR|CoARA_Dossier_v2.0"
     ).hexdigest(),
 }
 
