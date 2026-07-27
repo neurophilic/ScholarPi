@@ -32,37 +32,42 @@ from integrations import (
     calculate_citation_topology
 )
 
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-
 # ---------------------------------------------------------
 # Multi-LLM Consensus Clients & Extraction Pipeline
 # ---------------------------------------------------------
+# Define the 4 target LLMs explicitly: Llama, Mistral, Qwen, Gemini.
 multi_clients = {}
 if GROQ_API_KEY and str(GROQ_API_KEY).strip():
     multi_clients["groq"] = OpenAI(api_key=GROQ_API_KEY.strip(), base_url="https://api.groq.com/openai/v1")
 if OR_API_KEY and str(OR_API_KEY).strip():
     multi_clients["openrouter"] = OpenAI(api_key=OR_API_KEY.strip(), base_url="https://openrouter.ai/api/v1")
-if AIN_API_KEY and str(AIN_API_KEY).strip():
-    multi_clients["ainative"] = OpenAI(api_key=AIN_API_KEY.strip(), base_url="https://api.ainative.studio/v1")
 
-multi_models = {
-    "groq": PRIMARY_MODEL,
-    "openrouter": "mistralai/mistral-7b-instruct:free",
-    "ainative": "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+# Route providers to specific endpoints for mapping
+MULTI_ROUTING = {
+    "Llama": {"client": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct"},
+    "Mistral": {"client": "openrouter", "model": "mistralai/mistral-large-2407"},
+    "Qwen": {"client": "openrouter", "model": "qwen/qwen-2.5-72b-instruct"},
+    "Gemini": {"client": "openrouter", "model": "google/gemini-2.0-flash-001"}
 }
 
-def extract_with_llm(provider_name, paper_text):
-    client = multi_clients.get(provider_name)
+# Fallbacks in case only Groq is available
+if not OR_API_KEY and GROQ_API_KEY:
+    MULTI_ROUTING["Llama"] = {"client": "groq", "model": "llama-3.3-70b-versatile"}
+    MULTI_ROUTING["Mistral"] = {"client": "groq", "model": "mixtral-8x7b-32768"}
+
+def extract_with_llm(provider_name, config, paper_text):
+    client_name = config.get("client")
+    client = multi_clients.get(client_name)
     if not client:
         return provider_name, {
             "authors": "Unconfigured Endpoint Key",
             "title": "N/A",
             "references": [],
-            "opinion": f"Endpoint {provider_name} API key not found in secrets/environment.",
+            "opinion": f"Endpoint for {provider_name} not found in secrets/environment.",
             "rating": 50.0
         }
     
-    model = multi_models.get(provider_name, PRIMARY_MODEL)
+    model = config.get("model")
     
     # Isolate front matter (Title, Authors, Abstract) for reliable metadata extraction
     front_matter = paper_text[:3000]
@@ -113,10 +118,8 @@ def extract_with_llm(provider_name, paper_text):
 
 def run_multi_llm_consensus(paper_text):
     results = {}
-    providers_to_run = ["groq", "openrouter", "ainative"]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(extract_with_llm, p, paper_text): p for p in providers_to_run}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(extract_with_llm, provider, config, paper_text): provider for provider, config in MULTI_ROUTING.items()}
         for future in concurrent.futures.as_completed(futures):
             provider, data = future.result()
             results[provider] = data
@@ -130,10 +133,13 @@ def generate_merged_evidence_report(consensus_results):
     Raw LLM Consensus Data:
     {json.dumps(consensus_results, indent=2)}
     """
-    if groq_client:
+    client = multi_clients.get("groq") or multi_clients.get("openrouter")
+    model = PRIMARY_MODEL if multi_clients.get("groq") else "meta-llama/llama-3.3-70b-instruct"
+    
+    if client:
         try:
-            draft = groq_client.chat.completions.create(
-                model=PRIMARY_MODEL,
+            draft = client.chat.completions.create(
+                model=model,
                 messages=[{"role": "user", "content": report_prompt}],
                 temperature=0.1
             ).choices[0].message.content
@@ -141,6 +147,7 @@ def generate_merged_evidence_report(consensus_results):
         except Exception as e:
             return f"Evidence report generation failed: {str(e)}"
     return json.dumps(consensus_results, indent=2)
+
 
 # ---------------------------------------------------------
 # Neural Networks: Pidyne LSTM & Homegrown Scilem
@@ -222,8 +229,7 @@ def evaluate_scilem_inference(raw_text):
 
 def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambda_reg=0.01):
     """
-    Scilem training loop: Corrects and aligns against the final Multi-LLM aggregate evidence report result 
-    (independent of Pidyne's numerical score), using vapri for regularized stability.
+    Scilem training loop: Corrects and aligns against the final Multi-LLM aggregate evidence report result.
     """
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
@@ -257,6 +263,7 @@ def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambd
         pass
 
     return float(scilem_score.item()), float(total_loss.item())
+
 
 # ---------------------------------------------------------
 # Utilities & Sanitization
@@ -379,7 +386,8 @@ def adaptive_chunking(text, max_tokens):
     return front_matter + "\n...[TRUNCATED FOR TOKEN LIMITS]...\n" + back_matter
 
 def evaluate_discriminator_and_divergence(text, model):
-    if not groq_client: return 0.0, 0.85
+    client = multi_clients.get("groq") or multi_clients.get("openrouter")
+    if not client: return 0.0, 0.85
     text_chunk = text[:5000]
     prompt = f"""Analyze this academic text for two adversarial threats:
 1. Synthetic Hallucination / AI-Generated Preprint Flood (unnatural keyword stuffing, stylistic filler, or high-flown prose masking weak statistical substance).
@@ -393,7 +401,7 @@ Text: {text_chunk}"""
 
     for attempt in range(3):
         try:
-            response = groq_client.chat.completions.create(
+            response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model=model,
                 temperature=0.0,
@@ -411,7 +419,8 @@ Text: {text_chunk}"""
     return 0.0, 0.85
 
 def evaluate_scope_alignment(text, scope, model, text_limit):
-    if not groq_client: return 0.0
+    client = multi_clients.get("groq") or multi_clients.get("openrouter")
+    if not client: return 0.0
     if not scope.strip():
         return 0.0
     text = adaptive_chunking(text, text_limit)
@@ -421,7 +430,7 @@ Text: {text}"""
 
     for attempt in range(3):
         try:
-            response = groq_client.chat.completions.create(
+            response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model=model,
                 temperature=0.0,
@@ -462,7 +471,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
     evolving_context = get_evolving_system_context()
     
-    # 1. Multi-LLM consensus extraction across free endpoints
+    # 1. Multi-LLM consensus extraction (Llama, Mistral, Qwen, Gemini)
     consensus_results = run_multi_llm_consensus(text)
     
     # 2. Merge consensus results into unified evidence report
@@ -492,7 +501,7 @@ HOMEGROWN SCILEM MODEL ALIGNMENT RATING:
 {scilem_rating:.2f} / 100.0
 
 G-EVAL CHAIN OF THOUGHT & AUTHOR RULES REQUIRED:
-- Output "chain_of_thought" string detailing your step-by-step logical reasoning.
+- Output "chain_of_thought" string detailing your step-by-step logical reasoning based on the evidence report.
 - Extract clean comma-separated list of HUMAN author names (no institutions).
 - Extract 1 to 3 distinct scientific subfields.
 
@@ -504,10 +513,12 @@ REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0).
 Output MUST be a valid JSON object containing the "chain_of_thought" key followed by the variables.
 Text Chunk: {text[:4000]}"""
 
-    if groq_client:
+    client = multi_clients.get("groq") or multi_clients.get("openrouter")
+    
+    if client:
         for attempt in range(3):
             try:
-                response = groq_client.chat.completions.create(
+                response = client.chat.completions.create(
                     messages=[{"role": "user", "content": prompt}],
                     model=model,
                     temperature=0.1, 
@@ -533,7 +544,7 @@ Text Chunk: {text[:4000]}"""
         "Overall_Confidence": 0.85,
         "_consensus_raw": consensus_results,
         "_evidence_report": evidence_report,
-        "_scilem_rating": 50.0
+        "_scilem_rating": scilem_rating
     }
 
 def get_formulas_hash():
