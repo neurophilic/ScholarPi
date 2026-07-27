@@ -1262,9 +1262,23 @@ def render_breakdown_item(item, index):
             else:
                 warn_badge = ""
 
-            has_valid_title = title and title != "N/A" and "Parsed via Local Heuristics" not in title
-            has_valid_author = author_name and author_name not in ["Independent Research Scholar", "Unidentified", "Unknown", "N/A"]
-            extraction_badge = " ✅ *Title & Author Extracted Successfully*" if (has_valid_title or has_valid_author) else ""
+            title_lower = str(title).lower().strip()
+            author_lower = str(author_name).lower().strip()
+
+            invalid_titles = ["n/a", "none", "unknown", "failed", "unnamed", "api limit"]
+            invalid_authors = ["n/a", "none", "unknown", "unidentified", "independent research scholar", "unconfigured key", "anonymous"]
+
+            has_valid_title = (
+                title 
+                and not any(inv in title_lower for inv in invalid_titles)
+                and "parsed via local heuristics" not in title_lower
+            )
+            has_valid_author = (
+                author_name 
+                and not any(inv in author_lower for inv in invalid_authors)
+            )
+
+            extraction_badge = " ✅ *Title & Author Extracted Successfully*" if (has_valid_title and has_valid_author) or (has_valid_title or has_valid_author) else ""
 
             st.markdown(f"**{title}** — *{author_name}*{extraction_badge}{warn_badge}")
             st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
