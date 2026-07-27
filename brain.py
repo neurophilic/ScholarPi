@@ -417,6 +417,7 @@ def process_single_pdf(
     book_address="None",
     email="None",
     provided_doi="None",
+    force_proceed=False,
 ):
     active_weights = [1.0] * 8
     works_count, cited_by_count, credit_role = 0.0, 0, "Data Curation"
@@ -433,7 +434,7 @@ def process_single_pdf(
         return (
             "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False,
+            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, False,
         )
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -472,7 +473,7 @@ def process_single_pdf(
                 "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
                 ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
                 file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                0.0, False,
+                0.0, False, False,
             )
 
         scope_alignment = (
@@ -523,7 +524,7 @@ def process_single_pdf(
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-                used_weights, mdar_score, rrid_count, repro_score, True,
+                used_weights, mdar_score, rrid_count, repro_score, True, False,
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
@@ -555,7 +556,7 @@ def process_single_pdf(
                     "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
                     ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
                     file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                    reproducibility_score, False,
+                    reproducibility_score, False, False,
                 )
 
         if not isinstance(raw_data, dict):
@@ -567,7 +568,7 @@ def process_single_pdf(
             }
 
         confidence = raw_data.get("Overall_Confidence", 1.0)
-        if confidence < 0.50:
+        if confidence < 0.50 and not force_proceed:
             empty_scores = {
                 k: 0.0
                 for k in [
@@ -581,7 +582,7 @@ def process_single_pdf(
                 clean_author_name(raw_data.get("Extracted_Author", "Unidentified")),
                 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
                 empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                reproducibility_score, False,
+                reproducibility_score, False, True,  # is_indeterminate = True
             )
 
         title = raw_data.get("Extracted_Title", filename)
@@ -682,7 +683,7 @@ def process_single_pdf(
                     return (
                         title, extracted_author, ex_score, ex_logic, drift, rec_spec,
                         fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
-                        used_weights, mdar_score, rrid_count, repro_score, True,
+                        used_weights, mdar_score, rrid_count, repro_score, True, False,
                     )
 
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
@@ -832,5 +833,5 @@ def process_single_pdf(
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, reproducibility_score, False,
+        active_weights, mdar_score, rrid_count, reproducibility_score, False, False,
     )
