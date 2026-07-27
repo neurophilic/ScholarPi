@@ -23,7 +23,8 @@ DB_PATH = os.path.join(BASE_DIR, "pi_index_main.db")
 
 def get_secret(key, default=""):
     val = os.getenv(key)
-    if val: return val
+    if val: 
+        return val
     try:
         import streamlit as st
         return st.secrets.get(key, default)
@@ -35,7 +36,11 @@ PINATA_API_KEY = get_secret("PINATA_API_KEY")
 PINATA_SECRET_API_KEY = get_secret("PINATA_SECRET_API_KEY")
 REGISTRY_CONTRACT_ADDRESS = get_secret("REGISTRY_CONTRACT_ADDRESS")
 
-# Multi-LLM Consensus Endpoint Keys
+# Multi-LLM API Keys
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
+GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
+MISTRAL_API_KEY = get_secret("MISTRAL_API_KEY")
+QWEN_API_KEY = get_secret("QWEN_API_KEY")
 OR_API_KEY = get_secret("OR_API_KEY")
 AIN_API_KEY = get_secret("AIN_API_KEY")
 
