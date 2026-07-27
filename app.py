@@ -431,6 +431,7 @@ else:
 
 current_user = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
 current_email = "None"
+valid_book_address = current_user if (st.session_state.auth_method == "Web3" and w3.is_address(current_user)) else "0x0000000000000000000000000000000000000000"
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("Live System Monitor", expanded=True):
@@ -942,7 +943,7 @@ with st.container(border=True):
                             zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                             consensus_raw, evidence_report_text, scilem_rating
                         ) = process_single_pdf(
-                            clean_bytes, fname, scope_val, current_user, current_user, current_email, p_doi,
+                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, p_doi,
                         )
 
                         eval_record = {
@@ -999,7 +1000,7 @@ with st.container(border=True):
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                         consensus_raw, evidence_report_text, scilem_rating
                     ) = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, current_user, current_email, doi_snap.strip(),
+                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, doi_snap.strip(),
                     )
 
                     eval_record = {
@@ -1043,7 +1044,7 @@ with st.container(border=True):
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                         consensus_raw, evidence_report_text, scilem_rating
                     ) = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, current_user, current_email, "None",
+                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, "None",
                     )
 
                     eval_record = {
