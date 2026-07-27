@@ -1678,7 +1678,7 @@ try:
         explore_col1, explore_col2 = st.columns([3, 1])
         with explore_col1:
             search_query = st.text_input(
-                "Enter Document Evaluation Hash, Block Hash, Paper Name, or Author Name to verify ledger record...",
+                "Enter Document Evaluation Hash, Block Hash, Paper Name, Author Name, or Book Address to verify ledger record...",
                 key="pidyne_ledger_search_query"
             )
         with explore_col2:
@@ -1694,12 +1694,12 @@ try:
                               p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
                               p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
                               p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash
+                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book
                        FROM papers_assessment p
                        LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                       WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ?
+                       WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
                        LIMIT 5""",
-                    (q_term, q_term, q_term, q_term)
+                    (q_term, q_term, q_term, q_term, q_term)
                 )
                 matched_records = cursor.fetchall()
                 if matched_records:
@@ -1709,11 +1709,11 @@ try:
                             m_title, m_author, m_filename, m_score, m_logic,
                             m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
                             m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                            m_block_height, m_block_hash, m_por, m_form
+                            m_block_height, m_block_hash, m_por, m_form, m_book_addr
                         ) = mr
 
                         m_author_clean = clean_author_name(m_author)
-                        m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
+                        m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
                         m_tx_url = safe_get_sepolia_url(m_tx)
                         
                         tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
@@ -1727,7 +1727,7 @@ try:
                             st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
                             st.write(f"**Unique Author Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{m_zk}`", unsafe_allow_html=True)
+                            st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{m_zk}`", unsafe_allow_html=True)
                             
                             if m_tx_url:
                                 st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
@@ -1738,7 +1738,7 @@ try:
                             st.markdown(f"**SciScore MDAR Adherence {rbot('sciscore mdar')}:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
                 else:
                     st.error(
-                        "No records matching that evaluation hash, block hash, paper name, or author name were found on the ledger."
+                        "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
                     )
             except Exception as e:
                 st.error(f"Error reading database: {str(e)}")
