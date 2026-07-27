@@ -33,7 +33,8 @@ from integrations import (
 )
 from brain import (
     process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
-    PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem
+    PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem,
+    evaluate_scilem_analysis_report
 )
 
 w3 = Web3()
@@ -461,9 +462,11 @@ with scilem_container:
             submitted_floating = st.form_submit_button("Send")
             if submitted_floating and floating_prompt.strip():
                 st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
+                # Live neural network evaluation response tied to Scilem's current weights
+                scilem_neural_reply = evaluate_scilem_analysis_report(floating_prompt)
                 st.session_state.scilem_messages.append({
                     "role": "assistant",
-                    "content": f"Scilem active. Synthesizing response regarding: '{floating_prompt.strip()}'."
+                    "content": scilem_neural_reply
                 })
                 st.rerun()
 
