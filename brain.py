@@ -147,7 +147,7 @@ def get_evolving_system_context():
         context_str += f"- Current Blockchain Epoch {epoch_data[0]} heavily penalizes weak '{criteria_map[max_idx]}'. Apply maximum scrutiny to this dimension.\n"
 
     if attestations:
-        context_str += "- Recent human peer-reviewers noted the following anomalies:\n"
+        context_str += "- Recent human peer-reviewers noted the following anomalies and flags. Adjust your baseline strictness to catch these:\n"
         for stance, count in attestations:
             context_str += f"  * {count} recent human flags for: '{stance}'\n"
 
@@ -178,12 +178,12 @@ def evaluate_discriminator_and_divergence(text, model):
     if not groq_client: return 0.0, 0.85
     text_chunk = text[:5000]
     prompt = f"""Analyze this academic text for two adversarial threats:
-1. Synthetic Hallucination / AI-Generated Preprint Flood.
-2. Semantic-Empirical Divergence.
+1. Synthetic Hallucination / AI-Generated Preprint Flood (unnatural keyword stuffing, stylistic filler, or high-flown prose masking weak statistical substance).
+2. Semantic-Empirical Divergence: Check if the grandiose claims and equations in the text drastically diverge from or lack grounding in actual reported data variances.
 
 Output a JSON object with two keys:
-- "Gaming_Penalty": float from 0.0 to 1.0.
-- "Reproducibility_Score": float from 0.0 to 1.0.
+- "Gaming_Penalty": float from 0.0 (natural) to 1.0 (highly manipulated/synthetic).
+- "Reproducibility_Score": float from 0.0 to 1.0 indicating whether code/data artifacts appear functional and verifiable.
 
 Text: {text_chunk}"""
 
@@ -268,14 +268,16 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     
     prompt = f"""You are the theoretical parser for the decentralized Pi-Index oracle. Read the academic manuscript and extract metadata and audit variables.
 
-STRICT CoARA MANDATES:
+STRICT CoARA MANDATES & EQUITY:
 - Evaluate based on intrinsic merit, open science, and FAIR principles. Do not evaluate based on journal prestige.
 - Global equity is paramount. Do not penalize non-native English writing styles.
 
 {evolving_context}
 
-G-EVAL CHAIN OF THOUGHT REQUIRED:
-Before outputting any numerical scores, you MUST generate a "chain_of_thought" string detailing your step-by-step logical reasoning.
+G-EVAL CHAIN OF THOUGHT & AUTHOR RULES REQUIRED:
+- Before outputting any numerical scores, you MUST generate a "chain_of_thought" string detailing your step-by-step logical reasoning.
+- Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of HUMAN author names (no brackets, no quotes, no "et al."). NEVER output universities, departments, or institutions.
+- Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered.
 
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
 Extract Transparent Audit Variables (0.0 to 1.0): `semantic_novelty`, `laundering_penalty`, `rigor_index`, `citation_entropy`, `societal_linkage`, `D_open`, `J_code`, `citation_polarity_score`, `empirical_density`, `fair_compliance`.
@@ -345,10 +347,10 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
 
     new_weights = []
     for i, old_w in enumerate(old_weights):
-        stretched_score = max(1.0, min(100.0, mu_score + (scores[i] - mu_score) * 2.0))
+        stretched_score = max(1.0, min(100.0, mu_score + (scores[i] - mu_score) * 2.5))
         weight_shift = ((model_version * model_size) / (delta_models * pi_accuracy)) * ((stretched_score / 100.0) ** 2)
-        target_w = old_w * (1.0 + np.clip(weight_shift * 0.05, -0.10, 0.10))
-        new_weights.append(target_w)
+        w_new = old_w * 0.80 + (1.0 + np.clip(weight_shift * 0.05, -0.10, 0.10)) * 0.20
+        new_weights.append(w_new)
 
     sum_of_weights = sum(new_weights)
     return [round((w / sum_of_weights) * 8.0, 6) for w in new_weights]
@@ -379,7 +381,7 @@ def compute_formulaic_criteria(
     c2_raw = sciscore_adherence * vars_dict.get("rigor_index", 0.80) * 100
     scores["C2_Methodological_Rigor_SciScore"] = min(100.0, max(0.0, c2_raw))
     
-    c3_raw = topological_entropy * 100
+    c3_raw = max(vars_dict.get("citation_entropy", 0.70), topological_entropy) * 100
     scores["C3_Interdisciplinary_Entropy"] = min(100.0, max(0.0, c3_raw))
     
     c4_raw = vars_dict.get("societal_linkage", 0.75) * 100
@@ -457,6 +459,31 @@ def generate_rebuttal_strategy(scores_dict):
         f" **{weakest_criterion.replace('_', ' ')}**"
         f" ({scores_dict[weakest_criterion]:.1f}/100).\n\n"
     )
+    if "Originality" in weakest_criterion:
+        strategy += (
+            "**Defense Tactic:** Argue that the paper value lies in synthesis and"
+            " rigorous validation rather than paradigm disruption. Emphasize that"
+            " cumulative science requires foundational solidity over risky novelties."
+        )
+    elif "Rigor" in weakest_criterion:
+        strategy += (
+            "**Defense Tactic:** Pre-emptively acknowledge sample size limitations"
+            " in the discussion section. Frame the methodology as an exploratory pilot"
+            " to lower the expectation of absolute statistical certainty."
+        )
+    elif "Societal" in weakest_criterion:
+        strategy += (
+            "**Defense Tactic:** Shift the narrative from immediate societal"
+            " application to essential foundational groundwork. Argue that"
+            " downstream societal impact is impossible without this specific"
+            " theoretical gap being closed."
+        )
+    else:
+        strategy += (
+            "**Defense Tactic:** Focus the reviewers attention on the empirical"
+            " density of your dataset. Acknowledge minor structural gaps but insist"
+            " the volume of data speaks for itself."
+        )
     return strategy
 
 def process_single_pdf(
@@ -617,8 +644,15 @@ def process_single_pdf(
                 "Overall_Confidence": 0.85,
             }
 
+        confidence = float(raw_data.get("Overall_Confidence", 0.9))
+        if confidence < 0.50:
+            warnings_list.append(f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%).")
+
         extracted_author_check = str(raw_data.get("Extracted_Author", "")).strip()
         extracted_title_check = str(raw_data.get("Extracted_Title", ""))
+
+        if not extracted_title_check or "failed" in extracted_title_check.lower():
+            warnings_list.append("Manuscript title is missing or parser extraction failed.")
 
         extracted_author = ""
         if extracted_author_check and extracted_author_check.lower() not in ["unidentified", "unknown", "none", "", "research scholar"]:
@@ -628,14 +662,31 @@ def process_single_pdf(
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
 
+        if not extracted_author or is_likely_institution(extracted_author) or extracted_author.lower() in ["unidentified", "unknown", "none", "research scholar"]:
+            base_fname = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
+            extracted_author = base_fname if len(base_fname) > 3 and "pdf" not in base_fname.lower() else "Independent Research Scholar"
+            warnings_list.append("Author metadata could not be reliably verified; derived fallback from filename.")
+
         extracted_author = clean_author_name(extracted_author)
 
         title = raw_data.get("Extracted_Title", filename)
         if not title or title == filename or "failed" in title.lower():
             title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
 
-        extracted_topics = str(raw_data.get("Extracted_Topics", "Core Research Domain")).strip()
-        subfields = [s.strip().title() for s in extracted_topics.split(",") if s.strip()] if isinstance(extracted_topics, str) else ["Core Research Domain"]
+        extracted_topics = str(
+            raw_data.get("Extracted_Topics", "Core Research Domain")
+        ).strip()
+
+        if isinstance(extracted_topics, str):
+            subfields = [
+                s.strip().title() for s in extracted_topics.split(",") if s.strip()
+            ]
+        elif isinstance(extracted_topics, list):
+            subfields = [
+                str(s).strip().title() for s in extracted_topics if str(s).strip()
+            ]
+        else:
+            subfields = ["Core Research Domain"]
         if not subfields:
             subfields = ["Core Research Domain"]
         fields = [subfields[0]]
@@ -649,6 +700,62 @@ def process_single_pdf(
             warnings_list.append(f"Highly Similar Manuscript Detected: Metadata heuristics indicate a {sim_score*100:.1f}% structural overlap with ledger entry ({flagged_hash[:10]}...). Applied Conceptual Laundering penalty.")
             similarity_penalty = 0.60  
             gaming_penalty = min(1.0, gaming_penalty + 0.50)
+
+        cursor.execute(
+            "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
+            " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
+            " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
+            " doi=? OR author_name=?",
+            (provided_doi, extracted_author),
+        )
+        existing_records = cursor.fetchall()
+
+        for rec_row in existing_records:
+            ex_hash, ex_score, ex_logic, *ex_rest = rec_row
+            cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
+            ex_title_row = cursor.fetchone()
+            if ex_title_row:
+                ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
+                if (provided_doi != "None" and provided_doi) or (
+                    ex_norm_title == normalized_title and normalized_title != ""
+                ):
+                    c_scores = ex_rest[:8]
+                    piq_minted, tx_hash, zk_proof, c_mdar_score, c_rrid_count, repro_score = (
+                        ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
+                    )
+                    drift = (
+                        calculate_complex_drift(scope_alignment, c_scores)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    rec_spec = (
+                        get_recommendation_spectrum(ex_score, drift)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    scores_dict = {
+                        "C1_Semantic_Originality": c_scores[0],
+                        "C2_Methodological_Rigor_SciScore": c_scores[1],
+                        "C3_Interdisciplinary_Entropy": c_scores[2],
+                        "C4_Societal_Impact": c_scores[3],
+                        "C5_Open_Science_Repro": c_scores[4],
+                        "C6_Literature_Integration": c_scores[5],
+                        "C7_Empirical_Density": c_scores[6],
+                        "C8_Future_Actionability_FAIR": c_scores[7],
+                    }
+                    cursor.execute(
+                        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
+                        " WHERE eval_hash=?",
+                        (ex_hash,),
+                    )
+                    weight_res = cursor.fetchone()
+                    used_weights = weight_res if weight_res else active_weights
+                    warnings_list.append("Duplicate record detected via DOI or Author/Title match.")
+                    return (
+                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
+                        fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
+                        used_weights, c_mdar_score, c_rrid_count, repro_score, True, warnings_list,
+                    )
 
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
         conn.commit()
@@ -685,6 +792,9 @@ def process_single_pdf(
         raw_final_score = float(np.dot(scores, old_weights)) / 8.0
         final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
         formulas_hash = get_formulas_hash()
+
+        if final_score < 60.0:
+            warnings_list.append(f"Final score ({final_score:.2f}) is below quality floor (60.0).")
 
         if total_evals % EPOCH_BLOCK_SIZE == 0:
             active_weights = calculate_model_driven_weights(
