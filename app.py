@@ -53,17 +53,7 @@ svg_icon = """
 </svg>
 """
 
-col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
-with col_t1:
-    # Inject the SVG and use flexbox for vertical alignment
-    st.markdown(
-        f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} Pi-Index Assessment Engine 🤖</h1>", 
-        unsafe_allow_html=True
-    )
-    st.caption("Decentralized Science Assessment Engine with Zero-Knowledge Auditing & Sanitized IPFS Backups")
-with col_t2:
-    if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
-        evaluation_metrics_dialog()
+
 
 # --- System Action Log Monitor ---
 if "app_logs" not in st.session_state:
