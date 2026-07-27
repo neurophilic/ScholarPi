@@ -196,7 +196,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     evolving_context = get_evolving_system_context()
     
     prompt = f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and audit variables.
-CRITICAL EQUITY & NORMALIZATION INSIGHT:
+CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 - Global research equity is paramount. Do NOT penalize non-native English writing styles.
 
 {evolving_context}
@@ -567,12 +567,18 @@ def process_single_pdf(
                 "Overall_Confidence": 0.0,
             }
 
-        confidence = float(raw_data.get("Overall_Confidence", 1.0))
+        confidence = float(raw_data.get("Overall_Confidence", 0.9))
         extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
-        
-        # Robust heuristic override: if author or title resolution failed completely, force low confidence
-        if extracted_author_check.lower() in ["unidentified", "unknown", "none", ""]:
-            confidence = min(confidence, 0.40)
+        extracted_title_check = str(raw_data.get("Extracted_Title", ""))
+
+        # Objective Heuristic Check: Force low confidence if metadata extraction is broken or text is sparse
+        if (
+            extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]
+            or not extracted_title_check
+            or "failed" in extracted_title_check.lower()
+            or len(full_text.strip()) < 150
+        ):
+            confidence = 0.35  # Forces confidence below 0.50 so the warning and button appear reliably
 
         if confidence < 0.50 and not force_proceed:
             empty_scores = {
@@ -839,3 +845,4 @@ def process_single_pdf(
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
         active_weights, mdar_score, rrid_count, reproducibility_score, False, False,
     )
+    
