@@ -81,7 +81,7 @@ def get_evolving_system_context():
     if epoch_data:
         weights = epoch_data[1:9]
         max_idx = weights.index(max(weights))
-        criteria_map = ["Originality", "Methodological Rigor", "Interdisciplinary", "Societal Impact", 
+        criteria_map = ["Semantic Originality", "Methodological Rigor", "Interdisciplinary Entropy", "Societal Impact", 
                         "Open Science", "Literature Integration", "Empirical Density", "FAIR Actionability"]
         context_str += f"- Current Blockchain Epoch {epoch_data[0]} heavily penalizes weak '{criteria_map[max_idx]}'. Apply maximum scrutiny to this dimension.\n"
 
@@ -263,7 +263,7 @@ Return ONLY a valid JSON object. Text: {text}"""
 
 def get_formulas_hash():
     criteria_state = (
-        "C1:Semantic_Originality|C2:MDAR_Rigor|C3:Citation_Entropy|C4:Open_Infrastructure|C5:Containerized_Execution|C6:Citation_Polarity|C7:Empirical_Density|C8:FAIR_Actionability|CoARA_Dossier_v2.0"
+        "C1:Semantic_Originality|C2:Methodological_Rigor_SciScore|C3:Interdisciplinary_Entropy|C4:Societal_Impact|C5:Open_Science_Repro|C6:Literature_Integration|C7:Empirical_Density|C8:Future_Actionability_FAIR|CoARA_Dossier_v2.0"
     )
     return hashlib.sha256(criteria_state.encode("utf-8")).hexdigest()
 
@@ -315,25 +315,32 @@ def compute_formulaic_criteria(
         * 100
         * (1.0 - vars_dict.get("laundering_penalty", 0.1))
     )
-    scores["C1_Originality"] = min(100.0, max(0.0, c1_raw))
+    scores["C1_Semantic_Originality"] = min(100.0, max(0.0, c1_raw))
+    
     c2_raw = sciscore_adherence * vars_dict.get("rigor_index", 0.75) * 100
-    scores["C2_Methodological_Rigor"] = min(100.0, max(0.0, c2_raw))
+    scores["C2_Methodological_Rigor_SciScore"] = min(100.0, max(0.0, c2_raw))
+    
     c3_raw = vars_dict.get("citation_entropy", 0.6) * 100
-    scores["C3_Interdisciplinary"] = min(100.0, max(0.0, c3_raw))
+    scores["C3_Interdisciplinary_Entropy"] = min(100.0, max(0.0, c3_raw))
+    
     c4_raw = vars_dict.get("societal_linkage", 0.65) * 100
     scores["C4_Societal_Impact"] = min(100.0, max(0.0, c4_raw))
+    
     c5_raw = (
         (0.5 * vars_dict.get("D_open", 0.7))
         + (0.2 * vars_dict.get("J_code", 0.6))
         + (0.3 * reproducibility_score)
     ) * 100
-    scores["C5_Open_Science_Potential"] = min(100.0, max(0.0, c5_raw))
+    scores["C5_Open_Science_Repro"] = min(100.0, max(0.0, c5_raw))
+    
     c6_raw = vars_dict.get("citation_polarity_score", 0.7) * 100
     scores["C6_Literature_Integration"] = min(100.0, max(0.0, c6_raw))
+    
     c7_raw = vars_dict.get("empirical_density", 0.75) * 100
     scores["C7_Empirical_Density"] = min(100.0, max(0.0, c7_raw))
+    
     c8_raw = vars_dict.get("fair_compliance", 0.8) * 100
-    scores["C8_Future_Actionability"] = min(100.0, max(0.0, c8_raw))
+    scores["C8_Future_Actionability_FAIR"] = min(100.0, max(0.0, c8_raw))
 
     for key in scores:
         scores[key] = round(scores[key], 2)
@@ -436,9 +443,9 @@ def process_single_pdf(
         empty_scores = {
             k: 0.0
             for k in [
-                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                "C7_Empirical_Density", "C8_Future_Actionability",
+                "C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", "C3_Interdisciplinary_Entropy",
+                "C4_Societal_Impact", "C5_Open_Science_Repro", "C6_Literature_Integration",
+                "C7_Empirical_Density", "C8_Future_Actionability_FAIR",
             ]
         }
         warnings_list.append("Binary payload is empty or download/extraction failed.")
@@ -506,14 +513,14 @@ def process_single_pdf(
                 get_recommendation_spectrum(score, drift) if scope.strip() else "N/A"
             )
             scores_dict = {
-                "C1_Originality": c_scores[0],
-                "C2_Methodological_Rigor": c_scores[1],
-                "C3_Interdisciplinary": c_scores[2],
+                "C1_Semantic_Originality": c_scores[0],
+                "C2_Methodological_Rigor_SciScore": c_scores[1],
+                "C3_Interdisciplinary_Entropy": c_scores[2],
                 "C4_Societal_Impact": c_scores[3],
-                "C5_Open_Science_Potential": c_scores[4],
+                "C5_Open_Science_Repro": c_scores[4],
                 "C6_Literature_Integration": c_scores[5],
                 "C7_Empirical_Density": c_scores[6],
-                "C8_Future_Actionability": c_scores[7],
+                "C8_Future_Actionability_FAIR": c_scores[7],
             }
 
             cursor.execute(
@@ -646,14 +653,14 @@ def process_single_pdf(
                         else "N/A"
                     )
                     scores_dict = {
-                        "C1_Originality": c_scores[0],
-                        "C2_Methodological_Rigor": c_scores[1],
-                        "C3_Interdisciplinary": c_scores[2],
+                        "C1_Semantic_Originality": c_scores[0],
+                        "C2_Methodological_Rigor_SciScore": c_scores[1],
+                        "C3_Interdisciplinary_Entropy": c_scores[2],
                         "C4_Societal_Impact": c_scores[3],
-                        "C5_Open_Science_Potential": c_scores[4],
+                        "C5_Open_Science_Repro": c_scores[4],
                         "C6_Literature_Integration": c_scores[5],
                         "C7_Empirical_Density": c_scores[6],
-                        "C8_Future_Actionability": c_scores[7],
+                        "C8_Future_Actionability_FAIR": c_scores[7],
                     }
                     cursor.execute(
                         "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
@@ -690,9 +697,9 @@ def process_single_pdf(
         scores = [
             scores_dict[k]
             for k in [
-                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                "C7_Empirical_Density", "C8_Future_Actionability",
+                "C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", "C3_Interdisciplinary_Entropy",
+                "C4_Societal_Impact", "C5_Open_Science_Repro", "C6_Literature_Integration",
+                "C7_Empirical_Density", "C8_Future_Actionability_FAIR",
             ]
         ]
 
