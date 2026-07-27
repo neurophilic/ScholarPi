@@ -2,7 +2,7 @@ import re
 import json
 import requests
 import cloudscraper
-import fitz  # PyMuPDF
+import fitz  
 import networkx as nx
 
 def clean_author_name(author_str):
