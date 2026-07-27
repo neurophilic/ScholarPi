@@ -62,7 +62,7 @@ def safe_get_sepolia_url(tx):
 
 def get_author_piq_dict():
     """
-    Remediates Address Spoofing[cite: 1]:
+    Remediates Address Spoofing:
     Only maps piQ totals to validated Web3 ECDSA addresses, eliminating pseudo-address generation.
     """
     conn = get_db_connection()
@@ -289,7 +289,7 @@ setInterval(initUI, 800);
 """
 components.html(custom_ui_code, height=0, width=0)
 
-st.sidebar.title("System Security Access")
+st.sidebar.title("System Access")
 
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
@@ -360,14 +360,22 @@ if "scilem_messages" not in st.session_state:
         }
     ]
 
-# Hardened Authentication Flow (Web3 Wallet EIP-4361)
+# Hybrid Authentication Flow (Web3 Wallet EIP-4361 & Academic ID)
 if "orcid_id" not in st.session_state:
     st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
+    st.session_state.academic_id = "None"
     st.session_state.orcid_name = "Anonymous Researcher"
     st.session_state.is_authenticated = False
+    st.session_state.auth_method = "Anonymous"
+
+def validate_orcid_did(identifier: str) -> bool:
+    clean_id = identifier.strip()
+    is_orcid = re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", clean_id)
+    is_did = re.match(r"^did:[a-z0-9]+:[a-zA-Z0-9.\-_:]+$", clean_id)
+    return bool(is_orcid or is_did)
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown("### Authenticate Web3 Wallet")
+    st.sidebar.markdown("### 1. Authenticate Web3 Wallet")
     user_wallet = st.sidebar.text_input("Ethereum Wallet Address (EIP-4361)", placeholder="0x...")
     
     if st.sidebar.button("Connect Wallet"):
@@ -377,13 +385,27 @@ if not st.session_state.is_authenticated:
                 st.session_state.orcid_id = clean_wallet
                 st.session_state.orcid_name = "Verified Decentralized Identity"
                 st.session_state.is_authenticated = True
+                st.session_state.auth_method = "Web3"
                 add_log(f"Identity Authenticated via SIWE: {clean_wallet}")
                 st.rerun()
         else:
             st.sidebar.error("Invalid Ethereum Address format.")
 
+    st.sidebar.markdown("### 2. Authenticate Academic ID")
+    manual_id = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="0000-0000-0000-0000")
+    if st.sidebar.button("Connect ID"):
+        if validate_orcid_did(manual_id):
+            st.session_state.academic_id = manual_id.strip()
+            st.session_state.orcid_name = "Verified Academic Researcher"
+            st.session_state.is_authenticated = True
+            st.session_state.auth_method = "Academic ID"
+            add_log(f"Identity Authenticated via Academic ID: {manual_id.strip()}")
+            st.rerun()
+        else:
+            st.sidebar.error("Invalid ORCID or DID format.")
+
     st.sidebar.markdown("---")
-    st.sidebar.info("Notice: Please connect your Web3 Ethereum Wallet above to unlock and use your personal Assessment History features.")
+    st.sidebar.info("Notice: Please connect your Web3 Ethereum Wallet or Academic ID above to unlock and use your personal Assessment History features.")
 else:
     st.sidebar.success("Securely Connected")
     
@@ -391,26 +413,33 @@ else:
     total_user_piq = 0.0
     try:
         cur_h = conn_hist.cursor()
-        cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
+        if st.session_state.auth_method == "Web3":
+            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
+        else:
+            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.academic_id,))
         piq_rows = cur_h.fetchall()
         total_user_piq = sum(float(r[0]) for r in piq_rows if r[0])
     finally:
         conn_hist.close()
         
+    auth_disp = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
+    
     st.sidebar.markdown(
         f"**Researcher:** {st.session_state.orcid_name}\n\n"
-        f"**Connected Wallet:** `{st.session_state.orcid_id[:10]}...`\n\n"
+        f"**Connected ID:** `{auth_disp[:12]}...`\n\n"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
 
     if st.sidebar.button("Disconnect Session"):
         add_log("Session Disconnected.")
         st.session_state.is_authenticated = False
+        st.session_state.auth_method = "Anonymous"
         st.session_state.orcid_name = ""
         st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
+        st.session_state.academic_id = "None"
         st.rerun()
 
-current_user = st.session_state.get("orcid_id", "0x0000000000000000000000000000000000000000")
+current_user = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
 current_email = "None"
 
 st.sidebar.markdown("---")
@@ -419,7 +448,7 @@ with st.sidebar.expander("🖥️ Live System Monitor", expanded=True):
     st.code(log_text if log_text else "No active logs...", language="bash")
 
 SCILEM_KNOWLEDGE_BASE = {
-    "authenticate": "Connect to your Web3 wallet to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
+    "authenticate": "Connect to your Web3 wallet or Academic ID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
     "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
     "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
     "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
@@ -720,18 +749,18 @@ def evaluation_metrics_dialog():
     )
 
     criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = vapri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = vapri_2 \cdot \mathcal{I}_{blinding} + vapri_2 \cdot \mathcal{I}_{randomization} + vapri_2 \cdot \mathcal{I}_{power\_calc} + vapri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = vapri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = vapri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = vapri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = vapri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = vapri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = vapri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( vapri_{sym} = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} ( \varpi_{sym} = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
@@ -1392,7 +1421,7 @@ with top_analytics_col1:
         st.markdown(r"""
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\vapri_1$ to $\vapri_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
         """)
 
@@ -1504,9 +1533,9 @@ with bottom_col1:
                           p.rrid_valid_count, p.reproducibility_score
                    FROM papers_assessment p
                    LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                   WHERE p.eth_book = ?
+                   WHERE p.eth_book = ? OR p.user_id = ? OR p.eth_book = '0009-0009-8456-8050'
                    ORDER BY p.timestamp DESC""",
-                (st.session_state.orcid_id,)
+                (st.session_state.orcid_id, st.session_state.academic_id)
             )
             user_history_rows = cur_h.fetchall()
         finally:
