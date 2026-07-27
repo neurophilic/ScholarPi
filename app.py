@@ -98,7 +98,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for UI Modifications (Featuring Scilem Header with 'X' pinned to top-right corner)
+# Custom JS/CSS for UI Modifications (Featuring flexbox Scilem Header with 'X' aligned correctly on the right)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -146,15 +146,17 @@ custom_ui_code = """
 #scilem-drag-handle {
     background: linear-gradient(135deg, #1e293b, #0f172a);
     color: white;
-    padding: 16px 20px;
+    padding: 12px 16px;
     font-weight: 700;
-    font-size: 18px;
+    font-size: 16px;
     cursor: grab;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
     margin: -1rem -1rem 1rem -1rem;
     user-select: none;
-    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 #scilem-drag-handle:active {
@@ -162,21 +164,17 @@ custom_ui_code = """
 }
 
 #scilem-min-btn {
-    position: absolute;
-    top: 12px;
-    right: 14px;
-    background: rgba(255, 255, 255, 0.12);
-    color: #e2e8f0;
-    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+    border-radius: 4px;
     padding: 3px 9px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: bold;
     cursor: pointer;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.2s;
 }
 #scilem-min-btn:hover {
-    background: rgba(239, 68, 68, 0.8);
-    color: #ffffff;
+    background: rgba(239, 68, 68, 0.9);
 }
 
 button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
@@ -1644,57 +1642,81 @@ with bottom_col1:
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
     if piq_dict:
-        leaderboard_html = """
+        # Render leaderboard via components.html to prevent Streamlit markdown code-block parsing issues & eliminate horizontal scrolling
+        sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
+        rows_html = ""
+        for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
+            book_addr = book_dict.get(author, "None")
+            short_book = f"{book_addr[:8]}...{book_addr[-6:]}" if len(book_addr) > 16 else book_addr
+            rows_html += f"""
+                <tr>
+                    <td style="text-align: center; font-weight: bold; width: 10%;">{rank}</td>
+                    <td style="font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;" title="{author}">{author}</td>
+                    <td><code style="font-size: 11px;">{short_book}</code></td>
+                    <td style="text-align: right; font-weight: bold; width: 20%;">{piq:.2f}</td>
+                </tr>
+            """
+        
+        leaderboard_full_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
         <style>
-            .leaderboard-table-clean {
+            body {{ margin: 0; padding: 0; font-family: sans-serif; }}
+            .table-container {{
+                max-height: 210px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                background-color: #ffffff;
+            }
+            .leaderboard-table {{
                 width: 100%;
                 font-size: 13px;
                 border-collapse: collapse;
-                font-family: sans-serif;
-                background-color: #ffffff;
+                table-layout: fixed;
             }
-            .leaderboard-table-clean th {
+            .leaderboard-table th {{
                 background-color: #2c3e50;
                 color: white;
                 padding: 8px 10px;
                 text-align: left;
                 font-weight: 600;
+                position: sticky;
+                top: 0;
+                z-index: 1;
             }
-            .leaderboard-table-clean td {
+            .leaderboard-table td {{
                 padding: 8px 10px;
                 border-bottom: 1px solid #ecf0f1;
                 color: #2c3e50;
             }
-            .leaderboard-table-clean tr:hover {
+            .leaderboard-table tr:hover {{
                 background-color: #f8fafc;
             }
         </style>
-        <div style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <table class="leaderboard-table-clean">
+        </head>
+        <body>
+        <div class="table-container">
+            <table class="leaderboard-table">
                 <thead>
                     <tr>
-                        <th style="width: 10%; text-align: center;">#</th>
+                        <th style="text-align: center; width: 10%;">#</th>
                         <th>Contributing Author</th>
                         <th>Book Address</th>
-                        <th style="text-align: right;">piQ</th>
+                        <th style="text-align: right; width: 20%;">piQ</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+        </body>
+        </html>
         """
-        sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
-        for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
-            book_addr = book_dict.get(author, "None")
-            short_book = f"{book_addr[:8]}...{book_addr[-6:]}" if len(book_addr) > 16 else book_addr
-            leaderboard_html += f"""
-                <tr>
-                    <td style="text-align: center;"><b>{rank}</b></td>
-                    <td><b>{author}</b></td>
-                    <td><code style="font-size: 11px;">{short_book}</code></td>
-                    <td style="text-align: right;"><b>{piq:.2f}</b></td>
-                </tr>
-            """
-        leaderboard_html += "</tbody></table></div>"
-        st.markdown(leaderboard_html, unsafe_allow_html=True)
+        components.html(leaderboard_full_html, height=220, scrolling=False)
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1941,11 +1963,12 @@ with col_center:
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
 scilem_container = st.container()
 with scilem_container:
+    # Scilem Header with flexbox spacing ensuring 'X' stays pinned nicely on the top-right corner
     st.markdown("""
     <div id='scilem-drag-handle'>
-        <div style="display: flex; align-items: center; gap: 10px; padding-right: 30px;">
-            <span class='robot-icon' style="font-size: 1.3em;">🤖</span>
-            <span style="letter-spacing: 0.3px;">Scilem Assistant</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class='robot-icon' style="font-size: 1.2em;">🤖</span>
+            <span>Scilem Assistant</span>
         </div>
         <span id='scilem-min-btn' title='Minimize/Expand'>X</span>
     </div>
