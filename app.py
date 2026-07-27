@@ -775,113 +775,6 @@ with col_t2:
 
 st.markdown("")
 
-# --- Pop-up Modal: Indeterminate Format Interception Handler ---
-@st.dialog("⚠️ Indeterminate Format Interception", width="large")
-def indeterminate_format_dialog(item):
-    st.warning(
-        f"The parser flagged **{item['filename']}** for the following structural reason:\n\n"
-        f"> *{item['indeterminate_reason']}*"
-    )
-    st.markdown("You can force override this check, or discard the manuscript.")
-    
-    col_proceed, col_cancel = st.columns(2)
-    with col_proceed:
-        if st.button("🚀 Go ahead anyways", type="primary", key="btn_indet_proceed_modal"):
-            with st.spinner("Processing manuscript with forced override..."):
-                (
-                    title, author_name, score, logic_integrity, drift, rec,
-                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
-                ) = process_single_pdf(
-                    item["file_bytes"], 
-                    item["filename"], 
-                    item["scope"], 
-                    item["user_id"], 
-                    book_address="None",
-                    email=item["email"], 
-                    provided_doi=item["doi"], 
-                    force_proceed=True
-                )
-                
-                eval_record = {
-                    "title": title, "author_name": clean_author_name(author_name),
-                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                    "rec": rec, "fields": fields, "subfields": subfields,
-                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                    "filename": item["filename"],
-                }
-                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                add_log(f"Forced override executed successfully for {item['filename']}")
-                
-            del st.session_state["pending_indeterminate_item"]
-            st.rerun()
-            
-    with col_cancel:
-        if st.button("❌ Discard / Cancel", key="btn_indet_cancel_modal"):
-            add_log(f"Indeterminate manuscript discarded: {item['filename']}")
-            del st.session_state["pending_indeterminate_item"]
-            st.rerun()
-
-# --- Pop-up Modal: Security & Anti-Abuse Violation Interception Handler ---
-@st.dialog("🛡️ Security & Anti-Abuse Restrictions", width="large")
-def security_violations_dialog(sec_item):
-    st.error(
-        f"Token minting and publishing approval for **{sec_item['filename']}** "
-        f"were restricted due to the following itemized violations:"
-    )
-    for v_idx, violation in enumerate(sec_item["security_violations"]):
-        st.markdown(f"- **[Violation {v_idx+1}]** {violation}")
-    
-    st.markdown("---")
-    col_skip_sec, col_cancel_sec = st.columns(2)
-    with col_skip_sec:
-        if st.button("🛡️ Skip Security Checks & Force Mint", type="primary", key="btn_sec_skip_modal"):
-            with st.spinner("Bypassing security filters and forcing ledger mint..."):
-                (
-                    title, author_name, score, logic_integrity, drift, rec,
-                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
-                ) = process_single_pdf(
-                    sec_item["file_bytes"], 
-                    sec_item["filename"], 
-                    sec_item["scope"], 
-                    sec_item["user_id"], 
-                    book_address="None",
-                    email=sec_item["email"], 
-                    provided_doi=sec_item["doi"], 
-                    force_security_override=True
-                )
-                
-                eval_record = {
-                    "title": title, "author_name": clean_author_name(author_name),
-                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                    "rec": rec, "fields": fields, "subfields": subfields,
-                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                    "filename": sec_item["filename"],
-                }
-                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                add_log(f"Security checks bypassed successfully. Forced token minting executed for {sec_item['filename']}")
-                
-            del st.session_state["pending_security_item"]
-            st.rerun()
-            
-    with col_cancel_sec:
-        if st.button("❌ Discard / Cancel Submission", key="btn_sec_cancel_modal"):
-            add_log(f"Submission discarded due to security restrictions: {sec_item['filename']}")
-            del st.session_state["pending_security_item"]
-            st.rerun()
-
-# Automatically trigger pop-up modals if pending items exist
-if "pending_indeterminate_item" in st.session_state and st.session_state["pending_indeterminate_item"]:
-    indeterminate_format_dialog(st.session_state["pending_indeterminate_item"])
-
-if "pending_security_item" in st.session_state and st.session_state["pending_security_item"]:
-    security_violations_dialog(st.session_state["pending_security_item"])
-
 with st.container(border=True):
     selected_uploaded_files = []
     uploaded_files = st.file_uploader(
@@ -1038,29 +931,10 @@ with st.container(border=True):
                         (
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                         ) = process_single_pdf(
                             clean_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                         )
-                        if indeterminate_reason:
-                            st.session_state["pending_indeterminate_item"] = {
-                                "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
-                                "user_id": current_user, "email": current_email, "doi": p_doi,
-                                "indeterminate_reason": indeterminate_reason,
-                            }
-                            st.session_state["is_running"] = False
-                            add_log(f"Indeterminate parsing detected for OpenAlex target: {fname}")
-                            st.rerun()
-
-                        if security_violations:
-                            st.session_state["pending_security_item"] = {
-                                "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
-                                "user_id": current_user, "email": current_email, "doi": p_doi,
-                                "security_violations": security_violations,
-                            }
-                            st.session_state["is_running"] = False
-                            add_log(f"Security violations triggered for OpenAlex target: {fname}")
-                            st.rerun()
 
                         eval_record = {
                             "title": title, "author_name": clean_author_name(author_name),
@@ -1069,7 +943,7 @@ with st.container(border=True):
                             "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                             "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                             "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname,
+                            "filename": fname, "warnings": warnings_list,
                         }
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -1111,29 +985,10 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                     )
-                    if indeterminate_reason:
-                        st.session_state["pending_indeterminate_item"] = {
-                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
-                            "user_id": current_user, "email": current_email, "doi": doi_snap.strip(),
-                            "indeterminate_reason": indeterminate_reason,
-                        }
-                        st.session_state["is_running"] = False
-                        add_log(f"Indeterminate parsing detected for DOI: {doi_snap}")
-                        st.rerun()
-
-                    if security_violations:
-                        st.session_state["pending_security_item"] = {
-                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
-                            "user_id": current_user, "email": current_email, "doi": doi_snap.strip(),
-                            "security_violations": security_violations,
-                        }
-                        st.session_state["is_running"] = False
-                        add_log(f"Security violations triggered for DOI: {doi_snap}")
-                        st.rerun()
 
                     eval_record = {
                         "title": title, "author_name": clean_author_name(author_name),
@@ -1142,7 +997,7 @@ with st.container(border=True):
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname,
+                        "filename": fname, "warnings": warnings_list,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -1171,29 +1026,10 @@ with st.container(border=True):
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, indeterminate_reason, security_violations
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                     ) = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, "None", current_email, "None",
                     )
-                    if indeterminate_reason:
-                        st.session_state["pending_indeterminate_item"] = {
-                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
-                            "user_id": current_user, "email": current_email, "doi": "None",
-                            "indeterminate_reason": indeterminate_reason,
-                        }
-                        st.session_state["is_running"] = False
-                        add_log(f"Indeterminate parsing detected for local file: {fname}")
-                        st.rerun()
-
-                    if security_violations:
-                        st.session_state["pending_security_item"] = {
-                            "file_bytes": clean_bytes, "filename": fname, "scope": scope_val,
-                            "user_id": current_user, "email": current_email, "doi": "None",
-                            "security_violations": security_violations,
-                        }
-                        st.session_state["is_running"] = False
-                        add_log(f"Security violations triggered for local file: {fname}")
-                        st.rerun()
 
                     eval_record = {
                         "title": title, "author_name": clean_author_name(author_name),
@@ -1202,7 +1038,7 @@ with st.container(border=True):
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname,
+                        "filename": fname, "warnings": warnings_list,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -1268,9 +1104,15 @@ def more_details_dialog(item):
     rrid_count = item["i10_idx"]
     repro_score = item["repro_score"]
     filename = item["filename"]
+    warnings = item.get("warnings", [])
     author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
     st.subheader(f"{title} by {author_name}")
+
+    if warnings:
+        st.warning(f"⚠️ **Manuscript Flagged with {len(warnings)} Warning Check(s):**")
+        for w in warnings:
+            st.markdown(f"- {w}")
 
     with st.expander(f"Ledger Data & Dossier Details ({filename})", expanded=True):
         st.write(f"**File Name:** `{filename}`")
@@ -1351,20 +1193,7 @@ def more_details_dialog(item):
 **Executable Reproducibility Score:** {repro_score * 100:.1f}%
 **SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
 **Valid RRIDs Count:** {rrid_count}
-
-## 8-Criteria Evaluation Breakdown
-- C1 Semantic Originality: {scores_dict.get("C1_Originality",0)}
-- C2 Methodological Rigor (SciScore): {scores_dict.get("C2_Methodological_Rigor",0)}
-- C3 Interdisciplinary Entropy: {scores_dict.get("C3_Interdisciplinary",0)}
-- C4 Societal Impact: {scores_dict.get("C4_Societal_Impact",0)}
-- C5 Open Science & Repro: {scores_dict.get("C5_Open_Science_Potential",0)}
-- C6 Literature Integration: {scores_dict.get("C6_Literature_Integration",0)}
-- C7 Empirical Density: {scores_dict.get("C7_Empirical_Density",0)}
-- C8 Future Actionability & FAIR: {scores_dict.get("C8_Future_Actionability",0)}
-
-## Cryptographic Proofs & Ledger Seal
-- zk-SNARK: {zk_proof}
-- Tx Hash: {tx_hash}
+**Warnings Flagged:** {len(warnings)}
 """
     st.download_button(
         label=f"Download Research Integrity Dossier ({filename})",
@@ -1388,12 +1217,22 @@ def render_breakdown_item(item, index):
     eval_hash = item["eval_hash"]
     piq = item["piq"]
     scores_dict = item["scores_dict"]
+    warnings = item.get("warnings", [])
 
     with st.container(border=True):
         col_info, col_actions = st.columns([6, 4])
         with col_info:
-            st.markdown(f"**{title}** — *{author_name}*")
+            warn_badge = f" ⚠️ *({len(warnings)} warning checks)*" if warnings else ""
+            st.markdown(f"**{title}** — *{author_name}*{warn_badge}")
             st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
+            if warnings:
+                with st.expander(f"View {len(warnings)} Warning Check(s)", expanded=False):
+                    for w in warnings:
+                        st.markdown(f"- {w}")
+                    if st.button("Dismiss Warnings / Skip Checks", key=f"dismiss_warn_{index}_{eval_hash}"):
+                        item["warnings"] = []
+                        add_log(f"Warnings dismissed for {item['filename']}")
+                        st.rerun()
         with col_actions:
             c_det, c_strat, c_del = st.columns([3, 3, 1])
             with c_det:
