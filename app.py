@@ -467,7 +467,7 @@ with scilem_container:
                 })
                 st.rerun()
 
-    # Owner-only Web3 authenticated Scilem reset control (safe lowercase address check)
+    # Owner-only Web3 authenticated Scilem reset control (using standard button outside the form)
     if (
         st.session_state.is_authenticated 
         and st.session_state.auth_method == "Web3" 
@@ -475,7 +475,7 @@ with scilem_container:
         and w3.is_address(OWNER_ID) 
         and current_user.lower() == OWNER_ID.lower()
     ):
-        if st.form_submit_button("Reset Scilem (Owner)"):
+        if st.button("Reset Scilem (Owner)"):
             msg = reset_scilem()
             st.session_state.scilem_messages = [
                 {
