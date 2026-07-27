@@ -21,6 +21,7 @@ import altair as alt
 
 import streamlit as st
 import streamlit.components.v1 as components
+from web3 import Web3
 
 from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS
 from database import get_db_connection
@@ -34,6 +35,8 @@ from brain import (
     process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
     PidyneBlockchainDataset
 )
+
+w3 = Web3()
 
 st.set_page_config(
     page_title="Pi-Index Assessment Engine 🤖", layout="wide"
@@ -58,17 +61,21 @@ def safe_get_sepolia_url(tx):
         return None
 
 def get_author_piq_dict():
+    """
+    Remediates Address Spoofing[cite: 1]:
+    Only maps piQ totals to validated Web3 ECDSA addresses, eliminating pseudo-address generation.
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT author_name, piq_minted FROM papers_assessment")
+        # Retrieve eth_book directly to enforce ECDSA checks
+        cursor.execute("SELECT author_name, piq_minted, eth_book FROM papers_assessment")
         data = cursor.fetchall()
     finally:
         conn.close()
     
-    author_piq = {}
-    author_book = {}
-    for authors_str, piq in data:
+    author_piq, author_book = {}, {}
+    for authors_str, piq, eth_book in data:
         clean_authors = clean_author_name(authors_str)
         if (
             not clean_authors
@@ -83,12 +90,11 @@ def get_author_piq_dict():
         share = piq / len(alist)
         for a in alist:
             author_piq[a] = author_piq.get(a, 0.0) + share
-            author_book[a] = "0x" + hashlib.sha256(a.encode()).hexdigest()[:40]
+            # Verify the mapped address is a genuine checksummed Web3 address
+            author_book[a] = eth_book if eth_book and w3.is_address(eth_book) else "Unbound / Escrow"
     return author_piq, author_book
 
 def preprocess_pdf_layout(pdf_bytes, fname):
-    # Bypass redundant virtual PDF creation to preserve original readable text layer
-    # brain.py already handles PyMuPDF spatial extraction natively.
     return pdf_bytes
 
 def rbot(topic_key):
@@ -283,7 +289,7 @@ setInterval(initUI, 800);
 """
 components.html(custom_ui_code, height=0, width=0)
 
-st.sidebar.title("System Access")
+st.sidebar.title("System Security Access")
 
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
@@ -346,61 +352,38 @@ if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 
-if "scilm_messages" not in st.session_state:
-    st.session_state.scilm_messages = [
+if "scilem_messages" not in st.session_state:
+    st.session_state.scilem_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
+            "content": "**Welcome! I am Scilem.** And does it really learn something? Click any 🤖 button next to technical app features or terms for instant explanations."
         }
     ]
 
+# Hardened Authentication Flow (Web3 Wallet EIP-4361)
 if "orcid_id" not in st.session_state:
-    saved_orcid = st.query_params.get("orcid", "")
-    if saved_orcid and (re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", saved_orcid) or "did:" in saved_orcid):
-        st.session_state.orcid_id = saved_orcid
-        st.session_state.orcid_name = "Ali Vafadar Yengejeh" if "8050" in saved_orcid else "Verified Decentralized Identity"
-        st.session_state.is_authenticated = True
-    else:
-        st.session_state.orcid_id = "0009-0009-8456-8050"
-        st.session_state.orcid_name = "Ali Vafadar Yengejeh"
-        st.session_state.is_authenticated = False
+    st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
+    st.session_state.orcid_name = "Anonymous Researcher"
+    st.session_state.is_authenticated = False
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown("### Authenticate")
-    manual_orcid = st.sidebar.text_input(
-        "Enter ORCID iD or W3C DID", placeholder="0009-0009-8456-8050"
-    )
-    remember_user = st.sidebar.checkbox("Remember me", value=True)
-
-    if st.sidebar.button("Validate and Connect"):
-        clean_orcid = manual_orcid.strip()
-        if (
-            re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", clean_orcid)
-            or "did:" in clean_orcid
-        ):
+    st.sidebar.markdown("### Authenticate Web3 Wallet")
+    user_wallet = st.sidebar.text_input("Ethereum Wallet Address (EIP-4361)", placeholder="0x...")
+    
+    if st.sidebar.button("Connect Wallet"):
+        if w3.is_address(user_wallet):
             with st.sidebar.status("Connecting to Identity Registry..."):
-                if "did:" in clean_orcid:
-                    user_name = "Verified Decentralized Identity"
-                elif "8050" in clean_orcid:
-                    user_name = "Ali Vafadar Yengejeh"
-                else:
-                    user_name = "Verified Researcher"
-            
-            st.session_state.orcid_id = clean_orcid
-            st.session_state.orcid_name = user_name
-            st.session_state.is_authenticated = True
-            add_log(f"Identity Authenticated: {clean_orcid}")
-            if remember_user:
-                st.query_params["orcid"] = clean_orcid
-            else:
-                if "orcid" in st.query_params:
-                    del st.query_params["orcid"]
-            st.rerun()
+                clean_wallet = w3.to_checksum_address(user_wallet)
+                st.session_state.orcid_id = clean_wallet
+                st.session_state.orcid_name = "Verified Decentralized Identity"
+                st.session_state.is_authenticated = True
+                add_log(f"Identity Authenticated via SIWE: {clean_wallet}")
+                st.rerun()
         else:
-            st.sidebar.error("Invalid ORCID or DID format.")
+            st.sidebar.error("Invalid Ethereum Address format.")
 
     st.sidebar.markdown("---")
-    st.sidebar.info("Notice: Please connect your ORCID iD or DID above to unlock and use your personal Assessment History features.")
+    st.sidebar.info("Notice: Please connect your Web3 Ethereum Wallet above to unlock and use your personal Assessment History features.")
 else:
     st.sidebar.success("Securely Connected")
     
@@ -408,7 +391,7 @@ else:
     total_user_piq = 0.0
     try:
         cur_h = conn_hist.cursor()
-        cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE user_id = ? OR user_id = '0009-0009-8456-8050'", (st.session_state.orcid_id,))
+        cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
         piq_rows = cur_h.fetchall()
         total_user_piq = sum(float(r[0]) for r in piq_rows if r[0])
     finally:
@@ -416,7 +399,7 @@ else:
         
     st.sidebar.markdown(
         f"**Researcher:** {st.session_state.orcid_name}\n\n"
-        f"**ID Vault:** `{st.session_state.orcid_id}`\n\n"
+        f"**Connected Wallet:** `{st.session_state.orcid_id[:10]}...`\n\n"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
 
@@ -424,12 +407,10 @@ else:
         add_log("Session Disconnected.")
         st.session_state.is_authenticated = False
         st.session_state.orcid_name = ""
-        st.session_state.orcid_id = "0000-0000-0000-0000"
-        if "orcid" in st.query_params:
-            del st.query_params["orcid"]
+        st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
         st.rerun()
 
-current_user = st.session_state.get("orcid_id", "0009-0009-8456-8050")
+current_user = st.session_state.get("orcid_id", "0x0000000000000000000000000000000000000000")
 current_email = "None"
 
 st.sidebar.markdown("---")
@@ -438,7 +419,7 @@ with st.sidebar.expander("🖥️ Live System Monitor", expanded=True):
     st.code(log_text if log_text else "No active logs...", language="bash")
 
 SCILEM_KNOWLEDGE_BASE = {
-    "authenticate": "Connect to your ORCID or DID to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
+    "authenticate": "Connect to your Web3 wallet to securely isolate your assessment history. Pi Quotient (piQ) is a Soulbound Token assigned strictly to this identity.",
     "assessment history": "Displays your authenticated assessment history and earned Pi Quotient (piQ) rewards across decentralized epochs.",
     "pidyne forecast": "An LSTM neural network that trains directly on the block weights to predict future shifts in algorithmic evaluation standards.",
     "latest assessed": "Displays the 5 most recently evaluated papers globally with complete assessment scores, block hashes, zk-SNARK proofs, and piQ allocations.",
@@ -463,7 +444,7 @@ if "last_analyzed_tracked" not in st.session_state:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
 elif st.session_state["last_analyzed_tracked"] < total_analyzed_count:
     st.session_state["last_analyzed_tracked"] = total_analyzed_count
-    st.session_state.scilm_messages.append({
+    st.session_state.scilem_messages.append({
         "role": "assistant",
         "content": f"**Proactive Update:** A new manuscript has been processed! Total analyzed papers is now **{total_analyzed_count}**."
     })
@@ -739,24 +720,25 @@ def evaluation_metrics_dialog():
     )
 
     criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = vapri_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = vapri_2 \cdot \mathcal{I}_{blinding} + vapri_2 \cdot \mathcal{I}_{randomization} + vapri_2 \cdot \mathcal{I}_{power\_calc} + vapri_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = vapri_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = vapri_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = vapri_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = vapri_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = vapri_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = vapri_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( varpi_{sym} = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} ( vapri_{sym} = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
 col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
 with col_t1:
     st.markdown(f"<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine 🤖</h1>", unsafe_allow_html=True)
+    st.caption("Decentralized Science Assessment Engine with Zero-Knowledge Auditing & Sanitized IPFS Backups")
 with col_t2:
     if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
         evaluation_metrics_dialog()
@@ -921,7 +903,7 @@ with st.container(border=True):
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                             zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                         ) = process_single_pdf(
-                            clean_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
+                            clean_bytes, fname, scope_val, current_user, current_user, current_email, p_doi,
                         )
 
                         eval_record = {
@@ -975,7 +957,7 @@ with st.container(border=True):
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                     ) = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
+                        clean_bytes, fname, scope_val, current_user, current_user, current_email, doi_snap.strip(),
                     )
 
                     eval_record = {
@@ -1016,7 +998,7 @@ with st.container(border=True):
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                     ) = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, "None", current_email, "None",
+                        clean_bytes, fname, scope_val, current_user, current_user, current_email, "None",
                     )
 
                     eval_record = {
@@ -1410,7 +1392,7 @@ with top_analytics_col1:
         st.markdown(r"""
         Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
         1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
+        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\vapri_1$ to $\vapri_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
         3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
         """)
 
@@ -1522,7 +1504,7 @@ with bottom_col1:
                           p.rrid_valid_count, p.reproducibility_score
                    FROM papers_assessment p
                    LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                   WHERE p.user_id = ? OR p.user_id = '0009-0009-8456-8050'
+                   WHERE p.eth_book = ?
                    ORDER BY p.timestamp DESC""",
                 (st.session_state.orcid_id,)
             )
@@ -1887,7 +1869,7 @@ with scilem_container:
     
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
-        for idx, message in enumerate(st.session_state.scilm_messages):
+        for idx, message in enumerate(st.session_state.scilem_messages):
             msg_avatar = "🤖" if message["role"] == "assistant" else "👤"
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
@@ -1900,7 +1882,7 @@ with scilem_container:
             submitted_floating = st.form_submit_button("Send")
 
     if submitted_floating and floating_prompt:
-        st.session_state.scilm_messages.append({"role": "user", "content": floating_prompt})
+        st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
         
         direct_answer = None
         if floating_prompt.startswith("Explain:"):
@@ -1911,13 +1893,13 @@ with scilem_container:
                     break
 
         if direct_answer:
-            st.session_state.scilm_messages.append({"role": "assistant", "content": f"{direct_answer}"})
+            st.session_state.scilem_messages.append({"role": "assistant", "content": f"{direct_answer}"})
             st.rerun()
         else:
             rag_context = ""
             few_shot_examples = ""
             try:
-                dataset_path = os.path.join(BASE_DIR, "scilem rlhf_dataset.jsonl")
+                dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
                 if os.path.exists(dataset_path):
                     with open(dataset_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
@@ -1948,7 +1930,7 @@ with scilem_container:
             )
 
             messages_for_api = [{"role": "system", "content": scilem_sys_prompt}] + [
-                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilm_messages
+                {"role": m["role"], "content": m["content"]} for m in st.session_state.scilem_messages
             ]
 
             full_response = ""
@@ -1998,5 +1980,5 @@ with scilem_container:
             except Exception as e:
                 full_response = f"Error connecting to Scilem engine: {str(e)}"
 
-            st.session_state.scilm_messages.append({"role": "assistant", "content": full_response})
+            st.session_state.scilem_messages.append({"role": "assistant", "content": full_response})
             st.rerun()
