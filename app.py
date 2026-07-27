@@ -152,8 +152,8 @@ custom_ui_code = """
     user-select: none;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    position: relative;
 }
 #scilem-drag-handle:active {
     cursor: grabbing;
@@ -168,6 +168,9 @@ custom_ui_code = """
     font-weight: bold;
     cursor: pointer;
     transition: background 0.2s;
+    position: absolute;
+    top: 12px;
+    right: 12px;
 }
 #scilem-min-btn:hover {
     background: rgba(239, 68, 68, 0.9);
@@ -260,6 +263,20 @@ function initUI() {
                 block.style.zIndex = '999999';
                 block.style.padding = '1rem';
                 
+                // Auto-minimize on initial load
+                let children = Array.from(block.children);
+                children.forEach(child => {
+                    let hd = child.querySelector('#scilem-drag-handle') || (child.id === 'scilem-drag-handle' ? child : null);
+                    if (!hd && child.id !== 'scilem-drag-handle') {
+                        child.style.display = 'none';
+                    }
+                });
+                block.setAttribute('data-minimized', 'true');
+                let minBtn = block.querySelector('#scilem-min-btn');
+                if (minBtn) {
+                    minBtn.innerText = '+';
+                }
+
                 let isDragging = false;
                 let startX, startY, initialX, initialY;
 
@@ -1974,7 +1991,7 @@ with scilem_container:
             <span class='robot-icon' style="font-size: 1.2em;">🤖</span>
             <span>Scilem Assistant (Offline)</span>
         </div>
-        <span id='scilem-min-btn' title='Minimize/Expand'>-</span>
+        <span id='scilem-min-btn' title='Minimize/Expand'>+</span>
     </div>
     """, unsafe_allow_html=True)
     
