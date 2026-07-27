@@ -44,7 +44,7 @@ st.set_page_config(
 
 
 st.markdown(
-    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{logo} </h1>", 
+    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{logo.svg} </h1>", 
     unsafe_allow_html=True
 )
 
