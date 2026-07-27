@@ -666,20 +666,21 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
-        piq_minted = 0.0
-        if not warnings_list or force_proceed:
-            co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
-            num_authors = max(1, len(co_authors))
+        # Always evaluate normally and mint piQ even if warnings are present
+        co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
+        num_authors = max(1, len(co_authors))
 
-            cursor.execute(
-                "SELECT COUNT(*) FROM papers_assessment WHERE user_id = ?",
-                (user_id,)
-            )
-            user_submission_count = cursor.fetchone()[0]
-            decay_multiplier = 1.0 / math.sqrt(user_submission_count + 1)
+        cursor.execute(
+            "SELECT COUNT(*) FROM papers_assessment WHERE user_id = ?",
+            (user_id,)
+        )
+        user_submission_count = cursor.fetchone()[0]
+        decay_multiplier = 1.0 / math.sqrt(user_submission_count + 1)
 
-            base_piq = (final_score / 10.0)
-            piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
+        base_piq = (final_score / 10.0)
+        piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
+        if "Binary payload is empty" in str(warnings_list) or "Extraction Failed" in title:
+            piq_minted = 0.0
 
         zk_proof = generate_zk_snark_proof(
             file_hash, final_score, logic_integrity, "None"
