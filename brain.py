@@ -159,7 +159,7 @@ def generate_merged_evidence_report(consensus_results):
     return report_md
 
 # ---------------------------------------------------------
-# Neural Networks: Pidyne LSTM & Homegrown Scilem
+# Neural Networks: Pidyne LSTM & Homegrown Scilem (Report & Analysis Only, No Rating)
 # ---------------------------------------------------------
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -207,13 +207,14 @@ class ScilemNetwork(nn.Module):
         lstm_out, _ = self.lstm(embedded)
         last_hidden = lstm_out[:, -1, :]
         x = self.relu(self.fc1(last_hidden))
-        score = torch.sigmoid(self.fc2(x)) * 100.0
-        return score
+        # Scilem analyzes text structure/features but never outputs a scoring metric
+        features = torch.tanh(self.fc2(x))
+        return features
 
 scilem_model = ScilemNetwork()
 scilem_optimizer = optim.Adam(scilem_model.parameters(), lr=0.001)
 
-def evaluate_scilem_inference(raw_text):
+def evaluate_scilem_analysis_report(raw_text):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -229,42 +230,16 @@ def evaluate_scilem_inference(raw_text):
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
     with torch.no_grad():
-        score = scilem_model(paper_tensor).item()
-    return float(score)
-
-def train_scilem_on_consensus(raw_text, consensus_ratings, vapri_value=0.5, lambda_reg=0.01):
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    if os.path.exists(scilem_weights_path):
-        try:
-            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
-        except Exception:
-            pass
-
-    words = raw_text.lower().split()[:512]
-    tokens = [abs(hash(w)) % 10000 for w in words]
-    if not tokens:
-        tokens = [0]
-    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
-
-    target_score = float(np.mean(consensus_ratings)) if consensus_ratings else 75.0
-
-    scilem_model.train()
-    scilem_optimizer.zero_grad()
-
-    scilem_score = scilem_model(paper_tensor)
+        feat_val = scilem_model(paper_tensor).item()
     
-    mse_loss = nn.MSELoss()(scilem_score.squeeze(), torch.tensor(target_score, dtype=torch.float32))
-    total_loss = mse_loss + (lambda_reg * torch.tensor(vapri_value, dtype=torch.float32))
-
-    total_loss.backward()
-    scilem_optimizer.step()
-
-    try:
-        torch.save(scilem_model.state_dict(), scilem_weights_path)
-    except Exception:
-        pass
-
-    return float(scilem_score.item()), float(total_loss.item())
+    # Scilem produces a qualitative structural analysis report instead of a score
+    analysis_summary = (
+        f"Homegrown Scilem Structural Analysis Report: "
+        f"Analyzed local token embedding projection and structural feature manifold "
+        f"(Feature Activation Magnitude: {feat_val:.4f}). "
+        f"Note: Scilem does not assign ratings; all numerical scoring is managed exclusively by Pidyne."
+    )
+    return analysis_summary
 
 # ---------------------------------------------------------
 # Utilities & Sanitization
@@ -355,24 +330,20 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
     consensus_results = run_multi_llm_consensus(text)
     
-    ratings = []
-    for v in consensus_results.values():
-        if isinstance(v, dict) and "rating" in v:
-            r = v.get("rating")
-            if isinstance(r, (int, float)):
-                ratings.append(float(r))
-    if not ratings:
-        ratings = [75.0]
+    all_llms_failed = all(isinstance(v, dict) and v.get("api_failed", False) for k, v in consensus_results.items())
     
     evidence_report = generate_merged_evidence_report(consensus_results)
-    scilem_rating = evaluate_scilem_inference(text)
+
+    # Scilem produces a qualitative analysis report strictly without any rating
+    scilem_opinion = evaluate_scilem_analysis_report(text)
 
     consensus_results["scilem"] = {
         "title": consensus_results.get("llama", {}).get("title", "N/A"),
         "authors": consensus_results.get("llama", {}).get("authors", "N/A"),
-        "opinion": f"Homegrown Scilem Neural Net Evaluation: Independent linguistic token embedding projection. Predicted rating: {scilem_rating:.2f}/100.",
+        "opinion": scilem_opinion,
         "references": [],
-        "rating": round(scilem_rating, 2)
+        "rating": "N/A",  # Strict mandate: Scilem never gives a rating
+        "api_failed": all_llms_failed
     }
 
     return {
@@ -382,7 +353,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         "Overall_Confidence": 0.85,
         "_consensus_raw": consensus_results,
         "_evidence_report": evidence_report,
-        "_scilem_rating": scilem_rating
+        "_scilem_rating": "N/A"
     }
 
 def get_formulas_hash():
@@ -435,7 +406,7 @@ def process_single_pdf(
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {k: 0.0 for k in ["C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", "C3_Interdisciplinary_Entropy", "C4_Societal_Impact", "C5_Open_Science_Repro", "C6_Literature_Integration", "C7_Empirical_Density", "C8_Future_Actionability_FAIR"]}
         warnings_list.append("Binary payload is empty or download/extraction failed.")
-        return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, logic_integrity, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", 50.0)
+        return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, logic_integrity, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", "N/A")
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
     
@@ -457,7 +428,6 @@ def process_single_pdf(
         raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)
         consensus_raw = raw_data.get("_consensus_raw", {})
 
-        # STRICT CHECK: If all LLMs failed due to API limits / quotas, block publishing and minting!
         all_llms_failed = all(isinstance(v, dict) and v.get("api_failed", False) for k, v in consensus_raw.items() if k != "scilem")
         
         if all_llms_failed:
@@ -499,5 +469,5 @@ def process_single_pdf(
         title, extracted_author, final_score, logic_integrity, drift, rec,
         ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
         active_weights, mdar_score, rrid_count, 0.85, False, warnings_list,
-        consensus_raw, raw_data.get("_evidence_report", ""), 50.0
+        consensus_raw, raw_data.get("_evidence_report", ""), "N/A"
     )
