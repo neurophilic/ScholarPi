@@ -1475,10 +1475,8 @@ with top_analytics_col2:
         else:
             st.info("Awaiting sufficient data for map visualization.")
 
-    st.markdown("---")
-
-    # 2. Render Tabs BELOW the Map containing Author Filter, Modulators, and Legend/Leaderboard
-    tab_filter, tab_mod, tab_legend = st.tabs(["👤 Author Filter", "⚙️ Modulators", "📊 Legend & Leaderboard"])
+    # 2. Render Tabs BELOW the Map containing Author Filter, Modulators, and Legend/Leaderboard (without spacer or emojis)
+    tab_filter, tab_mod, tab_legend = st.tabs(["Author Filter", "Modulators", "Legend & Leaderboard"])
 
     with tab_filter:
         if all_global_authors:
