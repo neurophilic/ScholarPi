@@ -1129,7 +1129,10 @@ def more_details_dialog(item):
                     if refs:
                         st.markdown(f"**Extracted References ({len(refs)}):**")
                         for r in refs[:5]:
-                            st.markdown(f"- {r}")
+                            if isinstance(r, dict):
+                                st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
+                            else:
+                                st.markdown(f"- {r}")
         else:
             st.info("No individual LLM raw opinion payloads stored.")
 
