@@ -22,7 +22,7 @@ from integrations import clean_author_name, is_likely_institution, fetch_author_
 
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-class PidyneBlockchainDataset(Dataset):
+class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
         self.data = data_matrix
         self.lookback = lookback
@@ -37,9 +37,9 @@ class PidyneBlockchainDataset(Dataset):
             y, dtype=torch.float32
         )
 
-class PidyneLSTM(nn.Module):
+class PiBrainLSTM(nn.Module):
     def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
-        super(PidyneLSTM, self).__init__()
+        super(PiBrainLSTM, self).__init__()
         self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
         self.linear = nn.Sequential(
             nn.Linear(hidden_layer_size, 16),
@@ -82,14 +82,14 @@ def get_evolving_system_context():
         context_str += f"- Current Blockchain Epoch {epoch_data[0]} heavily penalizes weak '{criteria_map[max_idx]}'. Apply maximum scrutiny to this dimension.\n"
 
     if attestations:
-        context_str += "- Recent human peer-reviewers noted anomalies. Adjust strictness accordingly:\n"
+        context_str += "- Recent human peer-reviewers noted the following anomalies in recent papers. Adjust your baseline strictness to catch these:\n"
         for stance, count in attestations:
             context_str += f"  * {count} recent human flags for: '{stance}'\n"
 
     return context_str
 
 def harvest_fine_tuning_data(text_chunk, final_json_output, eval_hash):
-    dataset_path = os.path.join(BASE_DIR, "scilem rlhf_dataset.jsonl")
+    dataset_path = os.path.join(BASE_DIR, "scilem_rlhf_dataset.jsonl")
     try:
         record = {
             "prompt": f"Extract Pi-Index Variables from this text:\n{text_chunk[:3000]}",
@@ -114,30 +114,26 @@ def evaluate_discriminator_and_divergence(text, model):
     text_chunk = text[:5000]
     prompt = f"""Analyze this academic text for two adversarial threats:
 1. Synthetic Hallucination / AI-Generated Preprint Flood (unnatural keyword stuffing, stylistic filler, or high-flown prose masking weak statistical substance).
-2. Semantic-Empirical Divergence: Check if grandiose claims and equations drastically diverge from actual reported data variances.
+2. Semantic-Empirical Divergence: Check if the grandiose claims and equations in the text drastically diverge from or lack grounding in actual reported data variances.
 
 Output a JSON object with two keys:
 - "Gaming_Penalty": float from 0.0 (natural) to 1.0 (highly manipulated/synthetic).
 - "Reproducibility_Score": float from 0.0 to 1.0 indicating whether code/data artifacts appear functional and verifiable.
 
 Text: {text_chunk}"""
-    
-    for attempt in range(3):
-        try:
-            response = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=model,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-            res_json = json.loads(response.choices[0].message.content)
-            return float(res_json.get("Gaming_Penalty", 0.0)), float(res_json.get("Reproducibility_Score", 0.5))
-        except Exception as e:
-            if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
-                time.sleep(2 ** attempt)
-            else:
-                break
-    return 0.0, 0.5
+    try:
+        response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=model,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        res_json = json.loads(response.choices[0].message.content)
+        return float(res_json.get("Gaming_Penalty", 0.0)), float(
+            res_json.get("Reproducibility_Score", 0.5)
+        )
+    except Exception:
+        return 0.0, 0.5
 
 def evaluate_scope_alignment(text, scope, model, text_limit):
     if not groq_client: return 0.0
@@ -147,22 +143,20 @@ def evaluate_scope_alignment(text, scope, model, text_limit):
     prompt = f"""You are a research alignment tool. Read the following paper text and evaluate how well it aligns with this specific research scope/keyword: "{scope}"
 Return ONLY a valid JSON object with a single key "Scope_Alignment" containing a float between 0.0 and 100.0.
 Text: {text}"""
-
-    for attempt in range(3):
-        try:
-            response = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=model,
-                temperature=0.0,
-                response_format={"type": "json_object"},
+    try:
+        response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=model,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        return float(
+            json.loads(response.choices[0].message.content).get(
+                "Scope_Alignment", 0.0
             )
-            return float(json.loads(response.choices[0].message.content).get("Scope_Alignment", 0.0))
-        except Exception as e:
-            if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
-                time.sleep(2 ** attempt)
-            else:
-                break
-    return 0.0
+        )
+    except Exception:
+        return 0.0
 
 def extract_unpublished_authors_fallback(text):
     first_2k = text[:2500]
@@ -181,13 +175,13 @@ def extract_unpublished_authors_fallback(text):
                 ]
             ):
                 return clean_line
-    return ""
+    return "Unidentified"
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     if not groq_client:
         return {
             "Extracted_Title": "Parsing Failed (No API Key)",
-            "Extracted_Author": "",
+            "Extracted_Author": "Unidentified",
             "Extracted_Topics": "Core Research Domain",
             "Overall_Confidence": 0.0,
         }
@@ -203,7 +197,7 @@ CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
 
 CRITICAL INSTRUCTION FOR AUTHORS & TOPICS:
 - Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of HUMAN author names (no brackets, no quotes, no "et al."). 
-- NEVER output universities, departments, institutions, or organizational affiliations as authors. Output ONLY human author names. If none found, output an empty string.
+- NEVER output universities, departments, institutions, or organizational affiliations as authors. Output ONLY human author names. If none found, output "Unidentified".
 - Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered in this paper. Output as a comma-separated list of strings.
 
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
@@ -212,41 +206,30 @@ Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Ju
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
 Return ONLY a valid JSON object. Text: {text}"""
 
-    result_content = None
-    for attempt in range(3):
-        try:
-            response = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=model,
-                temperature=0.1, 
-                seed=random.randint(1, 1000),
-                response_format={"type": "json_object"},
-            )
-            result_content = response.choices[0].message.content
-            break
-        except Exception as e:
-            if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
-                time.sleep(2 ** attempt)
-            else:
-                break
-
-    if result_content:
-        try:
-            parsed = json.loads(result_content)
-            if isinstance(parsed, dict):
-                harvest_fine_tuning_data(text, parsed, file_hash)
-                return parsed
-            elif isinstance(parsed, str):
-                sub_parsed = json.loads(parsed)
-                if isinstance(sub_parsed, dict):
-                    harvest_fine_tuning_data(text, sub_parsed, file_hash)
-                    return sub_parsed
-        except Exception:
-            pass
+    response = groq_client.chat.completions.create(
+        messages=[{"role": "user", "content": prompt}],
+        model=model,
+        temperature=0.1, 
+        seed=random.randint(1, 1000),
+        response_format={"type": "json_object"},
+    )
+    result_content = response.choices[0].message.content
+    try:
+        parsed = json.loads(result_content)
+        if isinstance(parsed, dict):
+            harvest_fine_tuning_data(text, parsed, file_hash)
+            return parsed
+        elif isinstance(parsed, str):
+            sub_parsed = json.loads(parsed)
+            if isinstance(sub_parsed, dict):
+                harvest_fine_tuning_data(text, sub_parsed, file_hash)
+                return sub_parsed
+    except Exception:
+        pass
         
     return {
         "Extracted_Title": "Parsing Failed",
-        "Extracted_Author": "",
+        "Extracted_Author": "Unidentified",
         "Extracted_Topics": "Core Research Domain",
         "Overall_Confidence": 0.0,
     }
@@ -384,17 +367,28 @@ def generate_rebuttal_strategy(scores_dict):
     if "Originality" in weakest_criterion:
         strategy += (
             "**Defense Tactic:** Argue that the paper value lies in synthesis and"
-            " rigorous validation rather than paradigm disruption."
+            " rigorous validation rather than paradigm disruption. Emphasize that"
+            " cumulative science requires foundational solidity over risky"
+            " novelties."
         )
     elif "Rigor" in weakest_criterion:
         strategy += (
             "**Defense Tactic:** Pre-emptively acknowledge sample size limitations"
-            " in the discussion section. Frame the methodology as an exploratory pilot."
+            " in the discussion section. Frame the methodology as an exploratory"
+            " pilot to lower the expectation of absolute statistical certainty."
+        )
+    elif "Societal" in weakest_criterion:
+        strategy += (
+            "**Defense Tactic:** Shift the narrative from immediate societal"
+            " application to essential foundational groundwork. Argue that"
+            " downstream societal impact is impossible without this specific"
+            " theoretical gap being closed."
         )
     else:
         strategy += (
             "**Defense Tactic:** Focus the reviewers attention on the empirical"
-            " density of your dataset."
+            " density of your dataset. Acknowledge minor structural gaps but insist"
+            " the volume of data speaks for itself."
         )
     return strategy
 
@@ -406,11 +400,10 @@ def process_single_pdf(
     book_address="None",
     email="None",
     provided_doi="None",
-    force_proceed=False,
 ):
     active_weights = [1.0] * 8
     works_count, cited_by_count, credit_role = 0.0, 0, "Data Curation"
-    warnings_list = []
+    warnings_list = []  # Mock warning container for format/extraction checks
 
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {
@@ -423,9 +416,9 @@ def process_single_pdf(
         }
         warnings_list.append("Binary payload is empty or download/extraction failed.")
         return (
-            "Download/Extraction Failed", "Independent Research Scholar", 0.0, 0.0, "N/A", "N/A",
+            "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list
+            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False,
         )
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -446,14 +439,23 @@ def process_single_pdf(
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             pdf_meta_author = doc.metadata.get("author", "").strip()
-            
-            text_blocks = []
-            for page in doc:
-                text_blocks.append(page.get_text("text", sort=True))
-            full_text = "\n".join(text_blocks)
-        except Exception as e:
-            warnings_list.append(f"Invalid PDF structure or PyMuPDF parsing exception: {e}")
-            full_text = ""
+            full_text = " ".join([page.get_text() for page in doc])
+        except Exception:
+            empty_scores = {
+                k: 0.0
+                for k in [
+                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
+                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
+                    "C7_Empirical_Density", "C8_Future_Actionability",
+                ]
+            }
+            warnings_list.append("Invalid PDF structure or PyMuPDF parsing exception.")
+            return (
+                "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
+                ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
+                file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
+                0.0, False,
+            )
 
         if len(full_text.strip()) < 150:
             warnings_list.append("Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan).")
@@ -464,7 +466,7 @@ def process_single_pdf(
             else 0.0
         )
 
-        if cached_result and not force_proceed:
+        if cached_result:
             score, logic_score, title, fields_str, subfields_str, author_name, *rest = (
                 cached_result
             )
@@ -506,7 +508,7 @@ def process_single_pdf(
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-                used_weights, mdar_score, rrid_count, repro_score, True, warnings_list,
+                used_weights, mdar_score, rrid_count, repro_score, True,
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
@@ -529,55 +531,66 @@ def process_single_pdf(
                 model_used = FALLBACK_MODEL
             except Exception:
                 warnings_list.append("LLM text ensemble extraction failed completely.")
-                raw_data = {
-                    "Extracted_Title": filename,
-                    "Extracted_Author": "",
-                    "Extracted_Topics": "Core Research Domain",
-                    "Overall_Confidence": 0.0,
+                empty_scores = {
+                    k: 0.0
+                    for k in [
+                        "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
+                        "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
+                        "C7_Empirical_Density", "C8_Future_Actionability",
+                    ]
                 }
+                return (
+                    "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
+                    ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
+                    file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
+                    reproducibility_score, False,
+                )
 
         if not isinstance(raw_data, dict):
             raw_data = {
                 "Extracted_Title": filename,
-                "Extracted_Author": "",
+                "Extracted_Author": "Unidentified",
                 "Extracted_Topics": "Core Research Domain",
                 "Overall_Confidence": 0.0,
             }
 
-        confidence = float(raw_data.get("Overall_Confidence", 0.9))
+        confidence = raw_data.get("Overall_Confidence", 1.0)
         if confidence < 0.50:
-            warnings_list.append(f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%).")
-
-        extracted_author_check = str(raw_data.get("Extracted_Author", "")).strip()
-        extracted_title_check = str(raw_data.get("Extracted_Title", ""))
-
-        if not extracted_title_check or "failed" in extracted_title_check.lower():
-            warnings_list.append("Manuscript title is missing or parser extraction failed.")
-
-        # Robust author fallback to prevent "Unidentified"
-        extracted_author = ""
-        if extracted_author_check and extracted_author_check.lower() not in ["unidentified", "unknown", "none", "", "research scholar"]:
-            extracted_author = extracted_author_check
-        elif pdf_meta_author.strip() and pdf_meta_author.lower() not in ["unknown", "none"] and not is_likely_institution(pdf_meta_author):
-            extracted_author = pdf_meta_author.strip()
-        else:
-            extracted_author = extract_unpublished_authors_fallback(full_text)
-
-        if not extracted_author or is_likely_institution(extracted_author) or extracted_author.lower() in ["unidentified", "unknown", "none", "research scholar"]:
-            # Derive cleanly from filename or default to Independent Research Scholar
-            base_fname = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
-            extracted_author = base_fname if len(base_fname) > 3 and "pdf" not in base_fname.lower() else "Independent Research Scholar"
-            warnings_list.append("Author metadata could not be reliably verified; derived fallback from filename.")
-
-        extracted_author = clean_author_name(extracted_author)
+            warnings_list.append(f"Low parsing confidence score ({confidence * 100:.1f}% < 50%).")
 
         title = raw_data.get("Extracted_Title", filename)
-        if not title or title == filename:
-            title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
-
+        extracted_author = clean_author_name(
+            str(raw_data.get("Extracted_Author", ""))
+        )
         extracted_topics = str(
             raw_data.get("Extracted_Topics", "Core Research Domain")
         ).strip()
+
+        if (
+            is_likely_institution(extracted_author)
+            or not extracted_author
+            or extracted_author.lower()
+            in [
+                "unknown", "unknown author", "none", "n/a",
+                "research scholar", "unidentified",
+            ]
+            or extracted_author == os.path.splitext(filename)[0]
+        ):
+            if (
+                pdf_meta_author.strip()
+                and pdf_meta_author.lower() not in ["unknown", "none"]
+                and not is_likely_institution(pdf_meta_author)
+            ):
+                extracted_author = clean_author_name(pdf_meta_author.strip())
+            else:
+                extracted_author = clean_author_name(
+                    extract_unpublished_authors_fallback(full_text)
+                )
+                if is_likely_institution(extracted_author):
+                    extracted_author = "Unidentified"
+        
+        if extracted_author == "Unidentified":
+            warnings_list.append("Author name is unidentified or unverified.")
 
         if isinstance(extracted_topics, str):
             subfields = [
@@ -593,6 +606,62 @@ def process_single_pdf(
             subfields = ["Core Research Domain"]
         fields = [subfields[0]]
 
+        normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
+        cursor.execute(
+            "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
+            " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
+            " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
+            " doi=? OR author_name=?",
+            (provided_doi, extracted_author),
+        )
+        existing_records = cursor.fetchall()
+
+        for rec_row in existing_records:
+            ex_hash, ex_score, ex_logic, *ex_rest = rec_row
+            cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
+            ex_title_row = cursor.fetchone()
+            if ex_title_row:
+                ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
+                if (provided_doi != "None" and provided_doi) or (
+                    ex_norm_title == normalized_title and normalized_title != ""
+                ):
+                    c_scores = ex_rest[:8]
+                    piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
+                        ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
+                    )
+                    drift = (
+                        calculate_complex_drift(scope_alignment, c_scores)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    rec_spec = (
+                        get_recommendation_spectrum(ex_score, drift)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    scores_dict = {
+                        "C1_Originality": c_scores[0],
+                        "C2_Methodological_Rigor": c_scores[1],
+                        "C3_Interdisciplinary": c_scores[2],
+                        "C4_Societal_Impact": c_scores[3],
+                        "C5_Open_Science_Potential": c_scores[4],
+                        "C6_Literature_Integration": c_scores[5],
+                        "C7_Empirical_Density": c_scores[6],
+                        "C8_Future_Actionability": c_scores[7],
+                    }
+                    cursor.execute(
+                        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
+                        " WHERE eval_hash=?",
+                        (ex_hash,),
+                    )
+                    weight_res = cursor.fetchone()
+                    used_weights = weight_res if weight_res else active_weights
+                    return (
+                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
+                        fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
+                        used_weights, mdar_score, rrid_count, repro_score, True,
+                    )
+
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
         conn.commit()
         cursor.execute("SELECT count FROM global_eval_counter")
@@ -607,7 +676,6 @@ def process_single_pdf(
             epoch_data[0], epoch_data[1], epoch_data[2:],
         )
 
-        # UNCONDITIONAL C1-C8 EVALUATION
         variables = raw_data if isinstance(raw_data, dict) else {}
         scores_dict = compute_formulaic_criteria(
             variables, reproducibility_score, sciscore_adherence=0.82
@@ -628,7 +696,7 @@ def process_single_pdf(
         formulas_hash = get_formulas_hash()
 
         if final_score < 60.0:
-            warnings_list.append(f"Final score ({final_score:.2f}) is below quality floor (60.0).")
+            warnings_list.append(f"Final score ({final_score:.2f}) is below mandatory quality floor (60.0).")
 
         if total_evals % EPOCH_BLOCK_SIZE == 0:
             active_weights = calculate_model_driven_weights(
@@ -663,28 +731,45 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
-        # Always evaluate normally and mint piQ even if warnings are present
-        co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
-        num_authors = max(1, len(co_authors))
+        works_count, cited_by_count, credit_role = fetch_author_coara_metrics(
+            extracted_author
+        )
 
         cursor.execute(
-            "SELECT COUNT(*) FROM papers_assessment WHERE user_id = ?",
-            (user_id,)
+            "SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE"
+            " author_name=?",
+            (extracted_author,),
         )
-        user_submission_count = cursor.fetchone()[0]
-        decay_multiplier = 1.0 / math.sqrt(user_submission_count + 1)
+        row = cursor.fetchone()
+        past_avg = row[0] if row[0] is not None else 0.0
+        past_count = row[1] if row[1] is not None else 0
 
-        base_piq = (final_score / 10.0)
-        piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
-        if "Binary payload is empty" in str(warnings_list) or "Extraction Failed" in title:
-            piq_minted = 0.0
+        if past_count == 0:
+            cursor.execute(
+                "SELECT AVG(final_score) FROM papers_assessment WHERE fields=?",
+                (json.dumps(fields),),
+            )
+            domain_avg = cursor.fetchone()[0]
+            past_avg = domain_avg if domain_avg else 50.0
+
+        improvement_multiplier = 1.0
+        if final_score > past_avg and past_avg > 0:
+            raw_multiplier = 1.5 + ((final_score - past_avg) / 50.0)
+            cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
+            improvement_multiplier = min(raw_multiplier, cap)
+
+        piq_minted = (
+            0.0
+            if extracted_author == "Unidentified"
+            else round((final_score / 10.0) * improvement_multiplier, 2)
+        )
 
         zk_proof = generate_zk_snark_proof(
             file_hash, final_score, logic_integrity, "None"
         )
         unique_author_book = (
             "0x" + hashlib.sha256(extracted_author.encode()).hexdigest()[:40]
-            if extracted_author != "Independent Research Scholar"
+            if extracted_author != "Unidentified"
             else book_address
         )
         tx_hash = mint_pi_quotient_token(
@@ -727,5 +812,5 @@ def process_single_pdf(
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, reproducibility_score, False, warnings_list,
+        active_weights, mdar_score, rrid_count, reproducibility_score, False,
     )
