@@ -394,17 +394,27 @@ def generate_rebuttal_strategy(scores_dict):
     if "Originality" in weakest_criterion:
         strategy += (
             "**Defense Tactic:** Argue that the paper value lies in synthesis and"
-            " rigorous validation rather than paradigm disruption."
+            " rigorous validation rather than paradigm disruption. Emphasize that"
+            " cumulative science requires foundational solidity over risky novelties."
         )
     elif "Rigor" in weakest_criterion:
         strategy += (
             "**Defense Tactic:** Pre-emptively acknowledge sample size limitations"
-            " in the discussion section. Frame the methodology as an exploratory pilot."
+            " in the discussion section. Frame the methodology as an exploratory pilot"
+            " to lower the expectation of absolute statistical certainty."
+        )
+    elif "Societal" in weakest_criterion:
+        strategy += (
+            "**Defense Tactic:** Shift the narrative from immediate societal"
+            " application to essential foundational groundwork. Argue that"
+            " downstream societal impact is impossible without this specific"
+            " theoretical gap being closed."
         )
     else:
         strategy += (
             "**Defense Tactic:** Focus the reviewers attention on the empirical"
-            " density of your dataset."
+            " density of your dataset. Acknowledge minor structural gaps but insist"
+            " the volume of data speaks for itself."
         )
     return strategy
 
@@ -601,6 +611,64 @@ def process_single_pdf(
             subfields = ["Core Research Domain"]
         fields = [subfields[0]]
 
+        # Duplicate Record Check
+        normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
+        cursor.execute(
+            "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
+            " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
+            " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
+            " doi=? OR author_name=?",
+            (provided_doi, extracted_author),
+        )
+        existing_records = cursor.fetchall()
+
+        for rec_row in existing_records:
+            ex_hash, ex_score, ex_logic, *ex_rest = rec_row
+            cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
+            ex_title_row = cursor.fetchone()
+            if ex_title_row:
+                ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
+                if (provided_doi != "None" and provided_doi) or (
+                    ex_norm_title == normalized_title and normalized_title != ""
+                ):
+                    c_scores = ex_rest[:8]
+                    piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
+                        ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
+                    )
+                    drift = (
+                        calculate_complex_drift(scope_alignment, c_scores)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    rec_spec = (
+                        get_recommendation_spectrum(ex_score, drift)
+                        if scope.strip()
+                        else "N/A"
+                    )
+                    scores_dict = {
+                        "C1_Originality": c_scores[0],
+                        "C2_Methodological_Rigor": c_scores[1],
+                        "C3_Interdisciplinary": c_scores[2],
+                        "C4_Societal_Impact": c_scores[3],
+                        "C5_Open_Science_Potential": c_scores[4],
+                        "C6_Literature_Integration": c_scores[5],
+                        "C7_Empirical_Density": c_scores[6],
+                        "C8_Future_Actionability": c_scores[7],
+                    }
+                    cursor.execute(
+                        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
+                        " WHERE eval_hash=?",
+                        (ex_hash,),
+                    )
+                    weight_res = cursor.fetchone()
+                    used_weights = weight_res if weight_res else active_weights
+                    warnings_list.append("Duplicate record detected via DOI or Author/Title match.")
+                    return (
+                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
+                        fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
+                        used_weights, mdar_score, rrid_count, repro_score, True, warnings_list,
+                    )
+
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
         conn.commit()
         cursor.execute("SELECT count FROM global_eval_counter")
@@ -670,6 +738,10 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
+        works_count, cited_by_count, credit_role = fetch_author_coara_metrics(
+            extracted_author
+        )
+
         co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
         num_authors = max(1, len(co_authors))
 
@@ -680,8 +752,32 @@ def process_single_pdf(
         user_submission_count = cursor.fetchone()[0]
         decay_multiplier = 1.0 / math.sqrt(user_submission_count + 1)
 
+        cursor.execute(
+            "SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE"
+            " author_name=?",
+            (extracted_author,),
+        )
+        row = cursor.fetchone()
+        past_avg = row[0] if row[0] is not None else 0.0
+        past_count = row[1] if row[1] is not None else 0
+
+        if past_count == 0:
+            cursor.execute(
+                "SELECT AVG(final_score) FROM papers_assessment WHERE fields=?",
+                (json.dumps(fields),),
+            )
+            domain_avg = cursor.fetchone()[0]
+            past_avg = domain_avg if domain_avg else 50.0
+
+        improvement_multiplier = 1.0
+        if final_score > past_avg and past_avg > 0:
+            raw_multiplier = 1.5 + ((final_score - past_avg) / 50.0)
+            cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
+            improvement_multiplier = min(raw_multiplier, cap)
+
         base_piq = (final_score / 10.0)
-        piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
+        piq_minted = round((base_piq / num_authors) * decay_multiplier * improvement_multiplier, 2)
+        
         if "Binary payload is empty" in str(warnings_list) or "Extraction Failed" in title:
             piq_minted = 0.0
 
