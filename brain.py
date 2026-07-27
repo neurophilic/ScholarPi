@@ -18,7 +18,7 @@ from groq import Groq
 from config import GROQ_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
 from database import get_db_connection
 from ledger import backup_state_to_web3, generate_zk_snark_proof, mint_pi_quotient_token, validate_block_por, generate_blockchain_pi
-from integrations import clean_author_name, is_likely_institution, fetch_author_coara_metrics
+from integrations import clean_author_name, is_likely_institution, fetch_author_coara_metrics, calculate_citation_topology
 
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
@@ -58,10 +58,8 @@ PidyneLSTM = PiBrainLSTM
 
 def sanitize_and_scan_text(text: str) -> tuple[str, list[str]]:
     warnings = []
-    # Strip zero-width and invisible control characters
     cleaned_text = re.sub(r'[\u200B-\u200D\uFEFF]', '', text)
     
-    # Injection detection heuristics
     injection_patterns = [
         r"disregard\s+the\s+previous\s+instructions",
         r"override\s+system\s+prompt",
@@ -76,6 +74,21 @@ def sanitize_and_scan_text(text: str) -> tuple[str, list[str]]:
             cleaned_text = re.sub(pattern, "[REDACTED_ADVERSARIAL_INSTRUCTION]", cleaned_text, flags=re.IGNORECASE)
 
     return cleaned_text, warnings
+
+def calculate_deterministic_mdar(text: str) -> tuple[float, int]:
+    text_lower = text.lower()
+    
+    blinded = 1.0 if re.search(r'\b(blinded|double-blind|single-blind|masking)\b', text_lower) else 0.0
+    randomized = 1.0 if re.search(r'\b(randomized|randomly assigned|random sequence)\b', text_lower) else 0.0
+    power_calc = 1.0 if re.search(r'\b(power analysis|sample size calculation|statistical power)\b', text_lower) else 0.0
+    
+    rrid_matches = re.findall(r'\brrid\s*:?\s*[a-zA-Z0-9_:-]+\b', text_lower)
+    rrid_count = len(set(rrid_matches)) 
+    
+    rrid_score = min(1.0, rrid_count / 3.0) 
+    mdar_adherence = (blinded + randomized + power_calc + rrid_score) / 4.0
+    
+    return mdar_adherence, rrid_count
 
 def get_evolving_system_context():
     conn = get_db_connection()
@@ -226,9 +239,11 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
     evolving_context = get_evolving_system_context()
     
-    prompt = f"""You are the theoretical parser for the Pi-Index. Read the academic paper or draft manuscript and extract metadata and audit variables.
-CRITICAL EQUITY & NORMALIZATION INSTRUCTION:
-- Global research equity is paramount. Do NOT penalize non-native English writing styles.
+    prompt = f"""You are the theoretical parser for the decentralized Pi-Index oracle. Read the academic manuscript and extract metadata and audit variables.
+
+STRICT CoARA MANDATES:
+- Evaluate based on intrinsic merit, open science, and FAIR principles. Do not evaluate based on journal prestige.
+- Global equity is paramount. Do not penalize non-native English writing styles.
 
 {evolving_context}
 
@@ -237,11 +252,16 @@ CRITICAL INSTRUCTION FOR AUTHORS & TOPICS:
 - NEVER output universities, departments, institutions, or organizational affiliations as authors. Output ONLY human author names. If none found, output an empty string.
 - Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered in this paper. Output as a comma-separated list of strings.
 
+G-EVAL CHAIN OF THOUGHT REQUIRED:
+Before outputting any numerical scores, you MUST generate a "chain_of_thought" string detailing your step-by-step logical reasoning for the manuscript's methodology, evidence strength, and societal impact. Your numerical scores MUST mathematically align with this reasoning.
+
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
 Extract Transparent Audit Variables (0.0 to 1.0): `semantic_novelty`, `laundering_penalty`, `rigor_index`, `citation_entropy`, `societal_linkage`, `D_open`, `J_code`, `citation_polarity_score`, `empirical_density`, `fair_compliance`.
 Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Jumps`, `Premise_Validity`.
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
-Return ONLY a valid JSON object. Text: {text}"""
+
+Output MUST be a valid JSON object containing the "chain_of_thought" key followed by the variables.
+Text: {text}"""
 
     result_content = None
     for attempt in range(3):
@@ -325,7 +345,7 @@ def compute_logical_integrity(extracted_logic_vars):
     return float(max(0.0, min(100.0, base_logic)))
 
 def compute_formulaic_criteria(
-    vars_dict, reproducibility_score, sciscore_adherence=0.8
+    vars_dict, reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5
 ):
     scores = {}
     c1_raw = (
@@ -337,7 +357,7 @@ def compute_formulaic_criteria(
     c2_raw = sciscore_adherence * vars_dict.get("rigor_index", 0.80) * 100
     scores["C2_Methodological_Rigor_SciScore"] = min(100.0, max(0.0, c2_raw))
     
-    c3_raw = vars_dict.get("citation_entropy", 0.70) * 100
+    c3_raw = topological_entropy * 100
     scores["C3_Interdisciplinary_Entropy"] = min(100.0, max(0.0, c3_raw))
     
     c4_raw = vars_dict.get("societal_linkage", 0.75) * 100
@@ -499,9 +519,12 @@ def process_single_pdf(
             warnings_list.append(f"Invalid PDF structure or PyMuPDF parsing exception: {e}")
             full_text = ""
 
-        # Sanitize text array against injection
         full_text, scan_warns = sanitize_and_scan_text(full_text)
         warnings_list.extend(scan_warns)
+        
+        # Deterministic Overrides
+        mdar_score, rrid_count = calculate_deterministic_mdar(full_text)
+        topological_entropy = calculate_citation_topology(provided_doi)
 
         if len(full_text.strip()) < 150:
             warnings_list.append("Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan).")
@@ -527,7 +550,7 @@ def process_single_pdf(
                 cached_result
             )
             c_scores = rest[:8]
-            piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
+            piq_minted, tx_hash, zk_proof, c_mdar_score, c_rrid_count, repro_score = (
                 rest[8], rest[9], rest[10], rest[11], rest[12], rest[13],
             )
             fields = json.loads(fields_str) if fields_str else ["Unspecified Domain"]
@@ -564,7 +587,7 @@ def process_single_pdf(
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-                used_weights, mdar_score, rrid_count, repro_score, True, warnings_list,
+                used_weights, c_mdar_score, c_rrid_count, repro_score, True, warnings_list,
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
@@ -669,7 +692,7 @@ def process_single_pdf(
                     ex_norm_title == normalized_title and normalized_title != ""
                 ):
                     c_scores = ex_rest[:8]
-                    piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
+                    piq_minted, tx_hash, zk_proof, e_mdar_score, e_rrid_count, repro_score = (
                         ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
                     )
                     drift = (
@@ -703,7 +726,7 @@ def process_single_pdf(
                     return (
                         title, extracted_author, ex_score, ex_logic, drift, rec_spec,
                         fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
-                        used_weights, mdar_score, rrid_count, repro_score, True, warnings_list,
+                        used_weights, e_mdar_score, e_rrid_count, repro_score, True, warnings_list,
                     )
 
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
@@ -725,7 +748,7 @@ def process_single_pdf(
 
         variables = raw_data if isinstance(raw_data, dict) else {}
         scores_dict = compute_formulaic_criteria(
-            variables, reproducibility_score, sciscore_adherence=0.82
+            variables, reproducibility_score, sciscore_adherence=mdar_score, topological_entropy=topological_entropy
         )
         scores = [
             scores_dict[k]
@@ -839,8 +862,6 @@ def process_single_pdf(
             get_recommendation_spectrum(final_score, drift) if scope.strip() else "N/A"
         )
 
-        mdar_score = 0.85
-        rrid_count = 4
         credit_roles_str = json.dumps(
             [credit_role, "Methodology Validation", "Open Science Curation"]
         )
