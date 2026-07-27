@@ -202,6 +202,32 @@ iframe {
 const parentDoc = window.parent.document;
 
 parentDoc.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'scilem-close-btn') {
+        let block = e.target.closest('[data-draggable="true"]');
+        if (block) block.style.display = 'none';
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+    if (e.target && e.target.id === 'scilem-min-btn') {
+        let block = e.target.closest('[data-draggable="true"]');
+        if (block) {
+            let children = Array.from(block.children);
+            let isMin = block.getAttribute('data-minimized') === 'true';
+            children.forEach(child => {
+                let handle = child.querySelector('#scilem-drag-handle') || (child.id === 'scilem-drag-handle' ? child : null);
+                if (!handle && child.id !== 'scilem-drag-handle') {
+                    child.style.display = isMin ? 'block' : 'none';
+                }
+            });
+            block.setAttribute('data-minimized', isMin ? 'false' : 'true');
+            e.target.innerText = isMin ? '_' : '+';
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+
     let trigger = e.target.closest('.scilem-trigger');
     if (!trigger) return; 
     e.preventDefault();
@@ -249,6 +275,7 @@ function initUI() {
                 let startX, startY, initialX, initialY;
 
                 handle.addEventListener('mousedown', function(e) {
+                    if (e.target.id === 'scilem-close-btn' || e.target.id === 'scilem-min-btn') return;
                     isDragging = true;
                     startX = e.clientX;
                     startY = e.clientY;
@@ -1422,7 +1449,6 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # Fetch authors and database details for map and tabs
     conn_m = get_db_connection()
     try:
         cursor_m = conn_m.cursor()
@@ -1440,7 +1466,6 @@ with top_analytics_col2:
 
     piq_dict, book_dict = get_author_piq_dict()
 
-    # Ensure modulator session state defaults exist
     if "mod_repulsion" not in st.session_state:
         st.session_state.mod_repulsion = -3000
     if "mod_spring" not in st.session_state:
@@ -1457,7 +1482,6 @@ with top_analytics_col2:
     current_filter = st.session_state.get(filter_key, "All Authors")
     selected_author_top = None if current_filter == "All Authors" else current_filter
 
-    # 1. Render Map FIRST using current session state / configuration values
     interactive_html_top, table_html_top = render_bubble_chart_clean(
         selected_author_top,
         repulsion=st.session_state.mod_repulsion,
@@ -1475,7 +1499,6 @@ with top_analytics_col2:
         else:
             st.info("Awaiting sufficient data for map visualization.")
 
-    # 2. Render Tabs BELOW the Map containing Author Filter, Modulators, and Legend/Leaderboard (without spacer or emojis)
     tab_filter, tab_mod, tab_legend = st.tabs(["Author Filter", "Modulators", "Legend & Leaderboard"])
 
     with tab_filter:
@@ -1934,7 +1957,15 @@ with col_center:
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
 scilem_container = st.container()
 with scilem_container:
-    st.markdown("<div id='scilem-drag-handle'><span class='robot-icon'>🤖</span> Scilem Assistant</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div id='scilem-drag-handle'>
+        <span class='robot-icon'>🤖</span> Scilem Assistant
+        <div style='margin-left: auto; display: flex; gap: 8px; font-weight: normal;'>
+            <span id='scilem-min-btn' title='Minimize/Expand' style='cursor: pointer; padding: 0 6px;'>_</span>
+            <span id='scilem-close-btn' title='Close' style='cursor: pointer; padding: 0 6px;'>&times;</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
