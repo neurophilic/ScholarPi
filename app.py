@@ -94,7 +94,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# Custom JS/CSS for Draggable Scilem Corner Chat Window
+# Custom JS/CSS for Draggable Scilem Corner Chat Window (Centered Header)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -144,7 +144,8 @@ custom_ui_code = """
     user-select: none;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    text-align: center;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
@@ -1060,6 +1061,7 @@ def more_details_dialog(item):
     warnings = item.get("warnings", [])
     consensus_raw = item.get("consensus_raw", {})
     evidence_report_text = item.get("evidence_report_text", "")
+    scilem_rating = item.get("scilem_rating", 50.0)
     author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
     st.subheader(f"{title} by {author_name}")
@@ -2023,7 +2025,9 @@ def framework_workflow_dialog():
     )
 
 st.markdown("---")
-col_pad1, col_center, col_pad2 = st.columns([1, 4, 1])
+
+# Clean, non-floating centered workflow section
+col_pad1, col_center, col_pad2 = st.columns([1, 2, 1])
 with col_center:
     if st.button("The Pi-Index Framework Workflow", use_container_width=True):
         framework_workflow_dialog()
@@ -2033,7 +2037,7 @@ scilem_container = st.container()
 with scilem_container:
     st.markdown("""
     <div id='scilem-drag-handle'>
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
             <span>Scilem Assistant</span>
         </div>
     </div>
