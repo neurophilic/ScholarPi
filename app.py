@@ -1138,7 +1138,7 @@ def more_details_dialog(item):
 
         st.markdown("---")
         st.markdown(f"### Homegrown Scilem Model Inference Result")
-        st.info(f"**Scilem Neural Net Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via $\\vapri$ regularization).")
+        st.info(f"**Scilem Neural Net Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via regularization).")
 
     with tab_report:
         st.markdown("### Synthesized Evidence Report (Pidyne Input)")
@@ -1905,8 +1905,8 @@ def framework_workflow_dialog():
 
             PyMuPDF [label="PyMuPDF Layout Sort\n• Spatial Reading Extraction\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
             SciParser [label="Deterministic SciScore API\n• MDAR Reporting Adherence\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
-            Retry [label="Groq Fallback Retry Logic\n• Distributed Concurrency Control\n• Exponential 429 Backoff", fillcolor="#a3e4d7", style="dashed,filled"];
-            IRTCalib [label="Item Response Theory Calibration\n• Counterfactual Stress Testing\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
+            Retry [label="Multi-LLM Consensus Retry Logic\n• Llama, Mistral, Qwen, Gemini\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];
+            IRTCalib [label="Pidyne Framework Validation\n• AI Scoring Adjustments\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
             Criteria [label="8 Transparent Criteria Rubrics\n• C1 Originality to C8 FAIR Actionability\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
             Logic [label="Adversarial Logic Integrity Matrix\n• Premise Validity & Evidence Strength\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
             
