@@ -3,6 +3,7 @@ import json
 import requests
 import cloudscraper
 import fitz  # PyMuPDF
+import networkx as nx
 
 def clean_author_name(author_str):
     if not author_str:
@@ -41,7 +42,6 @@ def is_likely_institution(name):
     return False
 
 def fetch_core_text_by_doi(doi):
-    """Queries the CORE API v3 using the DOI to extract available full-text or abstract."""
     if not doi or doi == "None":
         return None
     
@@ -65,7 +65,6 @@ def fetch_core_text_by_doi(doi):
     return None
 
 def create_virtual_pdf_from_text(text, title="CORE Open Access Text"):
-    """Converts raw text into an in-memory PDF binary stream so the processing pipeline doesn't break."""
     try:
         doc = fitz.open()  
         page = doc.new_page()
@@ -240,3 +239,43 @@ def download_pdf_from_url(pdf_url):
         pass
 
     return None
+
+def calculate_citation_topology(doi: str) -> float:
+    """
+    Builds a directed mathematical graph of citations to deterministically
+    calculate Interdisciplinary Entropy (C3).
+    """
+    if not doi or doi == "None":
+        return 0.50 # Baseline neutral entropy
+
+    clean_doi = doi.replace("https://doi.org/", "").strip()
+    url = f"https://api.openalex.org/works/https://doi.org/{clean_doi}"
+    
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code != 200:
+            return 0.50
+            
+        data = res.json()
+        referenced_works = data.get("referenced_works", [])
+        
+        if len(referenced_works) < 5:
+            return 0.30 # Low entropy penalty for isolated literature
+            
+        G = nx.DiGraph()
+        G.add_node(clean_doi)
+        
+        for ref in referenced_works:
+            G.add_edge(clean_doi, ref)
+            
+        centrality = nx.degree_centrality(G)
+        max_centrality = max(centrality.values()) if centrality else 1.0
+        
+        # Invert centrality for entropy: highly centralized = low entropy
+        topological_entropy = max(0.1, 1.0 - (max_centrality / 2.0))
+        
+        return min(1.0, topological_entropy)
+        
+    except Exception as e:
+        print(f"Topology mapping failed: {e}")
+        return 0.50
