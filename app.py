@@ -94,6 +94,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
+# Custom JS/CSS for Sidebar Scilem Assistant that becomes Draggable on Click & Drag
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -348,6 +349,7 @@ if "scilem_messages" not in st.session_state:
         }
     ]
 
+# Initialize Default Session States for Authentication
 if "is_authenticated" not in st.session_state:
     st.session_state.is_authenticated = False
     st.session_state.auth_method = "Anonymous"
@@ -434,6 +436,7 @@ with st.sidebar.expander("Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
 
+# Scilem Assistant sitting in the sidebar by default (minimised/draggable)
 scilem_container = st.sidebar.container()
 with scilem_container:
     st.markdown("""
@@ -1127,8 +1130,8 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
-    # --- Section 2: Multi-LLM & Scilem Extractions ---
-    st.markdown("### Multi-LLM & Scilem Extractions")
+    # --- Section 2: Multi-LLM Extractions ---
+    st.markdown("### Multi-LLM Extractions")
     if consensus_raw and isinstance(consensus_raw, dict):
         llm_cols = st.columns(2)
         target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"]
@@ -1138,24 +1141,28 @@ def more_details_dialog(item):
                 data = consensus_raw.get(llm_key, {})
                 with st.container(border=True):
                     st.markdown(f"**Model: {llm_key.upper()}**")
-                    st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
-                    st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
-                    st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
-                    refs = data.get("references", [])
-                    if refs:
-                        st.markdown(f"**References ({len(refs)}):**")
-                        for r in refs[:3]:
-                            if isinstance(r, dict):
-                                st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
-                            else:
-                                st.markdown(f"- {r}")
+                    if data.get('api_failed', False):
+                        st.markdown(f"**Status:** Rate / Credit Limit Hit")
+                        st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                    else:
+                        st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
+                        st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
+                        st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                        refs = data.get("references", [])
+                        if refs:
+                            st.markdown(f"**References ({len(refs)}):**")
+                            for r in refs[:3]:
+                                if isinstance(r, dict):
+                                    st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
+                                else:
+                                    st.markdown(f"- {r}")
     else:
         st.info("No individual LLM raw opinion payloads stored.")
 
     st.markdown("---")
 
-    # --- Section 3: Merged Evidence Report ---
-    st.markdown("### Synthesized Evidence Report (Pidyne Input)")
+    # --- Section 3: Merged Synthesized Evidence Report ---
+    st.markdown("### Synthesized Evidence Report")
     if evidence_report_text:
         st.markdown(evidence_report_text)
         st.download_button(
@@ -1167,7 +1174,7 @@ def more_details_dialog(item):
             key=f"dl_report_modal_{eval_hash}_{time.time()}"
         )
     else:
-        st.info("No merged evidence report generated for this manuscript.")
+        st.info("No synthesized evidence report generated for this manuscript.")
 
     st.markdown("---")
 
@@ -1318,6 +1325,7 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
+# Analytics Section
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
@@ -1547,6 +1555,7 @@ with top_analytics_col2:
 
 st.markdown("---")
 
+# Bottom Section: Assessed Papers & Leaderboard
 bottom_col1, bottom_col2 = st.columns(2, vertical_alignment="top")
 
 with bottom_col1:
