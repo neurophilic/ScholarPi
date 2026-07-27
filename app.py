@@ -744,7 +744,7 @@ def evaluation_metrics_dialog():
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( `\\varpi_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} ( `varpi_{sym}` = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
@@ -1424,7 +1424,7 @@ with top_analytics_col2:
 
     map_container = st.container()
     with map_container:
-        # Clean inline/floating settings expander directly above the author filter
+        # Native, clean settings expander above the map controls
         with st.expander("⚙️ Modulators", expanded=False):
             mod_col1, mod_col2 = st.columns(2)
             with mod_col1:
