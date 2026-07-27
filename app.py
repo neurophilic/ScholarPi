@@ -87,20 +87,8 @@ def get_author_piq_dict():
     return author_piq, author_book
 
 def preprocess_pdf_layout(pdf_bytes, fname):
-    try:
-        import fitz  # PyMuPDF
-        add_log(f"Initiating PyMuPDF spatial extraction for {fname}...")
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        text_blocks = []
-        for page in doc:
-            text_blocks.append(page.get_text("text", sort=True))
-        full_text = "\n".join(text_blocks)
-        if len(full_text.strip()) > 50:
-            add_log(f"Successfully extracted {len(full_text)} characters from {fname}.")
-            return create_virtual_pdf_from_text(full_text, title=fname)
-    except Exception as e:
-        add_log(f"PyMuPDF fallback triggered for {fname}: {e}")
-        logging.warning(f"PyMuPDF layout extraction fallback triggered: {e}")
+    # Bypass redundant virtual PDF creation to preserve original text layer
+    # brain.py already handles PyMuPDF spatial extraction natively.
     return pdf_bytes
 
 def rbot(topic_key):
