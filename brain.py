@@ -725,7 +725,6 @@ def process_single_pdf(
             base_piq = (final_score / 10.0)
             piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
         else:
-            # If security violations exist and override is not active, return violation reasons
             empty_scores = {
                 k: 0.0
                 for k in [
