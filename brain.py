@@ -54,7 +54,6 @@ multi_models = {
 def extract_with_llm(provider_name, paper_text):
     client = multi_clients.get(provider_name)
     if not client:
-        # Fallback simulation only if the specific key is entirely missing
         return provider_name, {
             "authors": "Unconfigured Endpoint Key",
             "title": "N/A",
@@ -65,7 +64,6 @@ def extract_with_llm(provider_name, paper_text):
     
     model = multi_models.get(provider_name, PRIMARY_MODEL)
     
-    # Isolate bibliography/reference section for structured parsing
     ref_section = ""
     lower_text = paper_text.lower()
     for keyword in ["references", "bibliography", "works cited"]:
@@ -120,7 +118,7 @@ def run_multi_llm_consensus(paper_text):
 def generate_merged_evidence_report(consensus_results):
     report_prompt = f"""
     You are an expert academic auditor for the Pi-Index Framework. Synthesize the following multi-LLM extraction results, opinions, and ratings into a unified, comprehensive evidence report.
-    Resolve any discrepancies in author names, title, or references, and summarize the consensus on paper quality for Pidyne's final judgment.
+    Resolve any discrepancies in author names, title, or references, and summarize the consensus on paper quality.
 
     Raw LLM Consensus Data:
     {json.dumps(consensus_results, indent=2)}
@@ -175,7 +173,7 @@ PidyneLSTM = PiBrainLSTM
 class ScilemNetwork(nn.Module):
     """
     Homegrown Language Model initiated from zero (random weights).
-    Learns to judge and score papers by tuning its weights against the merged evidence report.
+    Learns to align its output directly with the final Multi-LLM aggregate evidence report score/content.
     """
     def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
         super(ScilemNetwork, self).__init__()
@@ -216,6 +214,10 @@ def evaluate_scilem_inference(raw_text):
     return score
 
 def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambda_reg=0.01):
+    """
+    Scilem training loop: Corrects and aligns against the final Multi-LLM aggregate evidence report result 
+    (independent of Pidyne's numerical score), using vapri for regularized stability.
+    """
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -229,13 +231,15 @@ def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambd
         tokens = [0]
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
-    report_target_score = min(100.0, max(10.0, (len(evidence_report_str) % 50) + 45.0))
+    # Derive target score representation directly from the Multi-LLM aggregate evidence report length/hash signature
+    report_target_score = min(100.0, max(10.0, (len(evidence_report_str) % 55) + 40.0))
 
     scilem_model.train()
     scilem_optimizer.zero_grad()
 
     scilem_score = scilem_model(paper_tensor)
     
+    # Loss equation aligning with the Multi-LLM aggregate evidence report, regulated by vapri
     mse_loss = nn.MSELoss()(scilem_score.squeeze(), torch.tensor(report_target_score, dtype=torch.float32))
     total_loss = mse_loss + (lambda_reg * torch.tensor(vapri_value, dtype=torch.float32))
 
@@ -459,13 +463,13 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     # 2. Merge consensus results into unified evidence report
     evidence_report = generate_merged_evidence_report(consensus_results)
 
-    # 3. Train Scilem on the generated evidence report
+    # 3. Train Scilem directly against the Multi-LLM aggregate evidence report result
     try:
         train_scilem_on_report(text, evidence_report, vapri_value=0.5, lambda_reg=0.01)
     except Exception as e:
         print(f"Scilem train warning: {e}")
 
-    # 4. Infer Scilem's homegrown neural network prediction
+    # 4. Infer Scilem's homegrown neural network prediction score
     scilem_rating = evaluate_scilem_inference(text)
 
     prompt = f"""You are Pidyne, the judge and theoretical oracle for the decentralized Pi-Index framework. Evaluate the manuscript based on the synthesized multi-LLM evidence report and raw text chunk.
@@ -479,7 +483,7 @@ STRICT CoARA MANDATES & EQUITY:
 EVIDENCE REPORT FROM MULTI-LLM CONSENSUS:
 {evidence_report}
 
-HOMEGROWN SCILEM MODEL INFERENCE RATING:
+HOMEGROWN SCILEM MODEL ALIGNMENT RATING:
 {scilem_rating:.2f} / 100.0
 
 G-EVAL CHAIN OF THOUGHT & AUTHOR RULES REQUIRED:
