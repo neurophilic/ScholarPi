@@ -777,6 +777,58 @@ with col_t2:
         evaluation_metrics_dialog()
 
 st.markdown("")
+
+# --- Indeterminate Format Interception Handler ---
+if "pending_indeterminate_item" in st.session_state and st.session_state["pending_indeterminate_item"]:
+    item = st.session_state["pending_indeterminate_item"]
+    
+    st.warning(
+        f"⚠️ **Indeterminate Format Detected:** The parser could not reliably verify "
+        f"the structure, title, or author metadata for **{item['filename']}** (confidence < 50% or sparse text layer)."
+    )
+    
+    col_proceed, col_cancel = st.columns(2)
+    with col_proceed:
+        if st.button("🚀 Go ahead anyways", type="primary", key="btn_indet_proceed"):
+            with st.spinner("Processing manuscript with forced override..."):
+                (
+                    title, author_name, score, logic_integrity, drift, rec,
+                    fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                    zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, is_indeterminate
+                ) = process_single_pdf(
+                    item["file_bytes"], 
+                    item["filename"], 
+                    item["scope"], 
+                    item["user_id"], 
+                    book_address="None",
+                    email=item["email"], 
+                    provided_doi=item["doi"], 
+                    force_proceed=True
+                )
+                
+                eval_record = {
+                    "title": title, "author_name": clean_author_name(author_name),
+                    "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                    "rec": rec, "fields": fields, "subfields": subfields,
+                    "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                    "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                    "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                    "filename": item["filename"],
+                }
+                st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                add_log(f"Forced override executed successfully for {item['filename']}")
+                
+            del st.session_state["pending_indeterminate_item"]
+            st.rerun()
+            
+    with col_cancel:
+        if st.button("❌ Discard / Cancel", key="btn_indet_cancel"):
+            add_log(f"Indeterminate manuscript discarded: {item['filename']}")
+            del st.session_state["pending_indeterminate_item"]
+            st.rerun()
+            
+    st.stop()  # Pause normal app rendering until the user resolves the prompt
+
 with st.container(border=True):
     selected_uploaded_files = []
     uploaded_files = st.file_uploader(
