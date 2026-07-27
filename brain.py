@@ -330,14 +330,29 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
 
 def reset_scilem():
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
+    res_msg = "Scilem state reset successfully."
     if os.path.exists(scilem_weights_path):
         try:
             os.remove(scilem_weights_path)
-        except Exception:
-            pass
+        except Exception as e:
+            res_msg = f"Scilem weights file deletion warning: {e}"
+            
     global scilem_model
     scilem_model = ScilemNetwork()
-    return "Scilem weights and state successfully reset to baseline."
+    
+    for m in scilem_model.modules():
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.LSTM):
+            for name, param in m.named_parameters():
+                if 'weight' in name:
+                    nn.init.orthogonal_(param)
+                elif 'bias' in name:
+                    nn.init.zeros_(param)
+                    
+    return res_msg
 
 # ---------------------------------------------------------
 # Utilities & Sanitization
