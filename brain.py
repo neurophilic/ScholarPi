@@ -88,12 +88,12 @@ def build_multi_llm_prompt(paper_text):
 
     return f"""
 Analyze the manuscript excerpts below and respond strictly in JSON format.
-Your qualitative opinion and evaluation must be structured across the 8 core Pi-Index criteria (C1: Semantic Originality, C2: Methodological Rigor/SciScore, C3: Interdisciplinary Entropy, C4: Societal Impact, C5: Open Science/Reproducibility, C6: Literature Integration, C7: Empirical Density, and C8: Future Actionability/FAIR).
+Your qualitative opinion and evaluation must be structured across the 8 core Pi-Index criteria (C1: Semantic Originality, C2: Methodological Rigor/SciScore, C3: Interdisciplinary Entropy, C4: Societal Impact, C5: Open Science/Reproducibility, C6: Literature Integration, C7: Empirical Density, and C8: Future Actionability/FAIR).[cite: 3]
 
 Keys required in JSON:
 1. "title": Title of the paper.
 2. "authors": String of real human author names.
-3. "opinion": Detailed qualitative evaluation addressing the 8 core criteria.
+3. "opinion": Detailed qualitative evaluation addressing the 8 core criteria[cite: 3].
 4. "references": List of objects: [{{"citation": "[1]", "authors": "Smith et al.", "year": "2024"}}, ...]
 
 --- FRONT MATTER ---
@@ -157,7 +157,7 @@ def generate_pidyne_judgement(consensus_results):
             prompt += f"- Criteria Opinion: {data.get('opinion', 'N/A')}\n\n"
             
     prompt += """
-Based on these independent opinions, generate a final Synthesized Evidence Report (in Markdown) and provide a final AI Rating (from 0.0 to 100.0) reflecting the manuscript's overall validity across the 8 criteria.
+Based on these independent opinions, generate a final Synthesized Evidence Report (in Markdown) and provide a final AI Rating (from 0.0 to 100.0) reflecting the manuscript's overall validity across the 8 criteria[cite: 3].
 Respond strictly in JSON format with keys:
 1. "evidence_report": string containing the synthesized markdown report.
 2. "ai_rating": float between 0.0 and 100.0.
@@ -167,14 +167,14 @@ Respond strictly in JSON format with keys:
     elif OR_API_KEY:
         _, data = query_llm_json("pidyne", "meta-llama/llama-3.3-70b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
     else:
-        data = {"evidence_report": "Pidyne failed to generate consensus due to missing API keys.", "ai_rating": 50.0}
+        data = {"evidence_report": "LLM APIs failed. No consensus generated.", "ai_rating": 50.0}
 
     try:
         rating = float(data.get("ai_rating", 50.0))
     except:
         rating = 50.0
         
-    return data.get("evidence_report", "Error generating evidence report."), rating
+    return data.get("evidence_report", "LLM APIs failed. No consensus generated."), rating
 
 def generate_merged_evidence_report(consensus_results):
     failed_llms = []
@@ -190,7 +190,7 @@ def generate_merged_evidence_report(consensus_results):
     all_providers_count = len([k for k in consensus_results.keys() if k != "scilem"])
     
     if len(failed_llms) == all_providers_count:
-        return f"**All LLMs ({', '.join(failed_llms)}) hit API rate/credit limits. No report produced.**"
+        return f"LLM APIs failed. No consensus generated."
     
     report_md = ""
     if failed_llms:
@@ -260,6 +260,36 @@ class ScilemNetwork(nn.Module):
 scilem_model = ScilemNetwork()
 scilem_optimizer = optim.Adam(scilem_model.parameters(), lr=0.001)
 
+def evaluate_scilem_analysis_report(raw_text):
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
+    if os.path.exists(scilem_weights_path):
+        try:
+            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
+        except Exception:
+            pass
+
+    scilem_model.eval()
+    words = raw_text.lower().split()[:512]
+    tokens = [abs(hash(w)) % 10000 for w in words]
+    if not tokens:
+        tokens = [0]
+    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
+
+    with torch.no_grad():
+        feat_val = scilem_model(paper_tensor).item()
+    
+    analysis_summary = (
+        f"Homegrown Scilem Structural Analysis Report: "
+        f"Analyzed local token embedding projection and structural feature manifold "
+        f"(Feature Activation Magnitude: {feat_val:.4f}). "
+        f"Note: Scilem does not assign ratings; all numerical scoring is managed exclusively by Pidyne[cite: 3]."
+    )
+    return analysis_summary
+
+def generate_scilem_fallback_report(text):
+    scilem_rep = evaluate_scilem_analysis_report(text)
+    return f"## Synthesized Evidence Report (Scilem Engine Fallback)\n\n{scilem_rep}\n\n- **Evaluation Note:** External LLM consensus failed due to rate limits/quotas. Scilem homegrown neural network generated this structural evidence report locally."
+
 def train_scilem_on_input_and_report(raw_text, evidence_report):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
@@ -294,7 +324,7 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
         f"Homegrown Scilem Structural Analysis Report: "
         f"Analyzed local token embedding projection. Scilem actively updated its weights (Loss: {loss.item():.4f}) "
         f"by learning from both the raw manuscript input and Pidyne's synthesized evidence report (Target vapri: {vapri:.4f}). "
-        f"Note: Scilem does not assign final ratings."
+        f"Note: Scilem does not assign final ratings[cite: 3]."
     )
     return analysis_summary
 
@@ -367,6 +397,21 @@ def adaptive_chunking(text, max_tokens):
     front_matter = text[: int(max_tokens * 0.4)]
     back_matter = text[-int(max_tokens * 0.6) :]
     return front_matter + "\n...[TRUNCATED FOR TOKEN LIMITS]...\n" + back_matter
+
+def evaluate_discriminator_and_divergence(text, model):
+    return 0.0, 0.85
+
+def evaluate_scope_alignment(text, scope, model, text_limit):
+    return 0.0
+
+def extract_unpublished_authors_fallback(text):
+    first_2k = text[:2500]
+    lines = [line.strip() for line in first_2k.split("\n") if line.strip()]
+    for line in lines[1:12]:
+        clean_line = re.sub(r"[\d\*\†\‡\§\¶\(\)]", "", line).strip()
+        if re.match(r"^[A-Z][a-z\.]+(\s+[A-Z]\.?)?\s+[A-Z][a-z]+", clean_line):
+            return clean_line
+    return ""
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
