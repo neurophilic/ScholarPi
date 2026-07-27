@@ -400,10 +400,11 @@ def process_single_pdf(
     book_address="None",
     email="None",
     provided_doi="None",
+    force_proceed=False,
 ):
     active_weights = [1.0] * 8
     works_count, cited_by_count, credit_role = 0.0, 0, "Data Curation"
-    warnings_list = []  # Mock warning container for format/extraction checks
+    warnings_list = []
 
     if file_bytes is None or len(file_bytes) == 0:
         empty_scores = {
@@ -418,7 +419,7 @@ def process_single_pdf(
         return (
             "Download/Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
             ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False,
+            "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list
         )
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -439,23 +440,14 @@ def process_single_pdf(
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             pdf_meta_author = doc.metadata.get("author", "").strip()
-            full_text = " ".join([page.get_text() for page in doc])
-        except Exception:
-            empty_scores = {
-                k: 0.0
-                for k in [
-                    "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                    "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                    "C7_Empirical_Density", "C8_Future_Actionability",
-                ]
-            }
-            warnings_list.append("Invalid PDF structure or PyMuPDF parsing exception.")
-            return (
-                "Invalid PDF Format", "Unidentified", 0.0, 0.0, "N/A", "N/A",
-                ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-                file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                0.0, False,
-            )
+            
+            text_blocks = []
+            for page in doc:
+                text_blocks.append(page.get_text("text", sort=True))
+            full_text = "\n".join(text_blocks)
+        except Exception as e:
+            warnings_list.append(f"Invalid PDF structure or PyMuPDF parsing exception: {e}")
+            full_text = ""
 
         if len(full_text.strip()) < 150:
             warnings_list.append("Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan).")
@@ -466,7 +458,7 @@ def process_single_pdf(
             else 0.0
         )
 
-        if cached_result:
+        if cached_result and not force_proceed:
             score, logic_score, title, fields_str, subfields_str, author_name, *rest = (
                 cached_result
             )
@@ -508,7 +500,7 @@ def process_single_pdf(
             return (
                 title, clean_author_name(author_name), score, logic_score, drift, rec,
                 fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-                used_weights, mdar_score, rrid_count, repro_score, True,
+                used_weights, mdar_score, rrid_count, repro_score, True, warnings_list,
             )
 
         gaming_penalty, reproducibility_score = evaluate_discriminator_and_divergence(
@@ -531,20 +523,12 @@ def process_single_pdf(
                 model_used = FALLBACK_MODEL
             except Exception:
                 warnings_list.append("LLM text ensemble extraction failed completely.")
-                empty_scores = {
-                    k: 0.0
-                    for k in [
-                        "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                        "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                        "C7_Empirical_Density", "C8_Future_Actionability",
-                    ]
+                raw_data = {
+                    "Extracted_Title": filename,
+                    "Extracted_Author": "Unidentified",
+                    "Extracted_Topics": "Core Research Domain",
+                    "Overall_Confidence": 0.0,
                 }
-                return (
-                    "Extraction Failed", "Unidentified", 0.0, 0.0, "N/A", "N/A",
-                    ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores,
-                    file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                    reproducibility_score, False,
-                )
 
         if not isinstance(raw_data, dict):
             raw_data = {
@@ -554,14 +538,18 @@ def process_single_pdf(
                 "Overall_Confidence": 0.0,
             }
 
-        confidence = raw_data.get("Overall_Confidence", 1.0)
+        confidence = float(raw_data.get("Overall_Confidence", 0.9))
         if confidence < 0.50:
-            warnings_list.append(f"Low parsing confidence score ({confidence * 100:.1f}% < 50%).")
+            warnings_list.append(f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%).")
+
+        extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
+        extracted_title_check = str(raw_data.get("Extracted_Title", ""))
+
+        if extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]:
+            warnings_list.append("Author metadata could not be reliably verified or identified in document header.")
 
         title = raw_data.get("Extracted_Title", filename)
-        extracted_author = clean_author_name(
-            str(raw_data.get("Extracted_Author", ""))
-        )
+        extracted_author = clean_author_name(extracted_author_check)
         extracted_topics = str(
             raw_data.get("Extracted_Topics", "Core Research Domain")
         ).strip()
@@ -588,9 +576,6 @@ def process_single_pdf(
                 )
                 if is_likely_institution(extracted_author):
                     extracted_author = "Unidentified"
-        
-        if extracted_author == "Unidentified":
-            warnings_list.append("Author name is unidentified or unverified.")
 
         if isinstance(extracted_topics, str):
             subfields = [
@@ -605,62 +590,6 @@ def process_single_pdf(
         if not subfields:
             subfields = ["Core Research Domain"]
         fields = [subfields[0]]
-
-        normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
-        cursor.execute(
-            "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
-            " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
-            " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
-            " doi=? OR author_name=?",
-            (provided_doi, extracted_author),
-        )
-        existing_records = cursor.fetchall()
-
-        for rec_row in existing_records:
-            ex_hash, ex_score, ex_logic, *ex_rest = rec_row
-            cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
-            ex_title_row = cursor.fetchone()
-            if ex_title_row:
-                ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
-                if (provided_doi != "None" and provided_doi) or (
-                    ex_norm_title == normalized_title and normalized_title != ""
-                ):
-                    c_scores = ex_rest[:8]
-                    piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
-                        ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
-                    )
-                    drift = (
-                        calculate_complex_drift(scope_alignment, c_scores)
-                        if scope.strip()
-                        else "N/A"
-                    )
-                    rec_spec = (
-                        get_recommendation_spectrum(ex_score, drift)
-                        if scope.strip()
-                        else "N/A"
-                    )
-                    scores_dict = {
-                        "C1_Originality": c_scores[0],
-                        "C2_Methodological_Rigor": c_scores[1],
-                        "C3_Interdisciplinary": c_scores[2],
-                        "C4_Societal_Impact": c_scores[3],
-                        "C5_Open_Science_Potential": c_scores[4],
-                        "C6_Literature_Integration": c_scores[5],
-                        "C7_Empirical_Density": c_scores[6],
-                        "C8_Future_Actionability": c_scores[7],
-                    }
-                    cursor.execute(
-                        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
-                        " WHERE eval_hash=?",
-                        (ex_hash,),
-                    )
-                    weight_res = cursor.fetchone()
-                    used_weights = weight_res if weight_res else active_weights
-                    return (
-                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
-                        fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
-                        used_weights, mdar_score, rrid_count, repro_score, True,
-                    )
 
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
         conn.commit()
@@ -696,7 +625,7 @@ def process_single_pdf(
         formulas_hash = get_formulas_hash()
 
         if final_score < 60.0:
-            warnings_list.append(f"Final score ({final_score:.2f}) is below mandatory quality floor (60.0).")
+            warnings_list.append(f"Final score ({final_score:.2f}) is below quality floor (60.0).")
 
         if total_evals % EPOCH_BLOCK_SIZE == 0:
             active_weights = calculate_model_driven_weights(
@@ -731,38 +660,18 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
-        works_count, cited_by_count, credit_role = fetch_author_coara_metrics(
-            extracted_author
-        )
+        co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
+        num_authors = max(1, len(co_authors))
 
         cursor.execute(
-            "SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE"
-            " author_name=?",
-            (extracted_author,),
+            "SELECT COUNT(*) FROM papers_assessment WHERE user_id = ?",
+            (user_id,)
         )
-        row = cursor.fetchone()
-        past_avg = row[0] if row[0] is not None else 0.0
-        past_count = row[1] if row[1] is not None else 0
+        user_submission_count = cursor.fetchone()[0]
+        decay_multiplier = 1.0 / math.sqrt(user_submission_count + 1)
 
-        if past_count == 0:
-            cursor.execute(
-                "SELECT AVG(final_score) FROM papers_assessment WHERE fields=?",
-                (json.dumps(fields),),
-            )
-            domain_avg = cursor.fetchone()[0]
-            past_avg = domain_avg if domain_avg else 50.0
-
-        improvement_multiplier = 1.0
-        if final_score > past_avg and past_avg > 0:
-            raw_multiplier = 1.5 + ((final_score - past_avg) / 50.0)
-            cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
-            improvement_multiplier = min(raw_multiplier, cap)
-
-        piq_minted = (
-            0.0
-            if extracted_author == "Unidentified"
-            else round((final_score / 10.0) * improvement_multiplier, 2)
-        )
+        base_piq = (final_score / 10.0)
+        piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
 
         zk_proof = generate_zk_snark_proof(
             file_hash, final_score, logic_integrity, "None"
@@ -812,5 +721,5 @@ def process_single_pdf(
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, reproducibility_score, False,
+        active_weights, mdar_score, rrid_count, reproducibility_score, False, warnings_list,
     )
