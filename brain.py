@@ -19,7 +19,7 @@ from groq import Groq
 from openai import OpenAI
 
 from config import (
-    GROQ_API_KEY, OR_API_KEY, AIN_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, QWEN_API_KEY,
+    GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY,
     PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
 )
 from database import get_db_connection
@@ -35,7 +35,7 @@ from integrations import (
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ---------------------------------------------------------
-# Multi-LLM Consensus Engine (Llama, Mistral, Qwen, Gemini)
+# Multi-LLM Consensus Engine (Llama, Mistral, Qwen, Gemini via OpenRouter/Groq/Gemini APIs)
 # ---------------------------------------------------------
 def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     if not api_key or not str(api_key).strip():
@@ -64,7 +64,7 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
             opinion = f"Error querying {provider_name.upper()}: {err_str}"
             
         return provider_name, {
-            "title": "N/A (Rate Limited)",
+            "title": "N/A (Error)",
             "authors": "N/A",
             "opinion": opinion,
             "references": [],
@@ -81,17 +81,15 @@ def extract_with_llama(paper_text):
 
 def extract_with_mistral(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
-    if MISTRAL_API_KEY:
-        return query_llm_json("mistral", "mistral-large-latest", MISTRAL_API_KEY, "https://api.mistral.ai/v1", prompt)
-    elif OR_API_KEY:
-        return query_llm_json("mistral", "mistralai/mistral-large-2411", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
+    if OR_API_KEY:
+        # Route Mistral via OpenRouter with valid endpoint slug
+        return query_llm_json("mistral", "mistralai/mistral-large", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
     return "mistral", mock_llm_fallback("Mistral-Large", paper_text)
 
 def extract_with_qwen(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
-    if QWEN_API_KEY:
-        return query_llm_json("qwen", "qwen-max", QWEN_API_KEY, "https://dashscope.aliyuncs.com/compatible-mode/v1", prompt)
-    elif OR_API_KEY:
+    if OR_API_KEY:
+        # Route Qwen via OpenRouter with valid endpoint slug
         return query_llm_json("qwen", "qwen/qwen-2.5-72b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
     return "qwen", mock_llm_fallback("Qwen-2.5-72B", paper_text)
 
@@ -225,10 +223,6 @@ class PiBrainLSTM(nn.Module):
 PidyneLSTM = PiBrainLSTM
 
 class ScilemNetwork(nn.Module):
-    """
-    Homegrown Language Model initiated from zero (random weights).
-    Learns to evaluate paper tokens independently and aligns with consensus expectations.
-    """
     def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
         super(ScilemNetwork, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
@@ -507,10 +501,9 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     text = adaptive_chunking(text, text_limit)
     evolving_context = get_evolving_system_context()
     
-    # 1. Run Multi-LLM Consensus (Llama, Mistral, Qwen, Gemini)
+    # 1. Run Multi-LLM Consensus via OpenRouter/Groq/Gemini APIs
     consensus_results = run_multi_llm_consensus(text)
     
-    # Extract ratings from multi-LLM consensus
     ratings = [float(v.get("rating", 75.0)) for v in consensus_results.values() if isinstance(v, dict) and "rating" in v]
     
     # 2. Merge consensus results into unified evidence report
@@ -522,7 +515,6 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     except Exception as e:
         print(f"Scilem train warning: {e}")
 
-    # 4. Infer Scilem's homegrown neural network prediction score
     scilem_rating = evaluate_scilem_inference(text)
 
     consensus_results["scilem"] = {
@@ -533,7 +525,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         "rating": round(scilem_rating, 2)
     }
 
-    prompt = f"""You are Pidyne, the judge and theoretical oracle for the decentralized Pi-Index framework. Evaluate the manuscript based on the synthesized multi-LLM evidence report (Llama, Mistral, Qwen, Gemini, Scilem) and raw text chunk.
+    prompt = f"""You are Pidyne, the judge and theoretical oracle for the decentralized Pi-Index framework. Evaluate the manuscript based on the synthesized multi-LLM evidence report and raw text chunk.
 
 STRICT CoARA MANDATES & EQUITY:
 - Evaluate based on intrinsic merit, open science, and FAIR principles.
