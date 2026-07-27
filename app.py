@@ -54,7 +54,7 @@ svg_icon = """
 """
 
 st.markdown(
-    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} Pi-Index Assessment Engine 🤖</h1>", 
+    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} </h1>", 
     unsafe_allow_html=True
 )
 
