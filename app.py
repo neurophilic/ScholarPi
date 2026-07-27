@@ -98,7 +98,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for UI Modifications (Featuring flexbox Scilem Header with 'X' aligned correctly on the right)
+# Custom JS/CSS for UI Modifications (Featuring flexbox Scilem Header with '-' aligned correctly on the right)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -214,7 +214,7 @@ parentDoc.addEventListener('click', function(e) {
                 }
             });
             block.setAttribute('data-minimized', isMin ? 'false' : 'true');
-            e.target.innerText = isMin ? 'X' : '+';
+            e.target.innerText = isMin ? '-' : '+';
         }
         e.preventDefault();
         e.stopPropagation();
@@ -364,7 +364,7 @@ if "scilem_messages" not in st.session_state:
     st.session_state.scilem_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** And does it really learn something? Click any 🤖 button next to technical app features or terms for instant explanations."
+            "content": "**Welcome! I am Scilem.** Click any 🤖 button next to technical app features or terms for instant explanations."
         }
     ]
 
@@ -1969,7 +1969,7 @@ with scilem_container:
             <span class='robot-icon' style="font-size: 1.2em;">🤖</span>
             <span>Scilem Assistant</span>
         </div>
-        <span id='scilem-min-btn' title='Minimize/Expand'>X</span>
+        <span id='scilem-min-btn' title='Minimize/Expand'>-</span>
     </div>
     """, unsafe_allow_html=True)
     
