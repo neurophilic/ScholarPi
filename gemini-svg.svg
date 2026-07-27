@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <style>
+      .dark { fill: #31333d; }
+      .light { fill: #ffffff; }
+    </style>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="500" height="500" fill="#ffffff" />
+
+  <g transform="translate(10, 0)">
+    <!-- Left Ear / Side Flange -->
+    <path class="dark" d="M 120,220 C 88,220 85,240 85,270 C 85,300 88,320 120,320 Z" />
+
+    <!-- Right Ear / Side Flange -->
+    <path class="dark" d="M 380,220 C 412,220 415,240 415,270 C 415,300 412,320 380,320 Z" />
+
+    <!-- Outer Head Ring -->
+    <circle cx="250" cy="270" r="160" class="dark" />
+
+    <!-- Inner Face Container (White Area) -->
+    <path class="light" d="M 250,140 C 315,140 360,185 360,270 C 360,355 315,400 250,400 C 185,400 140,355 140,270 C 140,185 185,140 250,140 Z" />
+
+    <!-- Dark Eye Capsule / Visor -->
+    <path class="dark" d="M 175,200 C 210,185 290,185 325,200 C 348,210 350,240 350,270 C 350,300 348,325 325,335 C 290,350 210,350 175,335 C 152,325 150,300 150,270 C 150,240 152,210 175,200 Z" />
+
+    <!-- Left Arched Eye (White Outline Arc) -->
+    <path class="light" d="M 172,310 L 172,250 C 172,210 240,210 240,250 L 240,310 L 222,310 L 222,255 C 222,230 190,230 190,255 L 190,310 Z" />
+
+    <!-- Right Arched Eye (White Outline Arc) -->
+    <path class="light" d="M 260,310 L 260,250 C 260,210 328,210 328,250 L 328,310 L 310,310 L 310,255 C 310,230 278,230 278,255 L 278,310 Z" />
+
+    <!-- Mouth / Nose Sensor -->
+    <path class="dark" d="M 230,370 C 230,358 240,355 250,355 C 260,355 270,358 270,370 C 270,382 260,385 250,385 C 240,385 230,382 230,370 Z" />
+  </g>
+</svg>
