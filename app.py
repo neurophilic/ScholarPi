@@ -100,7 +100,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for UI Modifications
+# Custom JS/CSS for UI Modifications (Featuring a larger, organized Scilem Header with 'X' toggle)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -146,11 +146,11 @@ custom_ui_code = """
 }
 
 #scilem-drag-handle {
-    background-color: #2c3e50;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
     color: white;
-    padding: 12px;
-    font-weight: bold;
-    font-size: 16px;
+    padding: 14px 18px;
+    font-weight: 700;
+    font-size: 18px;
     cursor: grab;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
@@ -159,14 +159,24 @@ custom_ui_code = """
     position: relative;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 #scilem-drag-handle:active {
     cursor: grabbing;
 }
 
-#scilem-drag-handle .robot-icon {
-    font-size: 1.5em;
-    margin-right: 8px;
+#scilem-min-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+#scilem-min-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
 }
 
 button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
@@ -206,7 +216,7 @@ parentDoc.addEventListener('click', function(e) {
                 }
             });
             block.setAttribute('data-minimized', isMin ? 'false' : 'true');
-            e.target.innerText = isMin ? '--' : '+';
+            e.target.innerText = isMin ? 'X' : '+';
         }
         e.preventDefault();
         e.stopPropagation();
@@ -1889,10 +1899,14 @@ with col_center:
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
 scilem_container = st.container()
 with scilem_container:
+    # UPDATED: Bigger, more organized header layout with 'X' toggle button
     st.markdown("""
     <div id='scilem-drag-handle'>
-        <span class='robot-icon'>🤖</span> Scilem Assistant
-        <span id='scilem-min-btn' title='Minimize/Expand' style='position: absolute; top: 6px; right: 10px; cursor: pointer; font-weight: bold; font-size: 16px; padding: 2px 6px;'>--</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span class='robot-icon' style="font-size: 1.3em;">🤖</span>
+            <span style="letter-spacing: 0.3px;">Scilem Assistant</span>
+        </div>
+        <span id='scilem-min-btn' title='Minimize/Expand'>X</span>
     </div>
     """, unsafe_allow_html=True)
     
