@@ -42,22 +42,6 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine 🤖", layout="wide"
 )
 
-# Get the absolute path to the directory where app.py lives
-current_dir = os.path.dirname(os.path.abspath(__file__))
-svg_file_path = os.path.join(current_dir, "logo.svg") # Replace with your actual SVG filename
-
-# Read the SVG content safely
-try:
-    with open(svg_file_path, "r", encoding="utf-8") as f:
-        svg_icon = f.read()
-except FileNotFoundError:
-    svg_icon = "🤖" # Fallback emoji if the file is missing
-
-st.markdown(
-    f"<h1>{svg_icon} </h1>", 
-    unsafe_allow_html=True
-)
-
 
 # --- System Action Log Monitor ---
 if "app_logs" not in st.session_state:
