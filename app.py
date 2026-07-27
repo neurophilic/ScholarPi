@@ -1,4 +1,3 @@
-
 import os
 import re
 import json
@@ -1965,146 +1964,152 @@ try:
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
 
-        explore_col1, explore_col2 = st.columns([3, 1])
-        with explore_col1:
-            search_query = st.text_input(
-                "Enter Document Evaluation Hash, Block Hash, Paper Name, Author Name, or Book Address to verify ledger record...",
-                key="pidyne_ledger_search_query"
-            )
-        with explore_col2:
-            st.write("")
-            st.write("")
-            search_btn = st.button("Verify Record", key="pidyne_verify_record_btn")
+        # Side-by-Side layout for Explorer Tools and Recent Ledger Proofs & Transactions
+        exp_col_left, exp_col_right = st.columns(2, vertical_alignment="top")
 
-        if search_btn and search_query:
-            try:
-                q_term = f"%{search_query.strip()}%"
-                cursor.execute(
-                    """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                              p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                              p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book,
-                              p.consensus_data, p.evidence_report, p.scilem_score
-                       FROM papers_assessment p
-                       LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                       WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
-                       LIMIT 5""",
-                    (q_term, q_term, q_term, q_term, q_term)
+        with exp_col_left:
+            st.markdown("#### Ledger Verification & Record Search")
+            explore_col1, explore_col2 = st.columns([3, 1])
+            with explore_col1:
+                search_query = st.text_input(
+                    "Enter Evaluation Hash, Block Hash, Paper Name, Author Name, or Book Address...",
+                    key="pidyne_ledger_search_query"
                 )
-                matched_records = cursor.fetchall()
-                if matched_records:
-                    st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
-                    for m_idx, mr in enumerate(matched_records):
-                        (
-                            m_title, m_author, m_filename, m_score, m_logic,
-                            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-                            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                            m_block_height, m_block_hash, m_por, m_form, m_book_addr,
-                            m_consensus, m_report, m_scilem
-                        ) = mr
+            with explore_col2:
+                st.write("")
+                st.write("")
+                search_btn = st.button("Verify Record", key="pidyne_verify_record_btn")
 
-                        m_author_clean = clean_author_name(m_author)
-                        m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
-                        m_tx_url = safe_get_sepolia_url(m_tx)
-                        
-                        tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
-
-                        with st.expander(
-                            f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
-                            f" **{m_score:.2f}** | {m_time[:16]})",
-                            expanded=True,
-                        ):
-                            st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
-                            st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
-                            st.write(f"**Unique Book Address:** `{m_book}`")
-                            st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
-                            
-                            if m_tx_url:
-                                st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
-                            else:
-                                st.write(f"**Tx Hash:** `{tx_disp_val}`")
-
-                            st.markdown(f"**Executable Reproducibility Score:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
-                            st.markdown(f"**SciScore MDAR Adherence:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
-
-                            if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
-                                search_item = {
-                                    "title": m_title,
-                                    "author_name": m_author,
-                                    "score": m_score,
-                                    "logic_integrity": m_logic if m_logic is not None else 75.0,
-                                    "scores_dict": {
-                                        "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                                        "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                                        "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                                        "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
-                                    },
-                                    "used_weights": [1.0]*8,
-                                    "eval_hash": m_hash,
-                                    "piq": m_piq,
-                                    "tx_hash": m_tx,
-                                    "zk_proof": m_zk,
-                                    "h_idx": m_mdar,
-                                    "i10_idx": m_rrid,
-                                    "repro_score": m_repro,
-                                    "filename": m_filename or "N/A",
-                                    "warnings": [],
-                                    "consensus_raw": json.loads(m_consensus) if m_consensus else {},
-                                    "evidence_report_text": m_report or "",
-                                    "scilem_rating": m_scilem if m_scilem is not None else 50.0
-                                }
-                                more_details_dialog(search_item)
-                else:
-                    st.error(
-                        "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
+            if search_btn and search_query:
+                try:
+                    q_term = f"%{search_query.strip()}%"
+                    cursor.execute(
+                        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                                  b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book,
+                                  p.consensus_data, p.evidence_report, p.scilem_score
+                           FROM papers_assessment p
+                           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                           WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
+                           LIMIT 5""",
+                        (q_term, q_term, q_term, q_term, q_term)
                     )
-            except Exception as e:
-                st.error(f"Error reading database: {str(e)}")
+                    matched_records = cursor.fetchall()
+                    if matched_records:
+                        st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
+                        for m_idx, mr in enumerate(matched_records):
+                            (
+                                m_title, m_author, m_filename, m_score, m_logic,
+                                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                                m_block_height, m_block_hash, m_por, m_form, m_book_addr,
+                                m_consensus, m_report, m_scilem
+                            ) = mr
 
-        st.info(
-            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
-            f" sealed to block `{block_hash}`."
-        )
-        st.caption(
-            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
-            " grading mathematical constants cannot be tampered with)."
-        )
+                            m_author_clean = clean_author_name(m_author)
+                            m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
+                            m_tx_url = safe_get_sepolia_url(m_tx)
+                            
+                            tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
-        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+                            with st.expander(
+                                f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
+                                f" **{m_score:.2f}** | {m_time[:16]})",
+                                expanded=True,
+                            ):
+                                st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
+                                st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
+                                st.write(f"**Unique Book Address:** `{m_book}`")
+                                st.write(f"**piQ Minted:** `{m_piq}`")
+                                st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
+                                
+                                if m_tx_url:
+                                    st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
+                                else:
+                                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-        st.markdown("#### Recent Ledger Proofs & Transactions")
-        cursor.execute(
-            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash
-               FROM papers_assessment p
-               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               ORDER BY p.timestamp DESC LIMIT 5"""
-        )
-        recent_ledger_rows = cursor.fetchall()
-        if recent_ledger_rows:
-            table_data = []
-            for rrow in recent_ledger_rows:
-                rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
-                tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
-                tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
-                table_data.append({
-                    "Block Height": rbh if rbh is not None else "Pending",
-                    "Eval Hash": reval[:10] + "...",
-                    "Block Hash": rbhash[:10] + "..." if rbhash else "Pending",
-                    "zk-SNARK": rzk[:10] + "..." if rzk else "N/A",
-                    "piQ": rpiq,
-                    "Tx Hash (Etherscan)": tx_disp,
-                    "Timestamp": rts[:19] if rts else ""
-                })
-            st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
-        else:
-            st.info("No ledger transaction proofs recorded yet.")
+                                st.markdown(f"**Executable Reproducibility Score:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
+                                st.markdown(f"**SciScore MDAR Adherence:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
+
+                                if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
+                                    search_item = {
+                                        "title": m_title,
+                                        "author_name": m_author,
+                                        "score": m_score,
+                                        "logic_integrity": m_logic if m_logic is not None else 75.0,
+                                        "scores_dict": {
+                                            "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                                            "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                                            "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                                            "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                                        },
+                                        "used_weights": [1.0]*8,
+                                        "eval_hash": m_hash,
+                                        "piq": m_piq,
+                                        "tx_hash": m_tx,
+                                        "zk_proof": m_zk,
+                                        "h_idx": m_mdar,
+                                        "i10_idx": m_rrid,
+                                        "repro_score": m_repro,
+                                        "filename": m_filename or "N/A",
+                                        "warnings": [],
+                                        "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                                        "evidence_report_text": m_report or "",
+                                        "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                                    }
+                                    more_details_dialog(search_item)
+                    else:
+                        st.error(
+                            "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
+                        )
+                except Exception as e:
+                    st.error(f"Error reading database: {str(e)}")
+
+            st.info(
+                f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
+                f" sealed to block `{block_hash}`."
+            )
+            st.caption(
+                f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
+                " grading mathematical constants cannot be tampered with)."
+            )
+
+            piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+            reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+            st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+
+        with exp_col_right:
+            st.markdown("#### Recent Ledger Proofs & Transactions")
+            cursor.execute(
+                """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                          p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                          b.block_height, b.block_hash
+                   FROM papers_assessment p
+                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                   ORDER BY p.timestamp DESC LIMIT 5"""
+            )
+            recent_ledger_rows = cursor.fetchall()
+            if recent_ledger_rows:
+                table_data = []
+                for rrow in recent_ledger_rows:
+                    rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
+                    tx_url = safe_get_sepolia_url(rtx)
+                    tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
+                    tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
+                    table_data.append({
+                        "Block Height": rbh if rbh is not None else "Pending",
+                        "Eval Hash": reval[:10] + "...",
+                        "Block Hash": rbhash[:10] + "..." if rbhash else "Pending",
+                        "zk-SNARK": rzk[:10] + "..." if rzk else "N/A",
+                        "piQ": rpiq,
+                        "Tx Hash (Etherscan)": tx_disp,
+                        "Timestamp": rts[:19] if rts else ""
+                    })
+                st.dataframe(pd.DataFrame(table_data), hide_index=True, use_container_width=True)
+            else:
+                st.info("No ledger transaction proofs recorded yet.")
 
 finally:
     conn.close()
