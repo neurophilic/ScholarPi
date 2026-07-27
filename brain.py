@@ -6,6 +6,7 @@ import random
 import hashlib
 import re
 import difflib
+import concurrent.futures
 from datetime import datetime
 
 import fitz
@@ -15,14 +16,108 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
 from groq import Groq
+from openai import OpenAI
 
-from config import GROQ_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
+from config import (
+    GROQ_API_KEY, OR_API_KEY, AIN_API_KEY, PRIMARY_MODEL, FALLBACK_MODEL, 
+    MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
+)
 from database import get_db_connection
-from ledger import backup_state_to_web3, generate_zk_snark_proof, mint_pi_quotient_token, validate_block_por, generate_blockchain_pi
-from integrations import clean_author_name, is_likely_institution, fetch_author_coara_metrics, calculate_citation_topology
+from ledger import (
+    backup_state_to_web3, generate_zk_snark_proof, mint_pi_quotient_token, 
+    validate_block_por, generate_blockchain_pi
+)
+from integrations import (
+    clean_author_name, is_likely_institution, fetch_author_coara_metrics, 
+    calculate_citation_topology
+)
 
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
+# ---------------------------------------------------------
+# Multi-LLM Consensus Clients & Extraction Pipeline
+# ---------------------------------------------------------
+multi_clients = {}
+if GROQ_API_KEY:
+    multi_clients["groq"] = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+if OR_API_KEY:
+    multi_clients["openrouter"] = OpenAI(api_key=OR_API_KEY, base_url="https://openrouter.ai/api/v1")
+if AIN_API_KEY:
+    multi_clients["ainative"] = OpenAI(api_key=AIN_API_KEY, base_url="https://api.ainative.studio/v1")
+
+multi_models = {
+    "groq": "llama-3.3-70b-versatile",
+    "openrouter": "mistralai/mistral-7b-instruct",
+    "ainative": "google/gemma-2-27b-it"
+}
+
+def extract_with_llm(provider_name, paper_text):
+    client = multi_clients.get(provider_name)
+    if not client:
+        return provider_name, {"error": "Client unconfigured"}
+    
+    model = multi_models.get(provider_name, "llama-3.3-70b-versatile")
+    prompt = f"""
+    Analyze the following academic paper text and extract the information in JSON format:
+    1. "authors": List of authors correctly identified.
+    2. "title": Title of the paper.
+    3. "references": Extracted references list.
+    4. "opinion": Critical evaluation and opinion of the methodology.
+    5. "rating": Numerical quality score from 0.0 to 100.0.
+
+    Paper Content:
+    {paper_text[:8000]}
+    """
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.1
+        )
+        return provider_name, json.loads(response.choices[0].message.content)
+    except Exception as e:
+        return provider_name, {"error": str(e)}
+
+def run_multi_llm_consensus(paper_text):
+    results = {}
+    if not multi_clients:
+        # Fallback to standard Groq client if secondary keys are missing
+        if groq_client:
+            _, res = extract_with_llm("groq", paper_text)
+            return {"groq": res}
+        return {"error": "No LLM clients available"}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(multi_clients)) as executor:
+        futures = [executor.submit(extract_with_llm, provider, paper_text) for provider in multi_clients.keys()]
+        for future in concurrent.futures.as_completed(futures):
+            provider, data = future.result()
+            results[provider] = data
+    return results
+
+def generate_merged_evidence_report(consensus_results):
+    report_prompt = f"""
+    You are an expert academic auditor. Synthesize the following multi-LLM extraction results, opinions, and ratings into a unified, comprehensive evidence report.
+    Resolve any discrepancies in author names, title, or references, and summarize the consensus on paper quality.
+
+    Raw LLM Consensus Data:
+    {json.dumps(consensus_results)}
+    """
+    if groq_client:
+        try:
+            draft_1 = groq_client.chat.completions.create(
+                model=PRIMARY_MODEL,
+                messages=[{"role": "user", "content": report_prompt}],
+                temperature=0.1
+            ).choices[0].message.content
+            return draft_1
+        except Exception as e:
+            return f"Evidence report generation failed: {str(e)}"
+    return json.dumps(consensus_results)
+
+# ---------------------------------------------------------
+# Neural Networks: Pidyne LSTM & Homegrown Scilem
+# ---------------------------------------------------------
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
         self.data = data_matrix
@@ -34,9 +129,7 @@ class PiBlockchainDataset(Dataset):
     def __getitem__(self, idx):
         x = self.data[idx : idx + self.lookback]
         y = self.data[idx + self.lookback]
-        return torch.tensor(x, dtype=torch.float32), torch.tensor(
-            y, dtype=torch.float32
-        )
+        return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
 PidyneBlockchainDataset = PiBlockchainDataset
 
@@ -57,6 +150,72 @@ class PiBrainLSTM(nn.Module):
 
 PidyneLSTM = PiBrainLSTM
 
+class ScilemNetwork(nn.Module):
+    """
+    Homegrown Language Model initiated from zero (random weights).
+    Learns to act as a judge/scoring LM using neural network learning on raw paper text.
+    """
+    def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
+        super(ScilemNetwork, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)
+        self.fc1 = nn.Linear(hidden_dim, 16)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(16, 1)
+
+    def forward(self, text_tensor):
+        embedded = self.embedding(text_tensor)
+        lstm_out, _ = self.lstm(embedded)
+        last_hidden = lstm_out[:, -1, :]
+        x = self.relu(self.fc1(last_hidden))
+        score = torch.sigmoid(self.fc2(x)) * 100.0
+        return score
+
+# Initialize Scilem model weights from zero
+scilem_model = ScilemNetwork()
+scilem_optimizer = optim.Adam(scilem_model.parameters(), lr=0.001)
+
+def train_scilem_on_verdict(raw_text, pidyne_verdict_score, vapri_value=0.5, lambda_reg=0.01):
+    """
+    Trains Scilem on raw paper text to match Pidyne's verdict score.
+    Incorporates vapri in the loss regularization formula.
+    """
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
+    if os.path.exists(scilem_weights_path):
+        try:
+            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
+        except Exception:
+            pass
+
+    # Tokenize raw text into vocabulary indices
+    words = raw_text.lower().split()[:512]
+    tokens = [abs(hash(w)) % 10000 for w in words]
+    if not tokens:
+        tokens = [0]
+    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
+
+    scilem_model.train()
+    scilem_optimizer.zero_grad()
+
+    scilem_score = scilem_model(paper_tensor)
+    
+    # Loss equation with vapri regularization penalty
+    mse_loss = nn.MSELoss()(scilem_score.squeeze(), torch.tensor(pidyne_verdict_score, dtype=torch.float32))
+    total_loss = mse_loss + (lambda_reg * torch.tensor(vapri_value, dtype=torch.float32))
+
+    total_loss.backward()
+    scilem_optimizer.step()
+
+    try:
+        torch.save(scilem_model.state_dict(), scilem_weights_path)
+    except Exception:
+        pass
+
+    return float(scilem_score.item()), float(total_loss.item())
+
+# ---------------------------------------------------------
+# Utilities & Sanitization
+# ---------------------------------------------------------
 def sanitize_and_scan_text(text: str) -> tuple[str, list[str]]:
     warnings = []
     cleaned_text = re.sub(r'[\u200B-\u200D\uFEFF]', '', text)
@@ -255,29 +414,28 @@ def extract_unpublished_authors_fallback(text):
     return ""
 
 def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
-    if not groq_client:
-        return {
-            "Extracted_Title": "Parsing Failed (No API Key)",
-            "Extracted_Author": "",
-            "Extracted_Topics": "Core Research Domain",
-            "Overall_Confidence": 0.85,
-        }
-
     text = adaptive_chunking(text, text_limit)
     evolving_context = get_evolving_system_context()
     
-    prompt = f"""You are the theoretical parser for the decentralized Pi-Index oracle. Read the academic manuscript and extract metadata and audit variables.
+    # Run Multi-LLM consensus extraction across providers
+    consensus_results = run_multi_llm_consensus(text)
+    evidence_report = generate_merged_evidence_report(consensus_results)
+
+    prompt = f"""You are Pidyne, the judge and theoretical oracle for the decentralized Pi-Index framework. Evaluate the manuscript based on the synthesized multi-LLM evidence report and raw text chunk.
 
 STRICT CoARA MANDATES & EQUITY:
-- Evaluate based on intrinsic merit, open science, and FAIR principles. Do not evaluate based on journal prestige.
+- Evaluate based on intrinsic merit, open science, and FAIR principles.
 - Global equity is paramount. Do not penalize non-native English writing styles.
 
 {evolving_context}
 
+EVIDENCE REPORT FROM MULTI-LLM CONSENSUS:
+{evidence_report}
+
 G-EVAL CHAIN OF THOUGHT & AUTHOR RULES REQUIRED:
-- Before outputting any numerical scores, you MUST generate a "chain_of_thought" string detailing your step-by-step logical reasoning.
-- Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of HUMAN author names (no brackets, no quotes, no "et al."). NEVER output universities, departments, or institutions.
-- Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered.
+- Output "chain_of_thought" string detailing your step-by-step logical reasoning.
+- Extract clean comma-separated list of HUMAN author names (no institutions).
+- Extract 1 to 3 distinct scientific subfields.
 
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
 Extract Transparent Audit Variables (0.0 to 1.0): `semantic_novelty`, `laundering_penalty`, `rigor_index`, `citation_entropy`, `societal_linkage`, `D_open`, `J_code`, `citation_polarity_score`, `empirical_density`, `fair_compliance`.
@@ -285,39 +443,26 @@ Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Ju
 REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0).
 
 Output MUST be a valid JSON object containing the "chain_of_thought" key followed by the variables.
-Text: {text}"""
+Text Chunk: {text[:4000]}"""
 
-    result_content = None
-    for attempt in range(3):
-        try:
-            response = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=model,
-                temperature=0.1, 
-                seed=random.randint(1, 1000),
-                response_format={"type": "json_object"},
-            )
-            result_content = response.choices[0].message.content
-            break
-        except Exception as e:
-            if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
-                time.sleep(2 ** attempt)
-            else:
-                break
-
-    if result_content:
-        try:
-            parsed = json.loads(result_content)
-            if isinstance(parsed, dict):
-                harvest_fine_tuning_data(text, parsed, file_hash)
-                return parsed
-            elif isinstance(parsed, str):
-                sub_parsed = json.loads(parsed)
-                if isinstance(sub_parsed, dict):
-                    harvest_fine_tuning_data(text, sub_parsed, file_hash)
-                    return sub_parsed
-        except Exception:
-            pass
+    if groq_client:
+        for attempt in range(3):
+            try:
+                response = groq_client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=model,
+                    temperature=0.1, 
+                    response_format={"type": "json_object"},
+                )
+                parsed = json.loads(response.choices[0].message.content)
+                if isinstance(parsed, dict):
+                    harvest_fine_tuning_data(text, parsed, file_hash)
+                    return parsed
+            except Exception as e:
+                if any(k in str(e).lower() for k in ["413", "rate_limit_exceeded", "tokens", "429"]):
+                    time.sleep(2 ** attempt)
+                else:
+                    break
         
     return {
         "Extracted_Title": "Parsing Failed",
@@ -693,7 +838,7 @@ def process_single_pdf(
 
         normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
         
-        # Salami-Slicing & Similarity Defense Hook
+        # Similarity Defense Hook
         similarity_penalty = 0.0
         is_similar, sim_score, flagged_hash = detect_similar_manuscripts(title, extracted_author, cursor)
         if is_similar:
@@ -792,6 +937,13 @@ def process_single_pdf(
         raw_final_score = float(np.dot(scores, old_weights)) / 8.0
         final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
         formulas_hash = get_formulas_hash()
+
+        # [SCILEM BACKPROPAGATION TRAIN LOOP]
+        # Scilem learns to predict Pidyne's verdict score from raw paper text
+        try:
+            train_scilem_on_verdict(full_text, final_score, vapri_value=0.5, lambda_reg=0.01)
+        except Exception as e:
+            warnings_list.append(f"Scilem learning backprop warning: {e}")
 
         if final_score < 60.0:
             warnings_list.append(f"Final score ({final_score:.2f}) is below quality floor (60.0).")
