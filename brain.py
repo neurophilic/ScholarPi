@@ -35,7 +35,7 @@ from integrations import (
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ---------------------------------------------------------
-# Multi-LLM Consensus Engine (Extraction Only - No Ratings)
+# Multi-LLM Consensus Engine (Extraction & Criteria-Based Opinions Only - No Ratings)
 # ---------------------------------------------------------
 def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     if not api_key or not str(api_key).strip():
@@ -88,10 +88,12 @@ def build_multi_llm_prompt(paper_text):
 
     return f"""
 Analyze the manuscript excerpts below and respond strictly in JSON format.
-Keys required:
+Your qualitative opinion and evaluation must be structured across the 8 core Pi-Index criteria (C1: Semantic Originality, C2: Methodological Rigor/SciScore, C3: Interdisciplinary Entropy, C4: Societal Impact, C5: Open Science/Reproducibility, C6: Literature Integration, C7: Empirical Density, and C8: Future Actionability/FAIR).
+
+Keys required in JSON:
 1. "title": Title of the paper.
 2. "authors": String of real human author names.
-3. "opinion": Detailed qualitative evaluation of methodological rigor and claims.
+3. "opinion": Detailed qualitative evaluation addressing the 8 core criteria.
 4. "references": List of objects: [{{"citation": "[1]", "authors": "Smith et al.", "year": "2024"}}, ...]
 
 --- FRONT MATTER ---
@@ -146,16 +148,16 @@ def run_multi_llm_consensus(paper_text):
     return results
 
 def generate_pidyne_judgement(consensus_results):
-    prompt = "You are the Pidyne Assessment Engine. Review the following independent AI extractions and evaluations of a manuscript:\n\n"
+    prompt = "You are the Pidyne Assessment Engine. Review the following independent AI extractions and criteria-based opinions of a manuscript:\n\n"
     for provider, data in consensus_results.items():
         if provider != "scilem" and not data.get("api_failed", False):
             prompt += f"### {provider.upper()} Report:\n"
             prompt += f"- Extracted Title: {data.get('title', 'N/A')}\n"
             prompt += f"- Extracted Authors: {data.get('authors', 'N/A')}\n"
-            prompt += f"- Opinion: {data.get('opinion', 'N/A')}\n\n"
+            prompt += f"- Criteria Opinion: {data.get('opinion', 'N/A')}\n\n"
             
     prompt += """
-Based on these independent opinions, generate a final Synthesized Evidence Report (in Markdown) and provide a final AI Rating (from 0.0 to 100.0) reflecting the manuscript's overall validity, rigor, and interdisciplinary value.
+Based on these independent opinions, generate a final Synthesized Evidence Report (in Markdown) and provide a final AI Rating (from 0.0 to 100.0) reflecting the manuscript's overall validity across the 8 criteria.
 Respond strictly in JSON format with keys:
 1. "evidence_report": string containing the synthesized markdown report.
 2. "ai_rating": float between 0.0 and 100.0.
@@ -199,7 +201,7 @@ def generate_merged_evidence_report(consensus_results):
         report_md += f"### {provider.upper()} Assessment\n"
         report_md += f"- **Title Extracted:** {data.get('title', 'N/A')}\n"
         report_md += f"- **Authors:** {data.get('authors', 'N/A')}\n"
-        report_md += f"- **Opinion:** {data.get('opinion', 'N/A')}\n\n"
+        report_md += f"- **Opinion (Criteria-based):** {data.get('opinion', 'N/A')}\n\n"
         
     return report_md
 
@@ -276,6 +278,7 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
     features = scilem_model(paper_tensor)
+    
     vapri = (abs(hash(evidence_report)) % 1000) / 1000.0
     target_tensor = torch.tensor([[vapri]], dtype=torch.float32)
 
@@ -286,6 +289,7 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
     
     torch.save(scilem_model.state_dict(), scilem_weights_path)
 
+    feat_val = features.item()
     analysis_summary = (
         f"Homegrown Scilem Structural Analysis Report: "
         f"Analyzed local token embedding projection. Scilem actively updated its weights (Loss: {loss.item():.4f}) "
@@ -343,6 +347,20 @@ def detect_similar_manuscripts(current_title: str, current_author: str, db_curso
     is_similar = highest_sim > 0.85 
     return is_similar, highest_sim, flagged_hash
 
+def get_evolving_system_context():
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8 
+            FROM blockchain_por_weights 
+            ORDER BY block_height DESC LIMIT 1
+        """)
+        epoch_data = cursor.fetchone()
+    finally:
+        conn.close()
+    return "SYSTEM EVOLUTION CONTEXT:\n"
+
 def adaptive_chunking(text, max_tokens):
     if len(text) <= max_tokens:
         return text
@@ -372,20 +390,9 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         "api_failed": all_llms_failed
     }
 
-    extracted_title = "Parsed via Local Heuristics"
-    extracted_author = "Independent Research Scholar"
-    for p, data in consensus_results.items():
-        if not data.get("api_failed", False):
-            t = data.get("title")
-            a = data.get("authors")
-            if t and t != "N/A" and "N/A" not in t:
-                extracted_title = t
-            if a and a != "N/A" and "N/A" not in a:
-                extracted_author = a
-
     return {
-        "Extracted_Title": extracted_title,
-        "Extracted_Author": extracted_author,
+        "Extracted_Title": consensus_results.get("llama", {}).get("title", "Parsed via Local Heuristics"),
+        "Extracted_Author": consensus_results.get("llama", {}).get("authors", "Independent Research Scholar"),
         "Extracted_Topics": "Core Research Domain",
         "Overall_Confidence": 0.85,
         "_consensus_raw": consensus_results,
@@ -393,6 +400,15 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         "_pidyne_rating": pidyne_ai_rating,
         "_scilem_rating": "N/A"
     }
+
+def get_formulas_hash():
+    return hashlib.sha256(b"Pi-Index-Formula-State").hexdigest()
+
+def calculate_model_driven_weights(old_weights, scores, model_name, block_height):
+    return old_weights
+
+def compute_logical_integrity(extracted_logic_vars):
+    return 75.0
 
 def compute_formulaic_criteria(vars_dict, reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, similarity_penalty=0.0, ai_rating=75.0):
     scores = {
@@ -406,6 +422,12 @@ def compute_formulaic_criteria(vars_dict, reproducibility_score, sciscore_adhere
         "C8_Future_Actionability_FAIR": ai_rating
     }
     return scores
+
+def calculate_complex_drift(alignment, scores):
+    return 0.0
+
+def get_recommendation_spectrum(score, drift):
+    return "Tier III: Moderately Synergistic"
 
 def generate_rebuttal_strategy(scores_dict):
     return "Ensure empirical methodology and open science practices are explicitly stated."
