@@ -1422,7 +1422,7 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    # Fetch authors and database details for the tabs
+    # Fetch authors and database details for map and tabs
     conn_m = get_db_connection()
     try:
         cursor_m = conn_m.cursor()
@@ -1440,42 +1440,67 @@ with top_analytics_col2:
 
     piq_dict, book_dict = get_author_piq_dict()
 
-    # Tabs positioned above the map
+    # Ensure modulator session state defaults exist
+    if "mod_repulsion" not in st.session_state:
+        st.session_state.mod_repulsion = -3000
+    if "mod_spring" not in st.session_state:
+        st.session_state.mod_spring = 180
+    if "mod_size" not in st.session_state:
+        st.session_state.mod_size = 1.5
+    if "mod_gravity" not in st.session_state:
+        st.session_state.mod_gravity = 0.15
+
+    filter_key = f"top_author_filter_{st.session_state['assessment_update_token']}"
+    if filter_key not in st.session_state:
+        st.session_state[filter_key] = "All Authors"
+
+    current_filter = st.session_state.get(filter_key, "All Authors")
+    selected_author_top = None if current_filter == "All Authors" else current_filter
+
+    # 1. Render Map FIRST using current session state / configuration values
+    interactive_html_top, table_html_top = render_bubble_chart_clean(
+        selected_author_top,
+        repulsion=st.session_state.mod_repulsion,
+        spring_len=st.session_state.mod_spring,
+        size_scale=st.session_state.mod_size,
+        central_grav=st.session_state.mod_gravity
+    )
+
+    map_container = st.container()
+    with map_container:
+        if interactive_html_top:
+            st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
+            components.html(interactive_html_top, height=600, scrolling=False)
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.info("Awaiting sufficient data for map visualization.")
+
+    st.markdown("---")
+
+    # 2. Render Tabs BELOW the Map containing Author Filter, Modulators, and Legend/Leaderboard
     tab_filter, tab_mod, tab_legend = st.tabs(["👤 Author Filter", "⚙️ Modulators", "📊 Legend & Leaderboard"])
 
     with tab_filter:
-        selected_author_top = None
         if all_global_authors:
-            filter_choice_top = st.selectbox(
+            st.selectbox(
                 "Filter Map by Author:",
                 ["All Authors"] + all_global_authors,
-                key=f"top_author_filter_{st.session_state['assessment_update_token']}",
+                key=filter_key,
                 format_func=lambda x: (
                     f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
                 ),
             )
-            if filter_choice_top != "All Authors":
-                selected_author_top = filter_choice_top
         else:
             st.info("No authors available for filtering.")
 
     with tab_mod:
         mod_col1, mod_col2 = st.columns(2)
         with mod_col1:
-            mod_repulsion = st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
-            mod_spring = st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
+            st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
+            st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
         with mod_col2:
-            mod_size = st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
-            mod_gravity = st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
-
-    # Render chart payload based on the controls in tabs above
-    interactive_html_top, table_html_top = render_bubble_chart_clean(
-        selected_author_top,
-        repulsion=mod_repulsion,
-        spring_len=mod_spring,
-        size_scale=mod_size,
-        central_grav=mod_gravity
-    )
+            st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
+            st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
 
     with tab_legend:
         st.markdown(table_html_top, unsafe_allow_html=True)
@@ -1503,18 +1528,6 @@ with top_analytics_col2:
                 st.dataframe(piq_df, use_container_width=True, height=180)
         else:
             st.info("No piQ tokens minted yet.")
-
-    st.markdown("---")
-    
-    # Map container rendered directly below the tabs
-    map_container = st.container()
-    with map_container:
-        if interactive_html_top:
-            st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
-            components.html(interactive_html_top, height=600, scrolling=False)
-            st.markdown("</div>", unsafe_allow_html=True)
-        else:
-            st.info("Awaiting sufficient data for map visualization.")
 
 st.markdown("---")
 
