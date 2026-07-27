@@ -33,10 +33,13 @@ from integrations import (
 )
 from brain import (
     process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
-    PidyneBlockchainDataset, generate_scilem_fallback_report
+    PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem
 )
 
 w3 = Web3()
+
+# Replace with your actual connected Web3 Ethereum Wallet address (checksum format)
+OWNER_ID = "0xYourEthereumWalletAddressHere"
 
 st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
@@ -464,6 +467,20 @@ with scilem_container:
                     "content": f"Scilem active. Synthesizing response regarding: '{floating_prompt.strip()}'."
                 })
                 st.rerun()
+
+    # Owner-only Web3 authenticated Scilem reset control
+    if st.session_state.is_authenticated and st.session_state.auth_method == "Web3" and w3.is_address(current_user) and w3.to_checksum_address(current_user) == w3.to_checksum_address(OWNER_ID):
+        if st.form_submit_button("Reset Scilem (Owner)"):
+            msg = reset_scilem()
+            st.session_state.scilem_messages = [
+                {
+                    "role": "assistant", 
+                    "content": "**Scilem has been reset.** Neural weights and context cleared to baseline by Web3 owner."
+                }
+            ]
+            add_log(msg)
+            st.success(msg)
+            st.rerun()
 
 def refine_science_field(s):
     s_lower = s.lower()
@@ -1162,7 +1179,6 @@ def more_details_dialog(item):
     if evidence_report_text:
         st.markdown(evidence_report_text)
         
-        # Button to use Scilem if LLM APIs failed / no consensus generated
         if "LLM APIs failed" in evidence_report_text or "No consensus generated" in evidence_report_text:
             if st.button("Use Scilem Instead", key=f"use_scilem_fallback_{eval_hash}"):
                 try:
@@ -2023,7 +2039,7 @@ finally:
 @st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
 def framework_workflow_dialog():
     st.markdown(
-        "Pi-Index filters noise and yields quantitative results strictly aligned with **Responsible Research Assessment (RRA)** and **CoARA** (Coalition for Advancing Research Assessment) guidelines[cite: 3].\n\n"
+        "Pi-Index filters noise and yields quantitative results strictly aligned with **Responsible Research Assessment (RRA)** and **CoARA** (Coalition for Advancing Research Assessment) guidelines.\n\n"
         "### Architecture Flowchart & Whitepaper DOI\n\n"
         "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
         "The enhanced system architecture flow below details the decentralized intake, ZK double-blind reviewer assignment, SciScore deterministic parsing, Item Response Theory (IRT) calibration, and smart contract slashing mechanisms."
@@ -2102,11 +2118,11 @@ def framework_workflow_dialog():
     """)
     st.markdown("---")
     st.markdown("""
-    ### CoARA Compliance & Core Pillars[cite: 3]
+    ### CoARA Compliance & Core Pillars
     
-    *   **Diverse Research Outputs (C5 & C8):** Moving beyond traditional journal impact factors, Pi-Index structurally evaluates open datasets, code repositories, and containerized executable environments[cite: 3].
-    *   **Qualitative & Quantitative Balance (C1-C8):** Algorithms act as auditors, not replacements for peer review. They standardize empirical rigor (e.g., RRID usage, MDAR adherence) while an adversarial logic matrix maps qualitative reasoning structure[cite: 3].
-    *   **Transparency & Researcher Sovereignty:** Complete evaluation weights, logic states, and criteria scores are irreversibly hashed and stored on the Ethereum (Sepolia) blockchain. Researchers retain sovereign ownership of their academic profile via DID/ORCID integration[cite: 3].
+    *   **Diverse Research Outputs (C5 & C8):** Moving beyond traditional journal impact factors, Pi-Index structurally evaluates open datasets, code repositories, and containerized executable environments.
+    *   **Qualitative & Quantitative Balance (C1-C8):** Algorithms act as auditors, not replacements for peer review. They standardize empirical rigor (e.g., RRID usage, MDAR adherence) while an adversarial logic matrix maps qualitative reasoning structure.
+    *   **Transparency & Researcher Sovereignty:** Complete evaluation weights, logic states, and criteria scores are irreversibly hashed and stored on the Ethereum (Sepolia) blockchain. Researchers retain sovereign ownership of their academic profile via DID/ORCID integration.
     """)
 
     st.markdown("---")
