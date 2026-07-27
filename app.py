@@ -1128,7 +1128,7 @@ def more_details_dialog(item):
     with st.expander(f"Ledger Data & Dossier Details ({filename})", expanded=True):
         st.write(f"**File Name:** `{filename}`")
         st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
-        st.write(f"**Unique Author Book Address (eth_book):** `{author_book}`")
+        st.write(f"**Unique Author Book Address:** `{author_book}`")
         st.write(f"**piQ Minted:** `{piq}`")
         st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{zk_proof}`", unsafe_allow_html=True)
         
@@ -1567,7 +1567,7 @@ with bottom_col1:
                 ):
                     st.write(f"**File Name:** {u_filename if u_filename else 'N/A'}")
                     st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
-                    st.write(f"**Unique Author Book Address (eth_book):** `{u_book}`")
+                    st.write(f"**Unique Author Book Address:** `{u_book}`")
                     st.write(f"**piQ Minted:** `{u_piq}`")
                     st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{u_zk}`", unsafe_allow_html=True)
                     
@@ -1623,9 +1623,9 @@ with bottom_col1:
                 ):
                     st.write(f"**File Name:** {r_filename if r_filename else 'N/A'}")
                     st.write(f"**Evaluation Hash (Paper Address):** `{r_hash}`")
-                    st.write(f"**Unique Author Book Address (eth_book):** `{r_book}`")
+                    st.write(f"**Unique Author Book Address:** `{r_book}`")
                     st.write(f"**piQ Minted:** `{r_piq}`")
-                    st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{r_zk}`", unsafe_allow_html=True)
+                    st.markdown(f"**zk-SNARK {rbot('zk-snark')} Proof:** `{r_zk}`", unsafe_allow_html=True)
                     
                     if r_tx_url:
                         st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({r_tx_url})")
@@ -1637,11 +1637,6 @@ with bottom_col1:
 
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
-    search_query_top = st.text_input(
-        "Search Leaderboard by Author or Book Address:",
-        placeholder="Enter author name or 0x...",
-        key="top_search_query_input"
-    )
     if piq_dict:
         leaderboard_data = []
         for author, piq in piq_dict.items():
@@ -1651,12 +1646,7 @@ with bottom_col2:
                 "Total piQ Earned": round(piq, 2),
             })
         piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
-        if search_query_top:
-            q_clean = search_query_top.strip().lower()
-            filtered_df = piq_df[piq_df["Contributing Author"].str.lower().str.contains(q_clean) | piq_df["Unique Author Book Address"].str.lower().str.contains(q_clean)]
-            st.dataframe(filtered_df, use_container_width=True, height=420)
-        else:
-            st.dataframe(piq_df, use_container_width=True, height=420)
+        st.dataframe(piq_df, use_container_width=True, height=420)
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1735,7 +1725,7 @@ try:
                         ):
                             st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
                             st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
-                            st.write(f"**Unique Author Book Address (eth_book):** `{m_book}`")
+                            st.write(f"**Unique Author Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
                             st.markdown(f"**zk-SNARK {rbot('zk-snark')}:** `{m_zk}`", unsafe_allow_html=True)
                             
