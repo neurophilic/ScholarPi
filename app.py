@@ -218,7 +218,7 @@ function initUI() {
         if (block && block.getAttribute('data-draggable') !== 'true') {
             if (!block.innerText.includes("Live System Monitor")) {
                 block.setAttribute('data-draggable', 'true');
-                block.setAttribute('data-minimized', 'true'); // DEFAULT TO MINIMIZED!
+                block.setAttribute('data-minimized', 'true');
                 
                 block.style.position = 'fixed';
                 block.style.bottom = '20px';
@@ -231,7 +231,6 @@ function initUI() {
                 block.style.zIndex = '999999';
                 block.style.padding = '1rem';
 
-                // Initially hide non-handle children so it starts minimized
                 let children = Array.from(block.children);
                 children.forEach(child => {
                     if (child !== handle && !child.contains(handle)) {
@@ -1071,7 +1070,7 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
-    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM (Llama, Mistral, Qwen, Gemini) & Scilem", "Merged Evidence Report"])
+    tab_overview, tab_llms, tab_report = st.tabs(["Overview & Ledger", "Multi-LLM & Scilem Reports", "Merged Evidence Report"])
 
     with tab_overview:
         st.write(f"**File Name:** `{filename}`")
@@ -1091,31 +1090,32 @@ def more_details_dialog(item):
         st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
 
     with tab_llms:
-        st.markdown("### Independent Multi-LLM Extractions")
-        
-        llm_cols = st.columns(2)
-        target_llms = ["llama", "mistral", "qwen", "gemini"]
-        
-        for idx, llm_key in enumerate(target_llms):
-            col = llm_cols[idx % 2]
-            with col:
-                data = consensus_raw.get(llm_key, {})
-                with st.expander(f"Model: {llm_key.upper()} (Rating: {data.get('rating', 'N/A')}/100)", expanded=True):
-                    st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
-                    st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
-                    st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
-                    refs = data.get("references", [])
-                    if refs:
-                        st.markdown(f"**References ({len(refs)}):**")
-                        for r in refs[:3]:
-                            if isinstance(r, dict):
-                                st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
-                            else:
-                                st.markdown(f"- {r}")
+        st.markdown("### Independent Multi-LLM Extractions (Llama, Mistral, Qwen, Gemini)")
+        if consensus_raw and isinstance(consensus_raw, dict):
+            llm_cols = st.columns(2)
+            target_llms = ["llama", "mistral", "qwen", "gemini"]
+            for idx, llm_key in enumerate(target_llms):
+                col = llm_cols[idx % 2]
+                with col:
+                    data = consensus_raw.get(llm_key, {})
+                    with st.expander(f"Model: {llm_key.upper()} (Rating: {data.get('rating', 'N/A')}/100)", expanded=True):
+                        st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
+                        st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
+                        st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                        refs = data.get("references", [])
+                        if refs:
+                            st.markdown(f"**References ({len(refs)}):**")
+                            for r in refs[:3]:
+                                if isinstance(r, dict):
+                                    st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
+                                else:
+                                    st.markdown(f"- {r}")
+        else:
+            st.info("No individual LLM raw opinion payloads stored.")
 
         st.markdown("---")
-        st.markdown("### Homegrown Scilem Model Inference")
-        st.info(f"**Scilem Neural Net Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via $\\vapri$ regularization).")
+        st.markdown("### Scilem Neural Net Report & Inference")
+        st.info(f"**Scilem Model Rating Prediction:** `{scilem_rating:.2f} / 100.0` (Trained directly on synthesized evidence report alignment via regularization).")
 
     with tab_report:
         st.markdown("### Synthesized Evidence Report (Pidyne Input)")
@@ -1520,7 +1520,9 @@ with bottom_col1:
                 """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
                           p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
                           b.block_height, b.block_hash, p.mdar_adherence_score, 
-                          p.rrid_valid_count, p.reproducibility_score
+                          p.rrid_valid_count, p.reproducibility_score,
+                          p.consensus_data, p.evidence_report, p.scilem_score,
+                          p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8
                    FROM papers_assessment p
                    LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                    WHERE p.eth_book = ? OR p.user_id = ? OR p.eth_book = '0009-0009-8456-8050'
@@ -1538,7 +1540,9 @@ with bottom_col1:
                 (
                     u_title, u_author, u_filename, u_score, u_logic,
                     u_piq, u_tx, u_zk, u_hash, u_time,
-                    u_block_height, u_block_hash, u_mdar, u_rrid, u_repro
+                    u_block_height, u_block_hash, u_mdar, u_rrid, u_repro,
+                    u_consensus, u_report, u_scilem,
+                    u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8
                 ) = uh
 
                 u_author_clean = clean_author_name(u_author)
@@ -1564,6 +1568,34 @@ with bottom_col1:
 
                     st.markdown(f"**Executable Reproducibility Score:** `{u_repro * 100:.1f}%`", unsafe_allow_html=True)
                     st.markdown(f"**SciScore MDAR Adherence:** `{u_mdar * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
+
+                    if st.button("View Full Multi-LLM & Scilem Dossier", key=f"hist_det_{idx}_{u_hash}"):
+                        hist_item = {
+                            "title": u_title,
+                            "author_name": u_author,
+                            "score": u_score,
+                            "logic_integrity": u_logic,
+                            "scores_dict": {
+                                "C1_Semantic_Originality": u_c1, "C2_Methodological_Rigor_SciScore": u_c2,
+                                "C3_Interdisciplinary_Entropy": u_c3, "C4_Societal_Impact": u_c4,
+                                "C5_Open_Science_Repro": u_c5, "C6_Literature_Integration": u_c6,
+                                "C7_Empirical_Density": u_c7, "C8_Future_Actionability_FAIR": u_c8
+                            },
+                            "used_weights": [1.0]*8,
+                            "eval_hash": u_hash,
+                            "piq": u_piq,
+                            "tx_hash": u_tx,
+                            "zk_proof": u_zk,
+                            "h_idx": u_mdar,
+                            "i10_idx": u_rrid,
+                            "repro_score": u_repro,
+                            "filename": u_filename or "N/A",
+                            "warnings": [],
+                            "consensus_raw": json.loads(u_consensus) if u_consensus else {},
+                            "evidence_report_text": u_report or "",
+                            "scilem_rating": u_scilem if u_scilem is not None else 50.0
+                        }
+                        more_details_dialog(hist_item)
         else:
             st.info("No assessment history or rewards found linked to this authenticated ID.")
     else:
@@ -1577,7 +1609,8 @@ with bottom_col1:
                           p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
                           p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
                           p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                          b.block_height, b.block_hash
+                          b.block_height, b.block_hash,
+                          p.consensus_data, p.evidence_report, p.scilem_score
                        FROM papers_assessment p
                        LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                        ORDER BY p.timestamp DESC LIMIT 5"""
@@ -1594,7 +1627,8 @@ with bottom_col1:
                     r_title, r_author, r_filename, r_score, r_logic,
                     r_c1, r_c2, r_c3, r_c4, r_c5, r_c6, r_c7, r_c8,
                     r_piq, r_tx, r_zk, r_mdar, r_rrid, r_repro, r_hash, r_time,
-                    r_block_height, r_block_hash
+                    r_block_height, r_block_hash,
+                    r_consensus, r_report, r_scilem
                 ) = rp
 
                 r_author_clean = clean_author_name(r_author)
@@ -1620,6 +1654,34 @@ with bottom_col1:
 
                     st.markdown(f"**Executable Reproducibility Score:** `{r_repro * 100:.1f}%`", unsafe_allow_html=True)
                     st.markdown(f"**SciScore MDAR Adherence:** `{r_mdar * 100:.1f}%` | **Valid RRIDs:** `{r_rrid}`", unsafe_allow_html=True)
+
+                    if st.button("View Full Multi-LLM & Scilem Dossier", key=f"recent_det_{idx}_{r_hash}"):
+                        recent_item = {
+                            "title": r_title,
+                            "author_name": r_author,
+                            "score": r_score,
+                            "logic_integrity": r_logic,
+                            "scores_dict": {
+                                "C1_Semantic_Originality": r_c1, "C2_Methodological_Rigor_SciScore": r_c2,
+                                "C3_Interdisciplinary_Entropy": r_c3, "C4_Societal_Impact": r_c4,
+                                "C5_Open_Science_Repro": r_c5, "C6_Literature_Integration": r_c6,
+                                "C7_Empirical_Density": r_c7, "C8_Future_Actionability_FAIR": r_c8
+                            },
+                            "used_weights": [1.0]*8,
+                            "eval_hash": r_hash,
+                            "piq": r_piq,
+                            "tx_hash": r_tx,
+                            "zk_proof": r_zk,
+                            "h_idx": r_mdar,
+                            "i10_idx": r_rrid,
+                            "repro_score": r_repro,
+                            "filename": r_filename or "N/A",
+                            "warnings": [],
+                            "consensus_raw": json.loads(r_consensus) if r_consensus else {},
+                            "evidence_report_text": r_report or "",
+                            "scilem_rating": r_scilem if r_scilem is not None else 50.0
+                        }
+                        more_details_dialog(recent_item)
 
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
@@ -1746,7 +1808,8 @@ try:
                               p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
                               p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
                               p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book
+                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book,
+                              p.consensus_data, p.evidence_report, p.scilem_score
                        FROM papers_assessment p
                        LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                        WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
@@ -1761,7 +1824,8 @@ try:
                             m_title, m_author, m_filename, m_score, m_logic,
                             m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
                             m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                            m_block_height, m_block_hash, m_por, m_form, m_book_addr
+                            m_block_height, m_block_hash, m_por, m_form, m_book_addr,
+                            m_consensus, m_report, m_scilem
                         ) = mr
 
                         m_author_clean = clean_author_name(m_author)
@@ -1788,6 +1852,34 @@ try:
 
                             st.markdown(f"**Executable Reproducibility Score:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
                             st.markdown(f"**SciScore MDAR Adherence:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
+
+                            if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
+                                search_item = {
+                                    "title": m_title,
+                                    "author_name": m_author,
+                                    "score": m_score,
+                                    "logic_integrity": m_logic,
+                                    "scores_dict": {
+                                        "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                                        "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                                        "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                                        "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                                    },
+                                    "used_weights": [1.0]*8,
+                                    "eval_hash": m_hash,
+                                    "piq": m_piq,
+                                    "tx_hash": m_tx,
+                                    "zk_proof": m_zk,
+                                    "h_idx": m_mdar,
+                                    "i10_idx": m_rrid,
+                                    "repro_score": m_repro,
+                                    "filename": m_filename or "N/A",
+                                    "warnings": [],
+                                    "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                                    "evidence_report_text": m_report or "",
+                                    "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                                }
+                                more_details_dialog(search_item)
                 else:
                     st.error(
                         "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
@@ -1956,7 +2048,7 @@ with scilem_container:
     floating_chat_container = st.container(height=240)
     with floating_chat_container:
         for idx, message in enumerate(st.session_state.scilem_messages):
-            msg_avatar = "S" if message["role"] == "assistant" else "👤"
+            msg_avatar = "🧠" if message["role"] == "assistant" else "👤"
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
 
