@@ -42,10 +42,9 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine 🤖", layout="wide"
 )
 
-svg_icon = logo.svg
 
 st.markdown(
-    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} </h1>", 
+    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{logo} </h1>", 
     unsafe_allow_html=True
 )
 
