@@ -165,6 +165,7 @@ custom_ui_code = """
     border-top-right-radius: 12px;
     margin: -1rem -1rem 1rem -1rem;
     user-select: none;
+    position: relative;
     display: flex;
     align-items: center;
 }
@@ -214,7 +215,7 @@ parentDoc.addEventListener('click', function(e) {
                 }
             });
             block.setAttribute('data-minimized', isMin ? 'false' : 'true');
-            e.target.innerText = isMin ? '_' : '+';
+            e.target.innerText = isMin ? '--' : '+';
         }
         e.preventDefault();
         e.stopPropagation();
@@ -1135,7 +1136,7 @@ def more_details_dialog(item):
         tx_url = safe_get_sepolia_url(tx_hash)
         tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
         if tx_url:
-            st.markdown(f"**Tx Hash (Etherscan):** [`{tx_disp_val}`]({tx_url})")
+            st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
         else:
             st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
@@ -1896,9 +1897,7 @@ with scilem_container:
     st.markdown("""
     <div id='scilem-drag-handle'>
         <span class='robot-icon'>🤖</span> Scilem Assistant
-        <div style='margin-left: auto; display: flex; gap: 8px; font-weight: normal;'>
-            <span id='scilem-min-btn' title='Minimize/Expand' style='cursor: pointer; padding: 0 6px;'>-</span>
-        </div>
+        <span id='scilem-min-btn' title='Minimize/Expand' style='position: absolute; top: 6px; right: 10px; cursor: pointer; font-weight: bold; font-size: 16px; padding: 2px 6px;'>--</span>
     </div>
     """, unsafe_allow_html=True)
     
