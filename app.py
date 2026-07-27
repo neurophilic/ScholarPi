@@ -85,7 +85,7 @@ st.sidebar.title("System Access")
 
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
-    st.toast("Application initialized successfully[cite: 2].")
+    st.toast("Application initialized successfully.")
 
 client_ip = "127.0.0.1"
 try:
@@ -532,13 +532,16 @@ with tab1:
         rrid_count = item["i10_idx"]
         repro_score = item["repro_score"]
         filename = item["filename"]
+        warnings = item.get("warnings", [])
         author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
         st.markdown("---")
         st.subheader(f"{title} by {author_name}")
         
-        # Mock warning notice banner for transparency/improvement tracking
-        st.info("💡 **Engine Note:** Mock checks indicate complete extraction with active warning telemetry enabled.")
+        if warnings:
+            st.warning(f"⚠️ **Manuscript Flagged with {len(warnings)} Warning Check(s):**")
+            for w in warnings:
+                st.markdown(f"- {w}")
 
         with st.expander(
             f"Ledger Data & Dossier Details ({filename})", expanded=False
@@ -620,6 +623,7 @@ with tab1:
 **Executable Reproducibility Score:** {repro_score * 100:.1f}%
 **SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
 **Valid RRIDs Count:** {rrid_count}
+**Warnings Flagged:** {len(warnings)}
 
 ## 8-Criteria Evaluation Breakdown (CoARA Compliant)
 - C1 Semantic Originality: {scores_dict.get("C1_Originality",0)}
@@ -686,7 +690,7 @@ with tab1:
                         (
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                         ) = process_single_pdf(
                             pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                         )
@@ -697,7 +701,7 @@ with tab1:
                             "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                             "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                             "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname,
+                            "filename": fname, "warnings": warnings_list,
                         }
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -741,7 +745,7 @@ with tab1:
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                     ) = process_single_pdf(
                         pdf_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                     )
@@ -752,7 +756,7 @@ with tab1:
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname,
+                        "filename": fname, "warnings": warnings_list,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -778,7 +782,7 @@ with tab1:
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                     ) = process_single_pdf(
                         file_bytes, fname, scope_val, current_user, "None", current_email, "None",
                     )
@@ -789,7 +793,7 @@ with tab1:
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname,
+                        "filename": fname, "warnings": warnings_list,
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
