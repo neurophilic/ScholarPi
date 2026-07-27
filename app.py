@@ -1218,7 +1218,7 @@ def more_details_dialog(item):
                     conn.commit()
                     conn.close()
                     
-                    st.success("Successfully generated and applied Scilem fallback evidence report! Click outside to close or view updated report.")
+                    st.success("Successfully generated and applied Scilem fallback evidence report!")
                 except Exception as e:
                     st.error(f"Failed to generate Scilem report: {e}")
 
