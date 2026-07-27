@@ -770,7 +770,7 @@ def evaluation_metrics_dialog():
     ]
 
     for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( \varpi_{sym} = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
+        with st.expander(f"{title} ( varpi_{sym} = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
@@ -1644,7 +1644,6 @@ with bottom_col1:
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
     if piq_dict:
-        # Custom responsive HTML Leaderboard starting rank from 1 and removing horizontal scrolling
         leaderboard_html = """
         <style>
             .leaderboard-table-clean {
@@ -1820,7 +1819,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
@@ -1942,7 +1941,6 @@ with col_center:
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
 scilem_container = st.container()
 with scilem_container:
-    # Scilem Header with 'X' pinned to the top right corner
     st.markdown("""
     <div id='scilem-drag-handle'>
         <div style="display: flex; align-items: center; gap: 10px; padding-right: 30px;">
