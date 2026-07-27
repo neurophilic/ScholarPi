@@ -82,7 +82,7 @@ def get_evolving_system_context():
         context_str += f"- Current Blockchain Epoch {epoch_data[0]} heavily penalizes weak '{criteria_map[max_idx]}'. Apply maximum scrutiny to this dimension.\n"
 
     if attestations:
-        context_str += "- Recent human peer-reviewers noted the following anomalies in recent papers. Adjust your baseline strictness to catch these:\n"
+        context_str += "- Recent human peer-reviewers noted anomalies. Adjust strictness accordingly:\n"
         for stance, count in attestations:
             context_str += f"  * {count} recent human flags for: '{stance}'\n"
 
@@ -114,7 +114,7 @@ def evaluate_discriminator_and_divergence(text, model):
     text_chunk = text[:5000]
     prompt = f"""Analyze this academic text for two adversarial threats:
 1. Synthetic Hallucination / AI-Generated Preprint Flood (unnatural keyword stuffing, stylistic filler, or high-flown prose masking weak statistical substance).
-2. Semantic-Empirical Divergence: Check if the grandiose claims and equations in the text drastically diverge from or lack grounding in actual reported data variances.
+2. Semantic-Empirical Divergence: Check if grandiose claims and equations drastically diverge from actual reported data variances.
 
 Output a JSON object with two keys:
 - "Gaming_Penalty": float from 0.0 (natural) to 1.0 (highly manipulated/synthetic).
@@ -384,28 +384,17 @@ def generate_rebuttal_strategy(scores_dict):
     if "Originality" in weakest_criterion:
         strategy += (
             "**Defense Tactic:** Argue that the paper value lies in synthesis and"
-            " rigorous validation rather than paradigm disruption. Emphasize that"
-            " cumulative science requires foundational solidity over risky"
-            " novelties."
+            " rigorous validation rather than paradigm disruption."
         )
     elif "Rigor" in weakest_criterion:
         strategy += (
             "**Defense Tactic:** Pre-emptively acknowledge sample size limitations"
-            " in the discussion section. Frame the methodology as an exploratory"
-            " pilot to lower the expectation of absolute statistical certainty."
-        )
-    elif "Societal" in weakest_criterion:
-        strategy += (
-            "**Defense Tactic:** Shift the narrative from immediate societal"
-            " application to essential foundational groundwork. Argue that"
-            " downstream societal impact is impossible without this specific"
-            " theoretical gap being closed."
+            " in the discussion section. Frame the methodology as an exploratory pilot."
         )
     else:
         strategy += (
             "**Defense Tactic:** Focus the reviewers attention on the empirical"
-            " density of your dataset. Acknowledge minor structural gaps but insist"
-            " the volume of data speaks for itself."
+            " density of your dataset."
         )
     return strategy
 
@@ -571,14 +560,13 @@ def process_single_pdf(
         extracted_author_check = str(raw_data.get("Extracted_Author", "Unidentified"))
         extracted_title_check = str(raw_data.get("Extracted_Title", ""))
 
-        # Objective Heuristic Check: Force low confidence if metadata extraction is broken or text is sparse
         if (
             extracted_author_check.lower() in ["unidentified", "unknown", "none", "", "research scholar"]
             or not extracted_title_check
             or "failed" in extracted_title_check.lower()
             or len(full_text.strip()) < 150
         ):
-            confidence = 0.35  # Forces confidence below 0.50 so the warning and button appear reliably
+            confidence = 0.35
 
         if confidence < 0.50 and not force_proceed:
             empty_scores = {
@@ -594,7 +582,7 @@ def process_single_pdf(
                 clean_author_name(extracted_author_check),
                 0.0, 0.0, "N/A", "N/A", ["Unspecified Domain"], ["Unspecified Sub-domain"],
                 empty_scores, file_hash, 0.0, "None", "None", active_weights, 0.85, 4,
-                reproducibility_score, False, True,  # is_indeterminate = True
+                reproducibility_score, False, True,
             )
 
         title = raw_data.get("Extracted_Title", filename)
@@ -639,62 +627,6 @@ def process_single_pdf(
         if not subfields:
             subfields = ["Core Research Domain"]
         fields = [subfields[0]]
-
-        normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
-        cursor.execute(
-            "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
-            " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
-            " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
-            " doi=? OR author_name=?",
-            (provided_doi, extracted_author),
-        )
-        existing_records = cursor.fetchall()
-
-        for rec_row in existing_records:
-            ex_hash, ex_score, ex_logic, *ex_rest = rec_row
-            cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
-            ex_title_row = cursor.fetchone()
-            if ex_title_row:
-                ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
-                if (provided_doi != "None" and provided_doi) or (
-                    ex_norm_title == normalized_title and normalized_title != ""
-                ):
-                    c_scores = ex_rest[:8]
-                    piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, repro_score = (
-                        ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
-                    )
-                    drift = (
-                        calculate_complex_drift(scope_alignment, c_scores)
-                        if scope.strip()
-                        else "N/A"
-                    )
-                    rec_spec = (
-                        get_recommendation_spectrum(ex_score, drift)
-                        if scope.strip()
-                        else "N/A"
-                    )
-                    scores_dict = {
-                        "C1_Originality": c_scores[0],
-                        "C2_Methodological_Rigor": c_scores[1],
-                        "C3_Interdisciplinary": c_scores[2],
-                        "C4_Societal_Impact": c_scores[3],
-                        "C5_Open_Science_Potential": c_scores[4],
-                        "C6_Literature_Integration": c_scores[5],
-                        "C7_Empirical_Density": c_scores[6],
-                        "C8_Future_Actionability": c_scores[7],
-                    }
-                    cursor.execute(
-                        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
-                        " WHERE eval_hash=?",
-                        (ex_hash,),
-                    )
-                    weight_res = cursor.fetchone()
-                    used_weights = weight_res if weight_res else active_weights
-                    return (
-                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
-                        fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
-                        used_weights, mdar_score, rrid_count, repro_score, True, False,
-                    )
 
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
         conn.commit()
@@ -762,38 +694,34 @@ def process_single_pdf(
         else:
             active_weights = old_weights
 
-        works_count, cited_by_count, credit_role = fetch_author_coara_metrics(
-            extracted_author
+        # --- ANTI-ABUSE & ANTI-FARMING CHECKS ---
+        # 1. Quality Floor & Gaming Penalty Zero-Out
+        ANTI_ABUSE_SCORE_FLOOR = 60.0
+        ANTI_ABUSE_GAMING_LIMIT = 0.40
+
+        is_abusive_or_low_quality = (
+            final_score < ANTI_ABUSE_SCORE_FLOOR 
+            or gaming_penalty > ANTI_ABUSE_GAMING_LIMIT
+            or extracted_author == "Unidentified"
         )
 
-        cursor.execute(
-            "SELECT AVG(final_score), COUNT(*) FROM papers_assessment WHERE"
-            " author_name=?",
-            (extracted_author,),
-        )
-        row = cursor.fetchone()
-        past_avg = row[0] if row[0] is not None else 0.0
-        past_count = row[1] if row[1] is not None else 0
+        piq_minted = 0.0
+        if not is_abusive_or_low_quality:
+            # 2. Co-Author Count and Splitting
+            co_authors = [a.strip() for a in extracted_author.split(",") if a.strip()]
+            num_authors = max(1, len(co_authors))
 
-        if past_count == 0:
+            # 3. Epoch Velocity Cap & Diminishing Returns Decay Factor
             cursor.execute(
-                "SELECT AVG(final_score) FROM papers_assessment WHERE fields=?",
-                (json.dumps(fields),),
+                "SELECT COUNT(*) FROM papers_assessment WHERE user_id = ?",
+                (user_id,)
             )
-            domain_avg = cursor.fetchone()[0]
-            past_avg = domain_avg if domain_avg else 50.0
+            user_submission_count = cursor.fetchone()[0]
+            decay_multiplier = 1.0 / math.sqrt(user_submission_count + 1)
 
-        improvement_multiplier = 1.0
-        if final_score > past_avg and past_avg > 0:
-            raw_multiplier = 1.5 + ((final_score - past_avg) / 50.0)
-            cap = max(1.0, 1.0 + math.log10(past_count + 1) * 0.5)
-            improvement_multiplier = min(raw_multiplier, cap)
-
-        piq_minted = (
-            0.0
-            if extracted_author == "Unidentified"
-            else round((final_score / 10.0) * improvement_multiplier, 2)
-        )
+            # Calculate final split piQ with logarithmic velocity decay
+            base_piq = (final_score / 10.0)
+            piq_minted = round((base_piq / num_authors) * decay_multiplier, 2)
 
         zk_proof = generate_zk_snark_proof(
             file_hash, final_score, logic_integrity, "None"
@@ -845,4 +773,3 @@ def process_single_pdf(
         fields, subfields, scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
         active_weights, mdar_score, rrid_count, reproducibility_score, False, False,
     )
-    
