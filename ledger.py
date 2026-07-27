@@ -155,10 +155,6 @@ def validate_block_por(
     return validator_node, block_hash, por_proof
 
 def generate_zk_snark_proof(eval_hash: str, final_score: float, logic_score: float, email_str="None") -> str:
-    """
-    ZK-Email Identity Binding: 
-    Validates institutional association cryptographically without doxxing the author.
-    """
     nonce = str(time.time_ns())
     circuit_payload = f"ZK_CIRCUIT_V2:{eval_hash}:{final_score:.4f}:{logic_score:.4f}:{email_str}:{nonce}"
     secret_key = (ETH_ADMIN_PRIVATE_KEY or "zk_proving_key").encode('utf-8')
@@ -178,7 +174,6 @@ def mint_pi_quotient_token(book_address: str, amount: float, eval_hash: str, zk_
         return "Eth Tx Failed: Invalid Contract Address Configuration"
 
     try:
-        # Updated ABI to match the ScholarPi_PiQ_Token contract
         abi = '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
         contract = w3.eth.contract(address=w3.to_checksum_address(PIQ_CONTRACT_ADDRESS), abi=json.loads(abi))
         account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
@@ -200,7 +195,6 @@ def mint_pi_quotient_token(book_address: str, amount: float, eval_hash: str, zk_
         return tx_hash.hex()
         
     except ContractLogicError as cle:
-        # Gracefully handle the on-chain revert if the paper was already processed
         return f"Smart Contract Revert: {str(cle)}"
     except Exception as e:
         return f"Eth Tx Failed: {str(e)}"
