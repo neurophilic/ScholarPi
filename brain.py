@@ -155,7 +155,7 @@ def generate_merged_evidence_report(consensus_results):
     if not successful_llms:
         return "External LLM APIs failed. No consensus generated."
     
-    report_md = "## Synthesized Evidence Report (Multi-LLM Consensus)\n\n"
+    report_md = "Synthesized Evidence Report (Unified Consensus)\n\n"
     for provider in successful_llms:
         data = consensus_results[provider]
         report_md += f"### {provider.upper()} Assessment\n"
@@ -196,10 +196,15 @@ Respond strictly in JSON format with keys:
         elif text:
             evidence_report = generate_scilem_fallback_report(text)
         else:
-            evidence_report = "Synthesized Evidence Report generated via local consensus and Scilem structural analysis."
+            evidence_report = "Synthesized Evidence Report (Unified Consensus)\n\nGenerated via local consensus and Scilem structural analysis."
         rating = 75.0
     else:
-        evidence_report = data.get("evidence_report", "Synthesized Evidence Report generated successfully.")
+        raw_rep = data.get("evidence_report", "Synthesized Evidence Report generated successfully.")
+        # Ensure title consistency and avoid duplication
+        if raw_rep.startswith("Synthesized Evidence Report"):
+            evidence_report = raw_rep
+        else:
+            evidence_report = f"Synthesized Evidence Report (Unified Consensus)\n\n{raw_rep}"
         try:
             rating = float(data.get("ai_rating", 75.0))
         except:
@@ -288,7 +293,7 @@ def evaluate_scilem_analysis_report(raw_text):
 
 def generate_scilem_fallback_report(text):
     scilem_rep = evaluate_scilem_analysis_report(text)
-    return f"## Synthesized Evidence Report (Unified Consensus & Scilem Engine)\n\n{scilem_rep}\n\n- **Evaluation Note:** Integrated via Scilem homegrown neural network structural manifold analysis."
+    return f"Synthesized Evidence Report (Unified Consensus)\n\n{scilem_rep}\n\n- **Evaluation Note:** Integrated via Scilem homegrown neural network structural manifold analysis."
 
 def train_scilem_on_input_and_report(raw_text, evidence_report):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
@@ -439,7 +444,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
 
     scilem_opinion = train_scilem_on_input_and_report(text, evidence_report)
 
-    # Automatically merge Scilem structural analysis into the unified evidence report
+    # Always include Scilem output cleanly inside the unified Synthesized Evidence Report
     if scilem_opinion not in evidence_report:
         evidence_report += f"\n\n### Scilem Homegrown Neural Engine Integration\n- {scilem_opinion}"
 
