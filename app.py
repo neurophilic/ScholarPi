@@ -53,10 +53,10 @@ svg_icon = """
 </svg>
 """
 
-    st.markdown(
-        f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} Pi-Index Assessment Engine 🤖</h1>", 
-        unsafe_allow_html=True
-    )
+st.markdown(
+    f"<h1 style='margin-bottom:0; display: flex; align-items: center;'>{svg_icon} Pi-Index Assessment Engine 🤖</h1>", 
+    unsafe_allow_html=True
+)
 
 
 # --- System Action Log Monitor ---
