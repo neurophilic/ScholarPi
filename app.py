@@ -87,7 +87,7 @@ def get_author_piq_dict():
     return author_piq, author_book
 
 def preprocess_pdf_layout(pdf_bytes, fname):
-    # Bypass redundant virtual PDF creation to preserve original text layer
+    # Bypass redundant virtual PDF creation to preserve original readable text layer
     # brain.py already handles PyMuPDF spatial extraction natively.
     return pdf_bytes
 
@@ -1136,22 +1136,22 @@ def more_details_dialog(item):
             "C8: Future Actionability & FAIR",
         ],
         "Score Extracted (0-100)": [
-            scores_dict.get("C1_Originality", 0),
-            scores_dict.get("C2_Methodological_Rigor", 0),
-            scores_dict.get("C3_Interdisciplinary", 0),
+            scores_dict.get("C1_Semantic_Originality", 0),
+            scores_dict.get("C2_Methodological_Rigor_SciScore", 0),
+            scores_dict.get("C3_Interdisciplinary_Entropy", 0),
             scores_dict.get("C4_Societal_Impact", 0),
-            scores_dict.get("C5_Open_Science_Potential", 0),
+            scores_dict.get("C5_Open_Science_Repro", 0),
             scores_dict.get("C6_Literature_Integration", 0),
             scores_dict.get("C7_Empirical_Density", 0),
-            scores_dict.get("C8_Future_Actionability", 0),
+            scores_dict.get("C8_Future_Actionability_FAIR", 0),
         ],
         "Epoch Weight": used_weights,
         "Weighted Value": [
             scores_dict.get(k, 0) * used_weights[i]
             for i, k in enumerate([
-                "C1_Originality", "C2_Methodological_Rigor", "C3_Interdisciplinary",
-                "C4_Societal_Impact", "C5_Open_Science_Potential", "C6_Literature_Integration",
-                "C7_Empirical_Density", "C8_Future_Actionability",
+                "C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", "C3_Interdisciplinary_Entropy",
+                "C4_Societal_Impact", "C5_Open_Science_Repro", "C6_Literature_Integration",
+                "C7_Empirical_Density", "C8_Future_Actionability_FAIR",
             ])
         ],
     })
