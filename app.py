@@ -1164,7 +1164,7 @@ def more_details_dialog(item):
                     st.markdown(f"**Model: {llm_key.upper()}**")
                     if llm_key == "scilem":
                         st.markdown(f"**Engine Status:** Active (Local PyTorch Neural Network)")
-                        st.markdown(f"**Structural Analysis:** {data.get('opinion', 'N/A')}")
+                        st.markdown(f"**Structural Analysis:** {data.get('opinion', 'Scilem structural analysis active.')}")
                     elif data.get('api_failed', False):
                         st.markdown(f"**Status:** Rate / Credit Limit Hit")
                         st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
