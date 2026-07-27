@@ -56,6 +56,27 @@ class PiBrainLSTM(nn.Module):
 
 PidyneLSTM = PiBrainLSTM
 
+def sanitize_and_scan_text(text: str) -> tuple[str, list[str]]:
+    warnings = []
+    # Strip zero-width and invisible control characters
+    cleaned_text = re.sub(r'[\u200B-\u200D\uFEFF]', '', text)
+    
+    # Injection detection heuristics
+    injection_patterns = [
+        r"disregard\s+the\s+previous\s+instructions",
+        r"override\s+system\s+prompt",
+        r"set\s+['\"]?overall_confidence['\"]?\s*to\s*1\.0",
+        r"output\s+a\s+json\s+object\s+where\s+the\s+keys",
+        r"strictly\s+evaluated\s+at\s+1\.0"
+    ]
+    
+    for pattern in injection_patterns:
+        if re.search(pattern, cleaned_text, re.IGNORECASE):
+            warnings.append("Adversarial Prompt Injection payload detected and neutralized.")
+            cleaned_text = re.sub(pattern, "[REDACTED_ADVERSARIAL_INSTRUCTION]", cleaned_text, flags=re.IGNORECASE)
+
+    return cleaned_text, warnings
+
 def get_evolving_system_context():
     conn = get_db_connection()
     try:
@@ -275,43 +296,38 @@ def calculate_model_driven_weights(old_weights, scores, model_name, block_height
 
     pi_accuracy = generate_blockchain_pi(block_height)
     delta_models = abs((3.3 * 70.0) - (3.1 * 8.0))
-    mean_score = np.mean(scores)
+    
+    sorted_scores = sorted(scores)
+    trimmed_scores = sorted_scores[1:-1] if len(sorted_scores) > 2 else sorted_scores
+    mu_score = np.mean(trimmed_scores)
 
     new_weights = []
     for i, old_w in enumerate(old_weights):
-        stretched_score = max(
-            1.0, min(100.0, mean_score + (scores[i] - mean_score) * 3.0)
-        )
-        weight_shift = (
-            (model_version * model_size) / (delta_models * pi_accuracy)
-        ) * ((stretched_score / 100.0) ** 2)
-        w_new = old_w * 0.85 + (1.0 + weight_shift * 0.15) * 0.15
-        new_weights.append(w_new)
+        stretched_score = max(1.0, min(100.0, mu_score + (scores[i] - mu_score) * 2.0))
+        weight_shift = ((model_version * model_size) / (delta_models * pi_accuracy)) * ((stretched_score / 100.0) ** 2)
+        target_w = old_w * (1.0 + np.clip(weight_shift * 0.05, -0.10, 0.10))
+        new_weights.append(target_w)
 
     sum_of_weights = sum(new_weights)
     return [round((w / sum_of_weights) * 8.0, 6) for w in new_weights]
 
 def compute_logical_integrity(extracted_logic_vars):
-    # Removed gaming_penalty influence. Mathematical scoring evaluates neutrally.
-    evidence = extracted_logic_vars.get("Evidence_Strength", 0.75)
-    conclusion_reach = extracted_logic_vars.get("Conclusion_Reach", 0.75)
-    jumps = extracted_logic_vars.get("Logical_Jumps", 0.25)
-    premise = extracted_logic_vars.get("Premise_Validity", 0.85)
+    evidence = float(extracted_logic_vars.get("Evidence_Strength", 0.75))
+    conclusion_reach = float(extracted_logic_vars.get("Conclusion_Reach", 0.75))
+    jumps = float(extracted_logic_vars.get("Logical_Jumps", 0.25))
+    premise = float(extracted_logic_vars.get("Premise_Validity", 0.85))
 
-    logic_gap = max(0.0, conclusion_reach - evidence)
-    base_logic = (
-        (premise * evidence)
-        * np.exp(-(logic_gap * 2.0 + jumps * 1.5))
-        * 100
-    )
-    logic_score = base_logic
-    return max(0.0, min(100.0, logic_score))
+    evidence_gap = abs(conclusion_reach - evidence)
+    reach_variance = abs(conclusion_reach - 0.85)
+    
+    penalty = (2.0 * evidence_gap) + (1.5 * reach_variance) + (1.5 * jumps)
+    base_logic = (premise * evidence) * np.exp(-penalty) * 100.0
+    return float(max(0.0, min(100.0, base_logic)))
 
 def compute_formulaic_criteria(
     vars_dict, reproducibility_score, sciscore_adherence=0.8
 ):
     scores = {}
-    # Removed laundering_penalty subtraction. Mathematical scoring evaluates neutrally.
     c1_raw = (
         vars_dict.get("semantic_novelty", 0.75)
         * 100
@@ -483,9 +499,12 @@ def process_single_pdf(
             warnings_list.append(f"Invalid PDF structure or PyMuPDF parsing exception: {e}")
             full_text = ""
 
+        # Sanitize text array against injection
+        full_text, scan_warns = sanitize_and_scan_text(full_text)
+        warnings_list.extend(scan_warns)
+
         if len(full_text.strip()) < 150:
             warnings_list.append("Sparse text layer detected (< 150 characters extracted; likely an image-only PDF scan).")
-            # If text is genuinely empty, prevent the parser from evaluating garbage.
             clean_title = filename.replace(".pdf", "").replace("_", " ").title()
             full_text = (
                 f"Title: {clean_title}\n"
