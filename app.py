@@ -1190,7 +1190,13 @@ def more_details_dialog(item):
     if evidence_report_text:
         st.markdown(evidence_report_text)
         
-        if "LLM APIs failed" in evidence_report_text or "No consensus generated" in evidence_report_text:
+        # Ensured "Use Scilem Instead" button appears reliably under API failure or fallback conditions
+        if (
+            "LLM APIs failed" in evidence_report_text 
+            or "No consensus generated" in evidence_report_text 
+            or "External LLM APIs are inactive" in evidence_report_text
+            or "rate/credit limits" in evidence_report_text
+        ):
             if st.button("Use Scilem Instead", key=f"use_scilem_fallback_{eval_hash}"):
                 try:
                     f_path = os.path.join(st.session_state.get("session_temp_dir", ""), filename)
