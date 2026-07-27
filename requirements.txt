@@ -14,3 +14,6 @@ beautifulsoup4
 tabulate
 cryptography
 networkx
+altair
+graphviz
+requests
