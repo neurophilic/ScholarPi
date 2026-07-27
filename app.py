@@ -68,7 +68,6 @@ def get_author_piq_dict():
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        # Retrieve eth_book directly to enforce ECDSA checks
         cursor.execute("SELECT author_name, piq_minted, eth_book FROM papers_assessment")
         data = cursor.fetchall()
     finally:
@@ -90,7 +89,6 @@ def get_author_piq_dict():
         share = piq / len(alist)
         for a in alist:
             author_piq[a] = author_piq.get(a, 0.0) + share
-            # Verify the mapped address is a genuine checksummed Web3 address
             author_book[a] = eth_book if eth_book and w3.is_address(eth_book) else "Unbound / Escrow"
     return author_piq, author_book
 
@@ -100,7 +98,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for UI Modifications (Featuring a larger, organized Scilem Header with 'X' toggle)
+# Custom JS/CSS for UI Modifications (Featuring Scilem Header with 'X' pinned to top-right corner)
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -148,7 +146,7 @@ custom_ui_code = """
 #scilem-drag-handle {
     background: linear-gradient(135deg, #1e293b, #0f172a);
     color: white;
-    padding: 14px 18px;
+    padding: 16px 20px;
     font-weight: 700;
     font-size: 18px;
     cursor: grab;
@@ -157,9 +155,6 @@ custom_ui_code = """
     margin: -1rem -1rem 1rem -1rem;
     user-select: none;
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 #scilem-drag-handle:active {
@@ -167,15 +162,20 @@ custom_ui_code = """
 }
 
 #scilem-min-btn {
-    background: rgba(255, 255, 255, 0.1);
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: rgba(255, 255, 255, 0.12);
     color: #e2e8f0;
     border-radius: 6px;
-    padding: 2px 8px;
+    padding: 3px 9px;
     font-size: 14px;
-    transition: background 0.2s;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
 }
 #scilem-min-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(239, 68, 68, 0.8);
     color: #ffffff;
 }
 
@@ -370,13 +370,13 @@ if "scilem_messages" not in st.session_state:
         }
     ]
 
-# Hybrid Authentication Flow (Web3 Wallet EIP-4361 & Academic ID)
-if "orcid_id" not in st.session_state:
+# Initialize Default Session States for Authentication
+if "is_authenticated" not in st.session_state:
+    st.session_state.is_authenticated = False
+    st.session_state.auth_method = "Anonymous"
     st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
     st.session_state.academic_id = "None"
     st.session_state.orcid_name = "Anonymous Researcher"
-    st.session_state.is_authenticated = False
-    st.session_state.auth_method = "Anonymous"
 
 def validate_orcid_did(identifier: str) -> bool:
     clean_id = identifier.strip()
@@ -1644,15 +1644,58 @@ with bottom_col1:
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
     if piq_dict:
-        leaderboard_data = []
-        for author, piq in piq_dict.items():
-            leaderboard_data.append({
-                "Contributing Author": author,
-                "Unique Book Address": book_dict.get(author, "None"),
-                "Total piQ Earned": round(piq, 2),
-            })
-        piq_df = pd.DataFrame(leaderboard_data).sort_values(by="Total piQ Earned", ascending=False).reset_index(drop=True)
-        st.dataframe(piq_df, use_container_width=True, height=210)
+        # Custom responsive HTML Leaderboard starting rank from 1 and removing horizontal scrolling
+        leaderboard_html = """
+        <style>
+            .leaderboard-table-clean {
+                width: 100%;
+                font-size: 13px;
+                border-collapse: collapse;
+                font-family: sans-serif;
+                background-color: #ffffff;
+            }
+            .leaderboard-table-clean th {
+                background-color: #2c3e50;
+                color: white;
+                padding: 8px 10px;
+                text-align: left;
+                font-weight: 600;
+            }
+            .leaderboard-table-clean td {
+                padding: 8px 10px;
+                border-bottom: 1px solid #ecf0f1;
+                color: #2c3e50;
+            }
+            .leaderboard-table-clean tr:hover {
+                background-color: #f8fafc;
+            }
+        </style>
+        <div style="max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <table class="leaderboard-table-clean">
+                <thead>
+                    <tr>
+                        <th style="width: 10%; text-align: center;">#</th>
+                        <th>Contributing Author</th>
+                        <th>Book Address</th>
+                        <th style="text-align: right;">piQ</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
+        for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
+            book_addr = book_dict.get(author, "None")
+            short_book = f"{book_addr[:8]}...{book_addr[-6:]}" if len(book_addr) > 16 else book_addr
+            leaderboard_html += f"""
+                <tr>
+                    <td style="text-align: center;"><b>{rank}</b></td>
+                    <td><b>{author}</b></td>
+                    <td><code style="font-size: 11px;">{short_book}</code></td>
+                    <td style="text-align: right;"><b>{piq:.2f}</b></td>
+                </tr>
+            """
+        leaderboard_html += "</tbody></table></div>"
+        st.markdown(leaderboard_html, unsafe_allow_html=True)
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1777,7 +1820,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
@@ -1899,10 +1942,10 @@ with col_center:
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
 scilem_container = st.container()
 with scilem_container:
-    # UPDATED: Bigger, more organized header layout with 'X' toggle button
+    # Scilem Header with 'X' pinned to the top right corner
     st.markdown("""
     <div id='scilem-drag-handle'>
-        <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px; padding-right: 30px;">
             <span class='robot-icon' style="font-size: 1.3em;">🤖</span>
             <span style="letter-spacing: 0.3px;">Scilem Assistant</span>
         </div>
