@@ -33,7 +33,7 @@ from integrations import (
 )
 from brain import (
     process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
-    PidyneBlockchainDataset
+    PidyneBlockchainDataset, generate_scilem_fallback_report
 )
 
 w3 = Web3()
@@ -1161,6 +1161,36 @@ def more_details_dialog(item):
     st.markdown("### Synthesized Evidence Report")
     if evidence_report_text:
         st.markdown(evidence_report_text)
+        
+        # Button to use Scilem if LLM APIs failed / no consensus generated
+        if "LLM APIs failed" in evidence_report_text or "No consensus generated" in evidence_report_text:
+            if st.button("Use Scilem Instead", key=f"use_scilem_fallback_{eval_hash}"):
+                try:
+                    f_path = os.path.join(st.session_state.get("session_temp_dir", ""), filename)
+                    if os.path.exists(f_path):
+                        with open(f_path, "rb") as f:
+                            bdata = f.read()
+                        import fitz
+                        doc = fitz.open(stream=bdata, filetype="pdf")
+                        txt = "\n".join([p.get_text("text", sort=True) for p in doc])
+                    else:
+                        txt = filename
+                    
+                    new_report = generate_scilem_fallback_report(txt)
+                    item["evidence_report_text"] = new_report
+                    evidence_report_text = new_report
+                    
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute("UPDATE papers_assessment SET evidence_report = ? WHERE eval_hash = ?", (new_report, eval_hash))
+                    conn.commit()
+                    conn.close()
+                    
+                    st.success("Successfully generated and applied Scilem fallback evidence report!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to generate Scilem report: {e}")
+
         st.download_button(
             label="Download Final Evidence Report (.md)",
             data=evidence_report_text,
@@ -1993,7 +2023,7 @@ finally:
 @st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
 def framework_workflow_dialog():
     st.markdown(
-        "Pi-Index filters noise and yields quantitative results strictly aligned with **Responsible Research Assessment (RRA)** and **CoARA** (Coalition for Advancing Research Assessment) guidelines.\n\n"
+        "Pi-Index filters noise and yields quantitative results strictly aligned with **Responsible Research Assessment (RRA)** and **CoARA** (Coalition for Advancing Research Assessment) guidelines[cite: 3].\n\n"
         "### Architecture Flowchart & Whitepaper DOI\n\n"
         "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
         "The enhanced system architecture flow below details the decentralized intake, ZK double-blind reviewer assignment, SciScore deterministic parsing, Item Response Theory (IRT) calibration, and smart contract slashing mechanisms."
@@ -2072,11 +2102,11 @@ def framework_workflow_dialog():
     """)
     st.markdown("---")
     st.markdown("""
-    ### CoARA Compliance & Core Pillars
+    ### CoARA Compliance & Core Pillars[cite: 3]
     
-    *   **Diverse Research Outputs (C5 & C8):** Moving beyond traditional journal impact factors, Pi-Index structurally evaluates open datasets, code repositories, and containerized executable environments.
-    *   **Qualitative & Quantitative Balance (C1-C8):** Algorithms act as auditors, not replacements for peer review. They standardize empirical rigor (e.g., RRID usage, MDAR adherence) while an adversarial logic matrix maps qualitative reasoning structure.
-    *   **Transparency & Researcher Sovereignty:** Complete evaluation weights, logic states, and criteria scores are irreversibly hashed and stored on the Ethereum (Sepolia) blockchain. Researchers retain sovereign ownership of their academic profile via DID/ORCID integration.
+    *   **Diverse Research Outputs (C5 & C8):** Moving beyond traditional journal impact factors, Pi-Index structurally evaluates open datasets, code repositories, and containerized executable environments[cite: 3].
+    *   **Qualitative & Quantitative Balance (C1-C8):** Algorithms act as auditors, not replacements for peer review. They standardize empirical rigor (e.g., RRID usage, MDAR adherence) while an adversarial logic matrix maps qualitative reasoning structure[cite: 3].
+    *   **Transparency & Researcher Sovereignty:** Complete evaluation weights, logic states, and criteria scores are irreversibly hashed and stored on the Ethereum (Sepolia) blockchain. Researchers retain sovereign ownership of their academic profile via DID/ORCID integration[cite: 3].
     """)
 
     st.markdown("---")
