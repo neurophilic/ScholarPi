@@ -31,8 +31,8 @@ from integrations import (
     fetch_core_text_by_doi, create_virtual_pdf_from_text
 )
 from brain import (
-    process_single_pdf, generate_rebuttal_strategy, PiBrainLSTM, 
-    PiBlockchainDataset
+    process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
+    PidyneBlockchainDataset
 )
 
 st.set_page_config(
@@ -1303,15 +1303,15 @@ with top_analytics_col1:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown")
         actual_lookback = int(forecast_horizon.split()[0])
 
-    @st.cache_data(show_spinner="Training Pi-Brain LSTM Model in background...")
-    def train_pibrain_cached(weight_data, actual_lookback):
-        dataset = PiBlockchainDataset(weight_data, actual_lookback)
+    @st.cache_data(show_spinner="Training Pidyne LSTM Model in background...")
+    def train_pidyne_cached(weight_data, actual_lookback):
+        dataset = PidyneBlockchainDataset(weight_data, actual_lookback)
         dataloader = DataLoader(
             dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
         )
 
-        model = PiBrainLSTM()
-        weights_path = os.path.join(BASE_DIR, "pi_brain_weights.pt")
+        model = PidyneLSTM()
+        weights_path = os.path.join(BASE_DIR, "pidyne_weights.pt")
         if os.path.exists(weights_path):
             try:
                 model.load_state_dict(torch.load(weights_path, weights_only=True))
@@ -1377,7 +1377,7 @@ with top_analytics_col1:
         ):
             weight_data = np.array(historical_rows, dtype=np.float32)
 
-            st.session_state.predicted_next_weights = train_pibrain_cached(weight_data, lookback_window)
+            st.session_state.predicted_next_weights = train_pidyne_cached(weight_data, lookback_window)
             st.session_state.current_weights = weight_data[-1]
             st.session_state.last_trained_blocks = current_block_count
             st.session_state.last_lookback = lookback_window
@@ -1916,14 +1916,14 @@ def framework_workflow_dialog():
 
             Dossier [label="CoARA & DORA-Aligned Dossier\n• Markdown Research Integrity Report\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
             Cartography [label="Global Map of Science\n• Ledger PyVis Network Cartography\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
-            PiBrain [label="Pi-Brain LSTM Meta-Learning\n• PyTorch Temporal Weight Prediction\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
+            PidyneBrain [label="Pidyne LSTM Meta-Learning\n• PyTorch Temporal Weight Prediction\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
         }
 
         ZKBlind -> PyMuPDF [lhead=cluster_eval, label="Processed Manuscript Text"];
         Logic -> PoR [lhead=cluster_blockchain, label="Audited Score & Hashes"];
         Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
         Mint -> Cartography;
-        Mint -> PiBrain;
+        Mint -> PidyneBrain;
     }
     """)
     st.markdown("---")
@@ -1954,7 +1954,7 @@ with scilem_container:
     <div id='scilem-drag-handle'>
         <span class='robot-icon'>🤖</span> Scilem Assistant
         <div style='margin-left: auto; display: flex; gap: 8px; font-weight: normal;'>
-            <span id='scilem-min-btn' title='Minimize/Expand' style='cursor: pointer; padding: 0 6px;'>_</span>
+            <span id='scilem-min-btn' title='Minimize/Expand' style='cursor: pointer; padding: 0 6px;'>-</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
