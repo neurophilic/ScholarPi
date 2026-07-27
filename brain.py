@@ -47,8 +47,8 @@ if AIN_API_KEY and str(AIN_API_KEY).strip():
 
 multi_models = {
     "groq": PRIMARY_MODEL,
-    "openrouter": "mistralai/mistral-7b-instruct",
-    "ainative": "google/gemma-2-27b-it"
+    "openrouter": "mistralai/mistral-7b-instruct:free",
+    "ainative": "meta-llama/Llama-3.3-70B-Instruct-Turbo"
 }
 
 def extract_with_llm(provider_name, paper_text):
@@ -64,6 +64,10 @@ def extract_with_llm(provider_name, paper_text):
     
     model = multi_models.get(provider_name, PRIMARY_MODEL)
     
+    # Isolate front matter (Title, Authors, Abstract) for reliable metadata extraction
+    front_matter = paper_text[:3000]
+
+    # Isolate reference section separately
     ref_section = ""
     lower_text = paper_text.lower()
     for keyword in ["references", "bibliography", "works cited"]:
@@ -72,19 +76,22 @@ def extract_with_llm(provider_name, paper_text):
             ref_section = paper_text[idx:idx+4000]
             break
     if not ref_section:
-        ref_section = paper_text[-5000:]
+        ref_section = paper_text[-4000:]
 
     prompt = f"""
-    Analyze the following academic paper text and extract information strictly in JSON format.
-    You must extract real authors, title, references (parsed into a list of objects with keys: "citation", "authors", and "year"), a qualitative critical opinion, and a numerical rating from 0.0 to 100.0. Do NOT output 'not specified' if names or years are available in the text.
+    Analyze the following academic paper excerpts (Front Matter and References) and extract information strictly in JSON format.
+    You must extract real authors, title, references (parsed into a list of objects with keys: "citation", "authors", and "year"), a qualitative critical opinion, and a numerical rating from 0.0 to 100.0. Do NOT output 'not specified' if names or years are available.
     
-    1. "authors": List of human authors identified correctly.
-    2. "title": Title of the paper.
+    1. "authors": List of human authors identified correctly from the front matter.
+    2. "title": Title of the paper from the front matter.
     3. "references": List of parsed objects: [{{"citation": "[1]", "authors": "Smith et al.", "year": "2024"}}, ...]
     4. "opinion": Critical evaluation and qualitative opinion of the methodology and findings.
     5. "rating": Numerical quality rating from 0.0 to 100.0.
 
-    Paper Reference Section / Excerpt:
+    --- PAPER FRONT MATTER (Title & Authors) ---
+    {front_matter}
+
+    --- PAPER REFERENCE SECTION ---
     {ref_section}
     """
     try:
@@ -173,7 +180,7 @@ PidyneLSTM = PiBrainLSTM
 class ScilemNetwork(nn.Module):
     """
     Homegrown Language Model initiated from zero (random weights).
-    Learns to align its output directly with the final Multi-LLM aggregate evidence report score/content.
+    Learns to align its output directly with the final Multi-LLM aggregate evidence report result.
     """
     def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
         super(ScilemNetwork, self).__init__()
@@ -231,7 +238,6 @@ def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambd
         tokens = [0]
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
-    # Derive target score representation directly from the Multi-LLM aggregate evidence report length/hash signature
     report_target_score = min(100.0, max(10.0, (len(evidence_report_str) % 55) + 40.0))
 
     scilem_model.train()
@@ -239,7 +245,6 @@ def train_scilem_on_report(raw_text, evidence_report_str, vapri_value=0.5, lambd
 
     scilem_score = scilem_model(paper_tensor)
     
-    # Loss equation aligning with the Multi-LLM aggregate evidence report, regulated by vapri
     mse_loss = nn.MSELoss()(scilem_score.squeeze(), torch.tensor(report_target_score, dtype=torch.float32))
     total_loss = mse_loss + (lambda_reg * torch.tensor(vapri_value, dtype=torch.float32))
 
