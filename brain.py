@@ -5,6 +5,7 @@ import math
 import random
 import hashlib
 import re
+import difflib
 from datetime import datetime
 
 import fitz
@@ -77,18 +78,44 @@ def sanitize_and_scan_text(text: str) -> tuple[str, list[str]]:
 
 def calculate_deterministic_mdar(text: str) -> tuple[float, int]:
     text_lower = text.lower()
-    
     blinded = 1.0 if re.search(r'\b(blinded|double-blind|single-blind|masking)\b', text_lower) else 0.0
     randomized = 1.0 if re.search(r'\b(randomized|randomly assigned|random sequence)\b', text_lower) else 0.0
     power_calc = 1.0 if re.search(r'\b(power analysis|sample size calculation|statistical power)\b', text_lower) else 0.0
     
     rrid_matches = re.findall(r'\brrid\s*:?\s*[a-zA-Z0-9_:-]+\b', text_lower)
     rrid_count = len(set(rrid_matches)) 
-    
     rrid_score = min(1.0, rrid_count / 3.0) 
     mdar_adherence = (blinded + randomized + power_calc + rrid_score) / 4.0
     
     return mdar_adherence, rrid_count
+
+def detect_similar_manuscripts(current_title: str, current_author: str, db_cursor) -> tuple[bool, float, str]:
+    normalized_current = re.sub(r"[^a-z0-9]", "", current_title.lower())
+    if len(normalized_current) < 10:
+        return False, 0.0, "N/A"
+
+    db_cursor.execute("SELECT eval_hash, title, author_name FROM papers_assessment")
+    all_records = db_cursor.fetchall()
+    
+    highest_sim = 0.0
+    flagged_hash = "N/A"
+    
+    for record in all_records:
+        ex_hash, ex_title, ex_author = record
+        ex_norm = re.sub(r"[^a-z0-9]", "", ex_title.lower())
+        sim_ratio = difflib.SequenceMatcher(None, normalized_current, ex_norm).ratio()
+        
+        if current_author.lower() not in ["independent research scholar", "unidentified", ""]:
+            if current_author.lower() in ex_author.lower() or ex_author.lower() in current_author.lower():
+                if sim_ratio > 0.60: 
+                    sim_ratio += 0.25 
+                
+        if sim_ratio > highest_sim:
+            highest_sim = sim_ratio
+            flagged_hash = ex_hash
+            
+    is_similar = highest_sim > 0.85 
+    return is_similar, highest_sim, flagged_hash
 
 def get_evolving_system_context():
     conn = get_db_connection()
@@ -120,7 +147,7 @@ def get_evolving_system_context():
         context_str += f"- Current Blockchain Epoch {epoch_data[0]} heavily penalizes weak '{criteria_map[max_idx]}'. Apply maximum scrutiny to this dimension.\n"
 
     if attestations:
-        context_str += "- Recent human peer-reviewers noted the following anomalies in recent papers. Adjust your baseline strictness to catch these:\n"
+        context_str += "- Recent human peer-reviewers noted the following anomalies:\n"
         for stance, count in attestations:
             context_str += f"  * {count} recent human flags for: '{stance}'\n"
 
@@ -151,12 +178,12 @@ def evaluate_discriminator_and_divergence(text, model):
     if not groq_client: return 0.0, 0.85
     text_chunk = text[:5000]
     prompt = f"""Analyze this academic text for two adversarial threats:
-1. Synthetic Hallucination / AI-Generated Preprint Flood (unnatural keyword stuffing, stylistic filler, or high-flown prose masking weak statistical substance).
-2. Semantic-Empirical Divergence: Check if the grandiose claims and equations in the text drastically diverge from or lack grounding in actual reported data variances.
+1. Synthetic Hallucination / AI-Generated Preprint Flood.
+2. Semantic-Empirical Divergence.
 
 Output a JSON object with two keys:
-- "Gaming_Penalty": float from 0.0 (natural) to 1.0 (highly manipulated/synthetic).
-- "Reproducibility_Score": float from 0.0 to 1.0 indicating whether code/data artifacts appear functional and verifiable.
+- "Gaming_Penalty": float from 0.0 to 1.0.
+- "Reproducibility_Score": float from 0.0 to 1.0.
 
 Text: {text_chunk}"""
 
@@ -247,18 +274,13 @@ STRICT CoARA MANDATES:
 
 {evolving_context}
 
-CRITICAL INSTRUCTION FOR AUTHORS & TOPICS:
-- Scan the first 2 pages carefully for human author names. Output as a clean comma-separated list of HUMAN author names (no brackets, no quotes, no "et al."). 
-- NEVER output universities, departments, institutions, or organizational affiliations as authors. Output ONLY human author names. If none found, output an empty string.
-- Extract 1 to 3 distinct, specific scientific research topics, domain subfields, or methodologies covered in this paper. Output as a comma-separated list of strings.
-
 G-EVAL CHAIN OF THOUGHT REQUIRED:
-Before outputting any numerical scores, you MUST generate a "chain_of_thought" string detailing your step-by-step logical reasoning for the manuscript's methodology, evidence strength, and societal impact. Your numerical scores MUST mathematically align with this reasoning.
+Before outputting any numerical scores, you MUST generate a "chain_of_thought" string detailing your step-by-step logical reasoning.
 
 Extract Metadata: `Extracted_Title`, `Extracted_Author`, `Extracted_Topics`.
 Extract Transparent Audit Variables (0.0 to 1.0): `semantic_novelty`, `laundering_penalty`, `rigor_index`, `citation_entropy`, `societal_linkage`, `D_open`, `J_code`, `citation_polarity_score`, `empirical_density`, `fair_compliance`.
 Logic Mapping (0.0 to 1.0): `Evidence_Strength`, `Conclusion_Reach`, `Logical_Jumps`, `Premise_Validity`.
-REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0) indicating your parsing certainty.
+REQUIRED: Add an "Overall_Confidence" key (0.0 to 1.0).
 
 Output MUST be a valid JSON object containing the "chain_of_thought" key followed by the variables.
 Text: {text}"""
@@ -345,11 +367,11 @@ def compute_logical_integrity(extracted_logic_vars):
     return float(max(0.0, min(100.0, base_logic)))
 
 def compute_formulaic_criteria(
-    vars_dict, reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5
+    vars_dict, reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, similarity_penalty=0.0
 ):
     scores = {}
     c1_raw = (
-        vars_dict.get("semantic_novelty", 0.75)
+        vars_dict.get("semantic_novelty", 0.75) * (1.0 - similarity_penalty)
         * 100
     )
     scores["C1_Semantic_Originality"] = min(100.0, max(0.0, c1_raw))
@@ -435,31 +457,6 @@ def generate_rebuttal_strategy(scores_dict):
         f" **{weakest_criterion.replace('_', ' ')}**"
         f" ({scores_dict[weakest_criterion]:.1f}/100).\n\n"
     )
-    if "Originality" in weakest_criterion:
-        strategy += (
-            "**Defense Tactic:** Argue that the paper value lies in synthesis and"
-            " rigorous validation rather than paradigm disruption. Emphasize that"
-            " cumulative science requires foundational solidity over risky novelties."
-        )
-    elif "Rigor" in weakest_criterion:
-        strategy += (
-            "**Defense Tactic:** Pre-emptively acknowledge sample size limitations"
-            " in the discussion section. Frame the methodology as an exploratory pilot"
-            " to lower the expectation of absolute statistical certainty."
-        )
-    elif "Societal" in weakest_criterion:
-        strategy += (
-            "**Defense Tactic:** Shift the narrative from immediate societal"
-            " application to essential foundational groundwork. Argue that"
-            " downstream societal impact is impossible without this specific"
-            " theoretical gap being closed."
-        )
-    else:
-        strategy += (
-            "**Defense Tactic:** Focus the reviewers attention on the empirical"
-            " density of your dataset. Acknowledge minor structural gaps but insist"
-            " the volume of data speaks for itself."
-        )
     return strategy
 
 def process_single_pdf(
@@ -522,7 +519,6 @@ def process_single_pdf(
         full_text, scan_warns = sanitize_and_scan_text(full_text)
         warnings_list.extend(scan_warns)
         
-        # Deterministic Overrides
         mdar_score, rrid_count = calculate_deterministic_mdar(full_text)
         topological_entropy = calculate_citation_topology(provided_doi)
 
@@ -532,11 +528,7 @@ def process_single_pdf(
             full_text = (
                 f"Title: {clean_title}\n"
                 f"Author: {pdf_meta_author if pdf_meta_author else 'Independent Research Scholar'}\n"
-                "Abstract: This manuscript was submitted as a flat image or lacks a standard text layer. "
-                "To ensure the researcher is not penalized for format limitations, this baseline summary is applied. "
-                "The research demonstrates high semantic originality, rigorous methodology adhering to SciScore standards, "
-                "strong interdisciplinary entropy, and excellent open science reproducibility. The empirical density is "
-                "robust, and the findings offer significant societal impact and future actionability under FAIR principles."
+                "Abstract: This manuscript was submitted as a flat image or lacks a standard text layer."
             )
 
         scope_alignment = (
@@ -625,15 +617,8 @@ def process_single_pdf(
                 "Overall_Confidence": 0.85,
             }
 
-        confidence = float(raw_data.get("Overall_Confidence", 0.9))
-        if confidence < 0.50:
-            warnings_list.append(f"Low LLM parsing confidence score ({confidence * 100:.1f}% < 50%).")
-
         extracted_author_check = str(raw_data.get("Extracted_Author", "")).strip()
         extracted_title_check = str(raw_data.get("Extracted_Title", ""))
-
-        if not extracted_title_check or "failed" in extracted_title_check.lower():
-            warnings_list.append("Manuscript title is missing or parser extraction failed.")
 
         extracted_author = ""
         if extracted_author_check and extracted_author_check.lower() not in ["unidentified", "unknown", "none", "", "research scholar"]:
@@ -643,91 +628,27 @@ def process_single_pdf(
         else:
             extracted_author = extract_unpublished_authors_fallback(full_text)
 
-        if not extracted_author or is_likely_institution(extracted_author) or extracted_author.lower() in ["unidentified", "unknown", "none", "research scholar"]:
-            base_fname = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
-            extracted_author = base_fname if len(base_fname) > 3 and "pdf" not in base_fname.lower() else "Independent Research Scholar"
-            warnings_list.append("Author metadata could not be reliably verified; derived fallback from filename.")
-
         extracted_author = clean_author_name(extracted_author)
 
         title = raw_data.get("Extracted_Title", filename)
         if not title or title == filename or "failed" in title.lower():
             title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").title()
 
-        extracted_topics = str(
-            raw_data.get("Extracted_Topics", "Core Research Domain")
-        ).strip()
-
-        if isinstance(extracted_topics, str):
-            subfields = [
-                s.strip().title() for s in extracted_topics.split(",") if s.strip()
-            ]
-        elif isinstance(extracted_topics, list):
-            subfields = [
-                str(s).strip().title() for s in extracted_topics if str(s).strip()
-            ]
-        else:
-            subfields = ["Core Research Domain"]
+        extracted_topics = str(raw_data.get("Extracted_Topics", "Core Research Domain")).strip()
+        subfields = [s.strip().title() for s in extracted_topics.split(",") if s.strip()] if isinstance(extracted_topics, str) else ["Core Research Domain"]
         if not subfields:
             subfields = ["Core Research Domain"]
         fields = [subfields[0]]
 
         normalized_title = re.sub(r"[^a-z0-9]", "", title.lower())
-        cursor.execute(
-            "SELECT eval_hash, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7,"
-            " c8, piq_minted, tx_hash, zk_proof, mdar_adherence_score,"
-            " rrid_valid_count, reproducibility_score FROM papers_assessment WHERE"
-            " doi=? OR author_name=?",
-            (provided_doi, extracted_author),
-        )
-        existing_records = cursor.fetchall()
-
-        for rec_row in existing_records:
-            ex_hash, ex_score, ex_logic, *ex_rest = rec_row
-            cursor.execute("SELECT title FROM papers_assessment WHERE eval_hash=?", (ex_hash,))
-            ex_title_row = cursor.fetchone()
-            if ex_title_row:
-                ex_norm_title = re.sub(r"[^a-z0-9]", "", ex_title_row[0].lower())
-                if (provided_doi != "None" and provided_doi) or (
-                    ex_norm_title == normalized_title and normalized_title != ""
-                ):
-                    c_scores = ex_rest[:8]
-                    piq_minted, tx_hash, zk_proof, e_mdar_score, e_rrid_count, repro_score = (
-                        ex_rest[8], ex_rest[9], ex_rest[10], ex_rest[11], ex_rest[12], ex_rest[13],
-                    )
-                    drift = (
-                        calculate_complex_drift(scope_alignment, c_scores)
-                        if scope.strip()
-                        else "N/A"
-                    )
-                    rec_spec = (
-                        get_recommendation_spectrum(ex_score, drift)
-                        if scope.strip()
-                        else "N/A"
-                    )
-                    scores_dict = {
-                        "C1_Semantic_Originality": c_scores[0],
-                        "C2_Methodological_Rigor_SciScore": c_scores[1],
-                        "C3_Interdisciplinary_Entropy": c_scores[2],
-                        "C4_Societal_Impact": c_scores[3],
-                        "C5_Open_Science_Repro": c_scores[4],
-                        "C6_Literature_Integration": c_scores[5],
-                        "C7_Empirical_Density": c_scores[6],
-                        "C8_Future_Actionability_FAIR": c_scores[7],
-                    }
-                    cursor.execute(
-                        "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights"
-                        " WHERE eval_hash=?",
-                        (ex_hash,),
-                    )
-                    weight_res = cursor.fetchone()
-                    used_weights = weight_res if weight_res else active_weights
-                    warnings_list.append("Duplicate record detected via DOI or Author/Title match.")
-                    return (
-                        title, extracted_author, ex_score, ex_logic, drift, rec_spec,
-                        fields, subfields, scores_dict, ex_hash, piq_minted, tx_hash, zk_proof,
-                        used_weights, e_mdar_score, e_rrid_count, repro_score, True, warnings_list,
-                    )
+        
+        # Salami-Slicing & Similarity Defense Hook
+        similarity_penalty = 0.0
+        is_similar, sim_score, flagged_hash = detect_similar_manuscripts(title, extracted_author, cursor)
+        if is_similar:
+            warnings_list.append(f"Highly Similar Manuscript Detected: Metadata heuristics indicate a {sim_score*100:.1f}% structural overlap with ledger entry ({flagged_hash[:10]}...). Applied Conceptual Laundering penalty.")
+            similarity_penalty = 0.60  
+            gaming_penalty = min(1.0, gaming_penalty + 0.50)
 
         cursor.execute("UPDATE global_eval_counter SET count = count + 1")
         conn.commit()
@@ -748,7 +669,7 @@ def process_single_pdf(
 
         variables = raw_data if isinstance(raw_data, dict) else {}
         scores_dict = compute_formulaic_criteria(
-            variables, reproducibility_score, sciscore_adherence=mdar_score, topological_entropy=topological_entropy
+            variables, reproducibility_score, sciscore_adherence=mdar_score, topological_entropy=topological_entropy, similarity_penalty=similarity_penalty
         )
         scores = [
             scores_dict[k]
@@ -764,9 +685,6 @@ def process_single_pdf(
         raw_final_score = float(np.dot(scores, old_weights)) / 8.0
         final_score = float(raw_final_score * (0.7 + (logic_integrity / 333.3)))
         formulas_hash = get_formulas_hash()
-
-        if final_score < 60.0:
-            warnings_list.append(f"Final score ({final_score:.2f}) is below quality floor (60.0).")
 
         if total_evals % EPOCH_BLOCK_SIZE == 0:
             active_weights = calculate_model_driven_weights(
