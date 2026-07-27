@@ -36,7 +36,7 @@ PINATA_API_KEY = get_secret("PINATA_API_KEY")
 PINATA_SECRET_API_KEY = get_secret("PINATA_SECRET_API_KEY")
 REGISTRY_CONTRACT_ADDRESS = get_secret("REGISTRY_CONTRACT_ADDRESS")
 
-# Strict adherence: Only OpenRouter, Gemini, and Llama (Groq) keys
+# Provider API Keys
 OR_API_KEY = get_secret("OR_API_KEY")
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
 
@@ -47,7 +47,7 @@ GENESIS_BLOCK_CONFIG = {
     "previous_hash": "0" * 64,
     "validator_node": "Validator_Pi_Genesis",
     "eval_hash": "genesis",
-    "model_used": "none",
+    "model_used": "Genesis_Ensemble",
     "por_proof": "Genesis_Proof_Anchor",
     "formulas_hash": hashlib.sha256(
         b"C1:Semantic_Originality|C2:MDAR_Rigor|C3:Citation_Entropy|C4:Open_Infrastructure|C5:Containerized_Execution|C6:Citation_Polarity|C7:Empirical_Density|C8:Future_Actionability_FAIR|CoARA_Dossier_v2.0"
