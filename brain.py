@@ -44,7 +44,7 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
             "authors": "Unconfigured Key",
             "opinion": f"API key for {provider_name.upper()} is missing.",
             "references": [],
-            "rating": 50.0
+            "rating": "N/A"
         }
     try:
         client = OpenAI(api_key=api_key.strip(), base_url=base_url)
@@ -59,18 +59,18 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     except Exception as e:
         err_str = str(e)
         if "402" in err_str or "insufficient credits" in err_str.lower():
-            opinion = f"[{provider_name.upper()} Insufficient Credits]: Account requires credit top-up (402). Using structural analysis fallback."
+            opinion = f"[{provider_name.upper()} Insufficient Credits]: Account requires credit top-up (402). Cannot rate this paper due to API limits."
         elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate_limit_exceeded" in err_str.lower() or "quota" in err_str.lower():
-            opinion = f"[{provider_name.upper()} Rate Limit / Quota Exceeded]: Free tier token or request limit reached. Using structural analysis fallback."
+            opinion = f"[{provider_name.upper()} Rate Limit / Quota Exceeded]: Free tier token or request limit reached. Cannot rate this paper due to API limits."
         else:
-            opinion = f"Error querying {provider_name.upper()}: {err_str}"
+            opinion = f"Error querying {provider_name.upper()}: {err_str}. Cannot rate this paper."
             
         return provider_name, {
             "title": "N/A (API Limit)",
             "authors": "N/A",
             "opinion": opinion,
             "references": [],
-            "rating": 72.0
+            "rating": "N/A"
         }
 
 def extract_with_llama(paper_text):
@@ -503,7 +503,14 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     
     consensus_results = run_multi_llm_consensus(text)
     
-    ratings = [float(v.get("rating", 75.0)) for v in consensus_results.values() if isinstance(v, dict) and "rating" in v]
+    ratings = []
+    for v in consensus_results.values():
+        if isinstance(v, dict) and "rating" in v:
+            r = v.get("rating")
+            if isinstance(r, (int, float)):
+                ratings.append(float(r))
+    if not ratings:
+        ratings = [75.0]
     
     evidence_report = generate_merged_evidence_report(consensus_results)
 
