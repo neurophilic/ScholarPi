@@ -690,7 +690,7 @@ with tab1:
                         (
                             title, author_name, score, logic_integrity, drift, rec,
                             fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list
                         ) = process_single_pdf(
                             pdf_bytes, fname, scope_val, current_user, "None", current_email, p_doi,
                         )
@@ -701,7 +701,7 @@ with tab1:
                             "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                             "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                             "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname, "warnings": warnings_list,
+                            "filename": fname, "warnings": warnings_list
                         }
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -745,7 +745,7 @@ with tab1:
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list
                     ) = process_single_pdf(
                         pdf_bytes, fname, scope_val, current_user, "None", current_email, doi_snap.strip(),
                     )
@@ -756,7 +756,7 @@ with tab1:
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname, "warnings": warnings_list,
+                        "filename": fname, "warnings": warnings_list
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -782,7 +782,7 @@ with tab1:
                     (
                         title, author_name, score, logic_integrity, drift, rec,
                         fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list
                     ) = process_single_pdf(
                         file_bytes, fname, scope_val, current_user, "None", current_email, "None",
                     )
@@ -793,7 +793,7 @@ with tab1:
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
                         "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
                         "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname, "warnings": warnings_list,
+                        "filename": fname, "warnings": warnings_list
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
