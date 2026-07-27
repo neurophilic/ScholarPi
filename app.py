@@ -42,8 +42,7 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine 🤖", layout="wide"
 )
 
-
-# --- System Action Log Monitor ---
+# System Action Log Monitor
 if "app_logs" not in st.session_state:
     st.session_state.app_logs = deque(maxlen=50)
 
@@ -62,10 +61,6 @@ def safe_get_sepolia_url(tx):
         return None
 
 def get_author_piq_dict():
-    """
-    Remediates Address Spoofing:
-    Only maps piQ totals to validated Web3 ECDSA addresses, eliminating pseudo-address generation.
-    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -99,7 +94,7 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Click to ask Scilem' style='cursor: pointer !important;'>🤖</span>"
 
-# Custom JS/CSS for UI Modifications (Featuring flexbox Scilem Header with '-' aligned correctly on the right)
+# Custom JS/CSS for Draggable Scilem Corner Chat Window
 custom_ui_code = """
 <style>
 .stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
@@ -751,14 +746,14 @@ def evaluation_metrics_dialog():
         unsafe_allow_html=True
     )
     st.markdown(
-        r"$$ L_i = (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
+        r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
         r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
-        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right)"
-        r" \times \frac{1}{1 + e^{-\Delta Premise}} $$"
+        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right)"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \vapri $$"
     )
 
     criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) $$"),
+        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \vapri $$"),
         ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
         ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
         ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
@@ -1297,7 +1292,7 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-# --- Top Analytics Section: Side-by-Side Pidyne Forecast & Global Map of Science ---
+# Analytics Section
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
@@ -1527,7 +1522,7 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-# --- Side-by-Side Section: Latest Assessed Papers & Pi Quotient Leaderboard ---
+# Bottom Section: Assessed Papers & Leaderboard
 bottom_col1, bottom_col2 = st.columns(2, vertical_alignment="top")
 
 with bottom_col1:
@@ -1961,7 +1956,7 @@ with col_center:
     if st.button("The Pi-Index Framework Workflow", use_container_width=True):
         framework_workflow_dialog()
 
-# --- Floating, Draggable Scilem Corner Chatbot Window ---
+# Floating Draggable Scilem Corner Chatbot Window
 scilem_container = st.container()
 with scilem_container:
     st.markdown("""
