@@ -1642,7 +1642,6 @@ with bottom_col1:
 with bottom_col2:
     st.markdown("### Pi Quotient (piQ) Leaderboard")
     if piq_dict:
-        # Render leaderboard via components.html to prevent Streamlit markdown code-block parsing issues & eliminate horizontal scrolling
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
         rows_html = ""
         for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
@@ -1657,13 +1656,13 @@ with bottom_col2:
                 </tr>
             """
         
-        leaderboard_full_html = f"""
+        leaderboard_template = """
         <!DOCTYPE html>
         <html>
         <head>
         <style>
-            body {{ margin: 0; padding: 0; font-family: sans-serif; }}
-            .table-container {{
+            body { margin: 0; padding: 0; font-family: sans-serif; }
+            .table-container {
                 max-height: 210px;
                 overflow-y: auto;
                 overflow-x: hidden;
@@ -1671,13 +1670,13 @@ with bottom_col2:
                 border-radius: 8px;
                 background-color: #ffffff;
             }
-            .leaderboard-table {{
+            .leaderboard-table {
                 width: 100%;
                 font-size: 13px;
                 border-collapse: collapse;
                 table-layout: fixed;
             }
-            .leaderboard-table th {{
+            .leaderboard-table th {
                 background-color: #2c3e50;
                 color: white;
                 padding: 8px 10px;
@@ -1687,12 +1686,12 @@ with bottom_col2:
                 top: 0;
                 z-index: 1;
             }
-            .leaderboard-table td {{
+            .leaderboard-table td {
                 padding: 8px 10px;
                 border-bottom: 1px solid #ecf0f1;
                 color: #2c3e50;
             }
-            .leaderboard-table tr:hover {{
+            .leaderboard-table tr:hover {
                 background-color: #f8fafc;
             }
         </style>
@@ -1709,13 +1708,14 @@ with bottom_col2:
                     </tr>
                 </thead>
                 <tbody>
-                    {rows_html}
+                    __ROWS_PLACEHOLDER__
                 </tbody>
             </table>
         </div>
         </body>
         </html>
         """
+        leaderboard_full_html = leaderboard_template.replace("__ROWS_PLACEHOLDER__", rows_html)
         components.html(leaderboard_full_html, height=220, scrolling=False)
     else:
         st.info("No piQ tokens minted yet.")
@@ -1841,7 +1841,7 @@ try:
             for rrow in recent_ledger_rows:
                 rtitle, rauth, rfile, rscore, rlogic, rpiq, rtx, rzk, reval, rts, rbh, rbhash = rrow
                 tx_url = safe_get_sepolia_url(rtx)
-                tx_disp_val = rtx if rtx and str(tx_disp_val).strip() not in ["None", ""] else "Missing PK"
+                tx_disp_val = rtx if rtx and str(rtx).strip() not in ["None", ""] else "Missing PK"
                 tx_disp = f"[{tx_disp_val[:10]}...]({tx_url})" if rtx and tx_url else str(tx_disp_val)
                 table_data.append({
                     "Block Height": rbh if rbh is not None else "Pending",
@@ -1963,7 +1963,6 @@ with col_center:
 # --- Floating, Draggable Scilem Corner Chatbot Window ---
 scilem_container = st.container()
 with scilem_container:
-    # Scilem Header with flexbox spacing ensuring 'X' stays pinned nicely on the top-right corner
     st.markdown("""
     <div id='scilem-drag-handle'>
         <div style="display: flex; align-items: center; gap: 8px;">
