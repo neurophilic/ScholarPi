@@ -47,7 +47,6 @@ st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
 )
 
-# System Action Log Monitor
 if "app_logs" not in st.session_state:
     st.session_state.app_logs = deque(maxlen=50)
 
@@ -113,7 +112,6 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# --- Robust Web3 / MetaMask Connection Handler ---
 if "siwe_address" in st.query_params:
     raw_address = st.query_params.get("siwe_address")
     raw_signature = st.query_params.get("siwe_signature")
@@ -123,7 +121,6 @@ if "siwe_address" in st.query_params:
         clean_wallet = w3.to_checksum_address(raw_address)
         authenticated = False
         
-        # Verify SIWE cryptographic signature if present
         if raw_signature and raw_message:
             try:
                 decoded_msg = urllib.parse.unquote(raw_message)
@@ -494,7 +491,6 @@ def validate_orcid_did(identifier: str) -> bool:
 if not st.session_state.is_authenticated:
     st.sidebar.markdown("### Web3 Authentication")
     
-    # Sleek, Robust MetaMask Integration Widget
     metamask_ui_html = """
     <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
         <button id="connect-mm-btn" type="button" style="
@@ -601,7 +597,8 @@ if not st.session_state.is_authenticated:
     });
     </script>
     """
-    st.sidebar.components.v1.html(metamask_ui_html, height=80)
+    with st.sidebar:
+        components.html(metamask_ui_html, height=80)
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Academic ID Alternative")
@@ -1594,7 +1591,6 @@ if (
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
-# Analytics Section
 st.markdown("<br>", unsafe_allow_html=True)
 top_analytics_col1, top_analytics_col2 = st.columns(2, gap="large")
 
