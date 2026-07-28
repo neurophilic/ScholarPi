@@ -1,5 +1,6 @@
 import re
 import json
+import math
 import requests
 import cloudscraper
 import fitz  
@@ -66,18 +67,46 @@ def fetch_core_text_by_doi(doi):
 
 def create_virtual_pdf_from_text(text, title="CORE Open Access Text"):
     try:
-        doc = fitz.open()  
-        page = doc.new_page()
+        doc = fitz.open()
         rect = fitz.Rect(50, 50, 550, 800)
-        page.insert_textbox(rect, f"Title: {title}\n\n{text}", fontsize=10, fontname="helv")
-        
+        remaining = f"Title: {title}\n\n{text}"
+        max_pages = 200  # sane upper bound so a pathological input can't hang
+
+        for _ in range(max_pages):
+            page = doc.new_page()
+            # insert_textbox returns the leftover space (negative) or the
+            # unused vertical space (>=0) if everything fit. A prior version
+            # ignored this return value entirely, so any text beyond the
+            # first page was silently dropped.
+            leftover = page.insert_textbox(rect, remaining, fontsize=10, fontname="helv")
+            if leftover >= 0:
+                break
+
+            # Binary-search-free approximate re-flow: shrink the remaining
+            # text by the fraction that didn't fit and continue on a new page.
+            fitted_chars = _estimate_fitted_chars(remaining, rect, fontsize=10)
+            if fitted_chars <= 0:
+                break
+            remaining = remaining[fitted_chars:]
+
         pdf_bytes = doc.write()
         doc.close()
         return pdf_bytes
     except Exception as e:
         print(f"Virtual PDF generation error: {e}")
-        
+
     return None
+
+def _estimate_fitted_chars(text, rect, fontsize):
+    """Rough estimate of how many characters of `text` fit in `rect` at
+    `fontsize`, used to paginate create_virtual_pdf_from_text without
+    depending on PyMuPDF internals for exact reflow."""
+    try:
+        chars_per_line = max(1, int(rect.width / (fontsize * 0.5)))
+        lines_per_page = max(1, int(rect.height / (fontsize * 1.2)))
+        return chars_per_line * lines_per_page
+    except Exception:
+        return len(text)
 
 def fetch_author_coara_metrics(author_name):
     try:
@@ -257,18 +286,36 @@ def calculate_citation_topology(doi: str) -> float:
         
         if len(referenced_works) < 5:
             return 0.30
-            
+
+        # Build the reference graph (kept for downstream/debug use and to
+        # preserve the network-topology framing of the metric).
         G = nx.DiGraph()
         G.add_node(clean_doi)
-        
         for ref in referenced_works:
             G.add_edge(clean_doi, ref)
-            
-        centrality = nx.degree_centrality(G)
-        max_centrality = max(centrality.values()) if centrality else 1.0
-        topological_entropy = max(0.1, 1.0 - (max_centrality / 2.0))
-        
-        return min(1.0, topological_entropy)
+
+        # NOTE: a citation graph made of a single node fanning out to its own
+        # references is always a star graph, whose centrality is a constant
+        # (1.0) regardless of the paper -- that used to make this function
+        # return a hard-coded 0.5 for virtually every manuscript. Real
+        # cross-disciplinary breadth is measured instead via Shannon entropy
+        # over the OpenAlex concept-score distribution already present in
+        # this same response, normalized against the maximum possible
+        # entropy for the number of concepts returned.
+        concepts = data.get("concepts", [])
+        scores = [c.get("score", 0.0) for c in concepts if c.get("score", 0.0) > 0]
+
+        if len(scores) < 2:
+            topological_entropy = 0.35
+        else:
+            total = sum(scores)
+            probs = [s / total for s in scores]
+            shannon_entropy = -sum(p * math.log(p) for p in probs if p > 0)
+            max_entropy = math.log(len(probs))
+            normalized_entropy = shannon_entropy / max_entropy if max_entropy > 0 else 0.0
+            topological_entropy = max(0.1, min(1.0, normalized_entropy))
+
+        return topological_entropy
         
     except Exception as e:
         print(f"Topology mapping failed: {e}")
