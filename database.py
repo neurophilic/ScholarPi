@@ -5,6 +5,17 @@ from config import DB_PATH, GENESIS_BLOCK_CONFIG
 
 _schema_initialized = False
 
+def reset_schema_cache():
+    """Force the next enforce_database_schema() call to re-run its migration
+    checks. Must be called whenever the underlying DB file on disk is
+    replaced wholesale (e.g. after restoring a snapshot from IPFS/Web3),
+    since a restored file may predate columns that were added to this schema
+    after the snapshot was taken. Without this, _schema_initialized stays
+    True from the process's first connection and later INSERT/SELECT
+    statements referencing newer columns fail with 'no such column'."""
+    global _schema_initialized
+    _schema_initialized = False
+
 def enforce_database_schema(conn: sqlite3.Connection):
     global _schema_initialized
     if _schema_initialized:
