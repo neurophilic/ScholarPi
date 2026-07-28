@@ -892,14 +892,8 @@ with st.container(border=True):
 
     reset_tok = st.session_state["reset_token"]
 
-    research_scope = st.text_input(
-        "Research Scope / Field Focus (optional)",
-        placeholder="e.g. Quantum Error Correction, Oncology, Perovskite Solar Cells...",
-        key=f"scope_input_{reset_tok}",
-    )
-
-    intake_tab_local, intake_tab_doi, intake_tab_alex = st.tabs(
-        ["📄 Local Upload", "🔗 DOI Lookup", "🔍 OpenAlex Topic Search"]
+    intake_tab_local, intake_tab_doi = st.tabs(
+        ["📄 Local Upload", "🔗 DOI Lookup"]
     )
 
     selected_uploaded_files = []
@@ -939,39 +933,6 @@ with st.container(border=True):
             "Semantic Scholar → CORE, in that order."
         )
 
-    selected_alex_papers = []
-    with intake_tab_alex:
-        alex_choice = st.selectbox(
-            "Hot Topic",
-            ["Custom Search..."] + HOT_TOPICS,
-            key=f"alex_topic_sel_{reset_tok}",
-        )
-        custom_query = ""
-        if alex_choice == "Custom Search...":
-            custom_query = st.text_input("Custom OpenAlex Search Query", key=f"alex_custom_{reset_tok}")
-        search_term = custom_query.strip() if alex_choice == "Custom Search..." else alex_choice
-
-        if st.button("Search OpenAlex", key=f"alex_search_btn_{reset_tok}"):
-            if search_term:
-                with st.spinner(f"Searching OpenAlex for '{search_term}'..."):
-                    st.session_state["alex_search_results"] = search_openalex_topics(search_term, limit=15)
-                    st.session_state["alex_search_query_used"] = search_term
-            else:
-                st.warning("Enter a custom search term or pick a hot topic first.")
-
-        alex_results = st.session_state.get("alex_search_results", [])
-        if alex_results:
-            st.markdown(
-                f"**{len(alex_results)} result(s) for '{st.session_state.get('alex_search_query_used', '')}':** "
-                "tick papers to include in the pipeline."
-            )
-            for ai, ap in enumerate(alex_results):
-                label = f"{ap.get('title', 'Untitled Paper')}  —  *{ap.get('authors', 'Unidentified')}*"
-                if st.checkbox(label, value=False, key=f"alex_chk_{ai}_{reset_tok}"):
-                    selected_alex_papers.append(ap)
-        else:
-            st.caption("No results yet — search a hot topic or custom query above.")
-
     if st.session_state["is_running"]:
         col_run, col_stop = st.columns([4, 1], gap="medium")
         with col_run:
@@ -985,83 +946,12 @@ with st.container(border=True):
                 st.rerun()
 
         progress_bar, status_text = st.progress(0), st.empty()
-        scope_val = st.session_state.get("snap_scope", "")
+        scope_val = ""
         snap_files = st.session_state.get("snap_files", [])
-        snap_alex = st.session_state.get("snap_alex", [])
         include_doi_snap = st.session_state.get("snap_include_doi", False)
         doi_snap = st.session_state.get("snap_doi", "")
 
         try:
-            if snap_alex and not st.session_state["cancel_requested"]:
-                for p in snap_alex:
-                    if st.session_state["cancel_requested"]:
-                        break
-                    status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
-                    pdf_bytes = None
-                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
-                    p_doi = p.get("doi", "None")
-                    add_log(f"Commencing open-access resolution for OpenAlex document: {fname}")
-
-                    if p.get("pdf_url"):
-                        pdf_bytes = download_pdf_from_url(p["pdf_url"])
-                    if not pdf_bytes and (p.get("title") or p.get("doi")):
-                        s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
-                        if s2_url:
-                            pdf_bytes = download_pdf_from_url(s2_url)
-                    if not pdf_bytes and p.get("doi"):
-                        metadata = fetch_doi_metadata(p["doi"])
-                        if metadata and metadata.get("pdf_url"):
-                            pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-
-                    if not pdf_bytes and p_doi:
-                        status_text.text("Direct download restricted. Querying CORE API fallback...")
-                        core_text = fetch_core_text_by_doi(p_doi)
-                        if core_text:
-                            pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
-
-                    if pdf_bytes:
-                        clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
-                        try:
-                            res = process_single_pdf(
-                                clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=p_doi,
-                            )
-                        except Exception as err:
-                            res = None
-                            add_log(f"Error executing process_single_pdf for {fname}: {str(err)}")
-
-                        if res and len(res) >= 22:
-                            (
-                                title, author_name, score, logic_integrity, drift, rec,
-                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                                consensus_raw, evidence_report_text, scilem_rating
-                            ) = res
-
-                            eval_record = {
-                                "title": title, "author_name": clean_author_name(author_name),
-                                "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                                "rec": rec, "fields": fields, "subfields": subfields,
-                                "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                                "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                                "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                                "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                                "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                                "scilem_rating": scilem_rating
-                            }
-                            st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                            st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                            st.session_state["free_evals_used"] += 1
-                            add_log(f"Successfully processed and recorded evaluation for {fname}")
-                        else:
-                            add_log(f"Error: process_single_pdf returned incomplete data for {fname}")
-                    else:
-                        clean_doi = p_doi.replace("https://doi.org/", "").strip() if p_doi else "None"
-                        doi_url = f"https://doi.org/{clean_doi}" if clean_doi and clean_doi != "None" else (p.get("pdf_url") or "N/A")
-                        err_item = {"title": p.get("title", "Unknown Title"), "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A", "url": doi_url}
-                        add_log("Publisher access restriction encountered for OpenAlex target.")
-                        if err_item not in st.session_state["download_errors"]:
-                            st.session_state["download_errors"].append(err_item)
-
             if (
                 include_doi_snap
                 and doi_snap.strip()
@@ -1197,7 +1087,6 @@ with st.container(border=True):
             elif (
                 not selected_uploaded_files
                 and not (include_doi and doi_input.strip())
-                and not selected_alex_papers
             ):
                 st.warning("Please tick at least one paper or input source to assess.")
             else:
@@ -1212,10 +1101,10 @@ with st.container(border=True):
                     add_log(f"Cached user file to temporary disk node: {f.name}")
                     
                 st.session_state["snap_files"] = saved_files
-                st.session_state["snap_scope"] = research_scope
+                st.session_state["snap_scope"] = ""
                 st.session_state["snap_doi"] = doi_input
                 st.session_state["snap_include_doi"] = include_doi
-                st.session_state["snap_alex"] = selected_alex_papers
+                st.session_state["snap_alex"] = []
                 st.session_state["is_running"] = True
                 st.session_state["cancel_requested"] = False
                 st.rerun()
