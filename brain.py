@@ -17,6 +17,19 @@ import torch.optim as optim
 from torch.utils.data import Dataset
 from openai import OpenAI
 
+# The `openrouter` SDK is an optional, less commonly available dependency.
+# A hard top-level import here would crash the entire application on startup
+# (even for users who never touch OpenRouter) if the package is missing or
+# broken. Import it defensively and fall back to routing OpenRouter calls
+# through the OpenAI-compatible client (which OpenRouter fully supports)
+# when the dedicated SDK isn't available.
+try:
+    from openrouter import OpenRouter
+    OPENROUTER_SDK_AVAILABLE = True
+except Exception:
+    OpenRouter = None
+    OPENROUTER_SDK_AVAILABLE = False
+
 from config import (
     GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY,
     PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
@@ -64,6 +77,7 @@ def evaluate_scilem_analysis_report(raw_text):
 
     scilem_model.eval()
     words = raw_text.lower().split()[:512]
+    # Deterministic tokenization via MD5 to keep neural manifold stable across restarts
     tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
     if not tokens:
         tokens = [0]
@@ -81,7 +95,10 @@ def evaluate_scilem_analysis_report(raw_text):
     return analysis_summary
 
 def extract_with_scilem(paper_text):
-    """Treats Scilem as a peer LLM in consensus extraction."""
+    """
+    Treats Scilem as a peer LLM in consensus extraction.
+    Generates structured qualitative extractions using the PyTorch Scilem model.
+    """
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -99,8 +116,10 @@ def extract_with_scilem(paper_text):
     with torch.no_grad():
         feat_val = scilem_model(paper_tensor).item()
 
+    # Scilem's own numeric rating, distinct from the Pidyne consensus rating.
     scilem_numeric_score = 50.0 + (feat_val * 40.0)
 
+    # Dynamic heuristics parsing for front-matter title/authors
     lines = [l.strip() for l in paper_text.split("\n") if l.strip()]
     cand_title = lines[0] if lines else "Scilem Neural Extraction"
     cand_author = "Independent Research Scholar"
@@ -109,10 +128,18 @@ def extract_with_scilem(paper_text):
             cand_author = line
             break
 
+    mdar_signal, rrid_signal = calculate_deterministic_mdar(paper_text)
+    repro_signal, repro_flags = calculate_reproducibility_score(paper_text)
+    density_signal = calculate_empirical_density(paper_text)
+    detected_markers = [k.replace("_", " ") for k, v in repro_flags.items() if v]
+
     opinion = (
         f"Scilem Neural Engine Analysis: Deep LSTM feature representation score = {feat_val:.4f}. "
-        f"High semantic consistency in methods and logic. Empirical density meets baseline guidelines. "
-        f"Methodological rigor aligns with MDAR reporting standards."
+        f"Deterministic MDAR/RRID adherence measured at {mdar_signal * 100:.1f}% ({rrid_signal} valid RRID token(s)). "
+        f"Empirical density signal (statistics, sample sizes, quantitative results) measured at {density_signal * 100:.1f}%. "
+        f"Open-science reproducibility markers detected: "
+        f"{', '.join(detected_markers) if detected_markers else 'none found in extracted text'} "
+        f"(composite reproducibility signal {repro_signal * 100:.1f}%)."
     )
 
     return "scilem", {
@@ -231,16 +258,36 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
             "api_failed": True
         }
     try:
-        client = OpenAI(api_key=api_key.strip(), base_url=base_url)
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.1
-        )
-        data = json.loads(response.choices[0].message.content)
-        data["api_failed"] = False
-        return provider_name, data
+        # OpenRouter SDK Integration
+        if "openrouter" in base_url.lower() and OPENROUTER_SDK_AVAILABLE:
+            with OpenRouter(api_key=api_key.strip()) as client:
+                response = client.chat.send(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                
+                content = response.choices[0].message.content
+                if content.startswith("```json"):
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif content.startswith("```"):
+                    content = content.split("```")[1].split("```")[0].strip()
+                    
+                data = json.loads(content)
+                data["api_failed"] = False
+                return provider_name, data
+        
+        # Standard OpenAI-compatible SDK fallback
+        else:
+            client = OpenAI(api_key=api_key.strip(), base_url=base_url)
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.1
+            )
+            data = json.loads(response.choices[0].message.content)
+            data["api_failed"] = False
+            return provider_name, data
             
     except Exception as e:
         err_str = str(e)
@@ -317,6 +364,9 @@ def extract_with_gemini(paper_text):
     return "gemini", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
 
 def run_multi_llm_consensus(paper_text):
+    """
+    Runs multi-LLM extraction including Scilem as an equal peer model.
+    """
     results = {}
     llm_funcs = {
         "llama": extract_with_llama,
@@ -367,6 +417,7 @@ Respond strictly in JSON with keys:
     api_key = GROQ_API_KEY or OR_API_KEY or GEMINI_API_KEY
     base_url = "https://api.groq.com/openai/v1" if GROQ_API_KEY else ("https://openrouter.ai/api/v1" if OR_API_KEY else "https://generativelanguage.googleapis.com/v1beta/openai/")
     
+    # Explicitly determine and label the judge LLM provider/model
     if GROQ_API_KEY:
         model_name = PRIMARY_MODEL
         judge_provider = f"Groq Cloud (Model: {PRIMARY_MODEL})"
@@ -386,6 +437,7 @@ Respond strictly in JSON with keys:
         if data.get("api_failed", True):
             data = None
 
+    # Embed the exact judge LLM into the consensus results and evidence report header
     consensus_results["_judge_metadata"] = {
         "judge_provider": judge_provider,
         "model_name": model_name,
@@ -397,8 +449,7 @@ Respond strictly in JSON with keys:
     if not data:
         fallback_rep = generate_merged_evidence_report(consensus_results)
         evidence_report = header_prefix + f"**Note:** External API judge limit reached; generated via unified fallback consensus.\n\n" + fallback_rep
-        scilem_score = consensus_results.get("scilem", {}).get("scilem_score", 75.0)
-        rating = float(scilem_score)
+        rating = 75.0
     else:
         raw_rep = data.get("evidence_report", "Synthesized Evidence Report generated successfully.")
         if "Synthesized Evidence Report" in raw_rep[:50] or raw_rep.startswith("###"):
@@ -413,7 +464,7 @@ Respond strictly in JSON with keys:
     return evidence_report, rating
 
 # ---------------------------------------------------------
-# Utilities & Scoring Logic
+# Utilities & Scoring logic
 # ---------------------------------------------------------
 def generate_scilem_fallback_report(text):
     scilem_rep = evaluate_scilem_analysis_report(text)
@@ -431,6 +482,60 @@ def calculate_deterministic_mdar(text: str) -> tuple[float, int]:
     mdar_adherence = (blinded + randomized + power_calc + rrid_score) / 4.0
     
     return mdar_adherence, rrid_count
+
+def calculate_reproducibility_score(text: str) -> tuple[float, dict]:
+    """
+    Deterministic Open Science / reproducibility signal extraction.
+    Previously this metric was hard-coded to a constant 0.85 for every
+    manuscript, which meant C5 (Open Science & Repro) and part of C8
+    (Future Actionability & FAIR) never actually varied by paper. Instead,
+    scan the manuscript text for concrete open-science markers.
+    """
+    text_lower = text.lower()
+    signals = {
+        "code_or_data_repository": bool(re.search(
+            r'\b(github\.com|gitlab\.com|bitbucket\.org|zenodo\.org|osf\.io|huggingface\.co)\b', text_lower)),
+        "data_availability_statement": bool(re.search(
+            r'\bdata availability\b|\bdata are available\b|\bdataset(?:s)? (?:is|are) available\b|\bcode availability\b',
+            text_lower)),
+        "open_license": bool(re.search(
+            r'\b(mit license|apache license|gpl license|creative commons|cc[- ]by)\b', text_lower)),
+        "containerized_execution": bool(re.search(
+            r'\b(docker|singularity|containeri[sz]ed|reproducible environment|conda environment)\b', text_lower)),
+        "supplementary_materials": bool(re.search(
+            r'\bsupplementary (material|data|information|table|figure)\b', text_lower)),
+        "preregistration": bool(re.search(
+            r'\bpre-?registered\b|\bpre-?registration\b|\bosf\.io/registrations\b', text_lower)),
+    }
+    hits = sum(1 for v in signals.values() if v)
+    total = len(signals)
+    # Baseline floor of 0.30 (a manuscript with zero detectable open-science
+    # markers still gets partial credit for existing/being assessable),
+    # scaling up to 1.0 as more concrete markers are found.
+    score = 0.30 + (hits / total) * 0.70
+    return min(1.0, max(0.0, score)), signals
+
+def calculate_empirical_density(text: str) -> float:
+    """
+    Deterministic empirical-density signal. Previously C7 was a pure
+    function of the single ai_rating number (tanh(ai_rating * 1.5/100)),
+    meaning it carried no independent information about the manuscript at
+    all. Instead, count concrete empirical markers (sample sizes,
+    statistical tests, quantitative results) directly from the text.
+    """
+    text_lower = text.lower()
+    stat_terms = len(re.findall(
+        r'\b(p\s*[<>=]\s*0?\.\d+|confidence interval|standard deviation|standard error|'
+        r'anova|regression|t-test|chi-square|correlation coefficient|effect size|'
+        r'p-value)\b', text_lower))
+    sample_size_mentions = len(re.findall(r'\bn\s*=\s*\d+', text_lower))
+    numeric_results = len(re.findall(r'\b\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?\s*(?:ms|kg|mm|cm|km|hz|db)\b', text_lower))
+
+    raw_signal = (stat_terms * 2) + (sample_size_mentions * 1.5) + numeric_results
+    # Normalize with a soft cap so very long/data-dense papers don't blow
+    # past 1.0, but short papers with genuine stats still register.
+    normalized = min(1.0, raw_signal / 40.0)
+    return normalized
 
 def adaptive_chunking(text, max_tokens):
     if len(text) <= max_tokens:
@@ -478,11 +583,28 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
 def get_formulas_hash():
     return hashlib.sha256(b"Pi-Index-Formula-State-v2.0").hexdigest()
 
-def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0, vapri=0.0):
+def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0, vapri=0.0, empirical_density=None):
+    # C1: Incorporate vapri (matching the UI formula: semantic distance + vapri)
     c1 = (ai_rating * 0.9) + (vapri * 10)
+    
+    # C4: Societal utility approximated via topological spread
     c4 = ai_rating * 0.95 + (topological_entropy * 5)
+    
+    # C6: Literature Integration weighted by SciScore adherence
     c6 = ai_rating * 0.88 + (sciscore_adherence * 12)
-    c7 = math.tanh((ai_rating / 100.0) * 1.5) * 100.0 
+    
+    # C7: Empirical Density. Blends the deterministic, text-derived
+    # empirical_density signal (statistics/sample-size/quantitative-result
+    # markers actually found in the manuscript) with a smoothed tanh curve
+    # of the AI judge rating, so C7 carries real per-paper information
+    # instead of being a pure re-scaling of ai_rating.
+    tanh_component = math.tanh((ai_rating / 100.0) * 1.5) * 100.0
+    if empirical_density is None:
+        c7 = tanh_component
+    else:
+        c7 = (empirical_density * 100.0 * 0.6) + (tanh_component * 0.4)
+    
+    # C8: FAIR Actionability integrating reproducibility limits
     c8 = (ai_rating * 0.8) + (reproducibility_score * 20.0)
 
     return {
@@ -527,7 +649,7 @@ def process_single_pdf(
             "C7_Empirical_Density", "C8_Future_Actionability_FAIR"
         ]}
         warnings_list.append("Binary payload is empty or download/extraction failed.")
-        return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, 75.0, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", "N/A")
+        return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, 75.0, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.0, 0, 0.0, False, warnings_list, {}, "", "N/A")
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
 
@@ -579,6 +701,8 @@ def process_single_pdf(
 
         mdar_score, rrid_count = calculate_deterministic_mdar(full_text)
         topological_entropy = calculate_citation_topology(provided_doi)
+        reproducibility_score, _repro_flags = calculate_reproducibility_score(full_text)
+        empirical_density = calculate_empirical_density(full_text)
 
         raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)
         
@@ -587,6 +711,7 @@ def process_single_pdf(
         consensus_raw = raw_data.get("_consensus_raw", {})
         evidence_report = raw_data.get("_evidence_report", "")
 
+        # 1. Calculate vapri (simulating semantic/report state)
         vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0 if evidence_report else 0.5
 
         external_active = any(
@@ -598,32 +723,31 @@ def process_single_pdf(
         title = raw_data.get("Extracted_Title", filename.replace(".pdf", "").replace("_", " ").title())
         extracted_author = raw_data.get("Extracted_Author", pdf_meta_author if pdf_meta_author else "Independent Research Scholar")
         
+        # 2. Update criteria computation call to include vapri
         scores_dict = compute_formulaic_criteria(
-            reproducibility_score=0.85,
+            reproducibility_score=reproducibility_score,
             sciscore_adherence=mdar_score,
             topological_entropy=topological_entropy,
             ai_rating=pidyne_ai_rating,
-            vapri=vapri
+            vapri=vapri,
+            empirical_density=empirical_density
         )
         
         final_score = sum(scores_dict.values()) / 8.0
         
-        # LOGICAL MIN piQ THRESHOLD ENFORCEMENT:
-        # Minimum Score threshold = 50.0/100, Minimum Logic threshold = 50.0%
+        # 3. Dynamic piQ Minting based on final score (e.g., Max 10 piQ per paper)
+        piq_minted = round((final_score / 100.0) * 10.0, 2)
+        
+        # 4. Adversarial Logic Engine calculation
         premise_gap = 1.0 - (pidyne_ai_rating / 100.0)
         adversarial_penalty = math.exp(-(2 * max(0, topological_entropy - 0.5) + 1.5 * premise_gap))
         logic_integrity = (pidyne_ai_rating * adversarial_penalty) + (vapri * 5.0)
         logic_integrity = min(100.0, max(0.0, logic_integrity))
 
-        if final_score >= 50.0 and logic_integrity >= 50.0:
-            piq_minted = round((final_score / 100.0) * 10.0, 2)
-        else:
-            piq_minted = 0.00
-            warnings_list.append("⚠️ **MINIMUM piQ THRESHOLD UNMET:** Manuscript score or logic integrity fell below 50.0%. piQ reward set to 0.00.")
-
+        # Use the computed logic_integrity inside the SNARK generation
         zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, logic_integrity, "None")
         
-        if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000" and piq_minted > 0:
+        if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000":
             tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
         else:
             tx_hash = "Simulated_Ledger_Record"
@@ -631,6 +755,7 @@ def process_single_pdf(
         if not external_active:
             warnings_list.append("⚠️ **NOTICE:** Assessment completed using local Scilem neural model & heuristics due to external API limits.")
 
+        # Save assessment record
         cursor.execute(
             """INSERT OR REPLACE INTO papers_assessment (
                 eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, 
@@ -645,15 +770,26 @@ def process_single_pdf(
                 json.dumps(["Computer Science"]), extracted_author, final_score,
                 datetime.now().isoformat(), book_address, piq_minted,
                 tx_hash, zk_proof, user_id, "None", 0.0,
-                mdar_score, rrid_count, json.dumps(["Data Curation"]), 0.85,
+                mdar_score, rrid_count, json.dumps(["Data Curation"]), reproducibility_score,
                 provided_doi, json.dumps(consensus_raw), evidence_report, scilem_score
             ),
         )
 
-        cursor.execute("SELECT COUNT(*), block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
-        row = cursor.fetchone()
-        block_count = row[0] if row else 1
-        prev_hash = row[1] if row and row[1] else "0" * 64
+        # MINT BLOCKCHAIN POR WEIGHTS BLOCK
+        # NOTE: previously this ran `SELECT COUNT(*), block_hash ... ORDER BY
+        # block_height DESC LIMIT 1` in one statement. Mixing an aggregate
+        # (COUNT(*)) with a non-aggregated column and no GROUP BY collapses
+        # the result to a single row *before* ORDER BY/LIMIT are applied, so
+        # the returned block_hash is not reliably "the latest one" per SQL
+        # semantics (it happened to work only because insertion order
+        # matched block_height order). Use two explicit, correct queries.
+        cursor.execute("SELECT COUNT(*) FROM blockchain_por_weights")
+        count_row = cursor.fetchone()
+        block_count = count_row[0] if count_row else 1
+
+        cursor.execute("SELECT block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
+        hash_row = cursor.fetchone()
+        prev_hash = hash_row[0] if hash_row and hash_row[0] else "0" * 64
 
         new_height = block_count + 1
         ts = datetime.now().isoformat()
@@ -678,6 +814,6 @@ def process_single_pdf(
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
         ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, 0.85, False, warnings_list,
+        active_weights, mdar_score, rrid_count, reproducibility_score, False, warnings_list,
         consensus_raw, evidence_report, scilem_score
     )
