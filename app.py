@@ -1011,20 +1011,20 @@ with st.container(border=True):
 
 @st.dialog("Detailed Research Integrity Dossier", width="large")
 def more_details_dialog(item):
-    title = item["title"]
-    author_name = clean_author_name(item["author_name"])
-    score = item["score"]
-    logic_integrity = item["logic_integrity"]
-    scores_dict = item["scores_dict"]
-    used_weights = item["used_weights"]
-    eval_hash = item["eval_hash"]
-    piq = item["piq"]
-    tx_hash = item["tx_hash"]
-    zk_proof = item["zk_proof"]
-    mdar_score = item["h_idx"]
-    rrid_count = item["i10_idx"]
-    repro_score = item["repro_score"]
-    filename = item["filename"]
+    title = item.get("title", "Unknown Title")
+    author_name = clean_author_name(item.get("author_name", "Unknown"))
+    score = item.get("score") or 0.0
+    logic_integrity = item.get("logic_integrity") if item.get("logic_integrity") is not None else 75.0
+    scores_dict = item.get("scores_dict", {})
+    used_weights = item.get("used_weights", [1.0]*8)
+    eval_hash = item.get("eval_hash", "0x0")
+    piq = item.get("piq") or 0.0
+    tx_hash = item.get("tx_hash", "None")
+    zk_proof = item.get("zk_proof", "None")
+    mdar_score = item.get("h_idx") if item.get("h_idx") is not None else 0.0
+    rrid_count = item.get("i10_idx") if item.get("i10_idx") is not None else 0
+    repro_score = item.get("repro_score") if item.get("repro_score") is not None else 0.0
+    filename = item.get("filename", "N/A")
     warnings = item.get("warnings", [])
     consensus_raw = item.get("consensus_raw", {})
     evidence_report_text = item.get("evidence_report_text", "")
@@ -1288,6 +1288,7 @@ with top_analytics_col1:
             Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
             1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria.
             2. **Multi-Model Consensus & LLM-as-a-Judge:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini), acting as the final judge of the paper to read reports and deliver a definitive verdict using an LLM model.
+            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block. (e.g., `PoR_b144463fa623_Score:75.55` successfully verified and sealed to block `c3992f28e95f2eaa5ac125e4c41ceb097d7f6ef564b0609f125083467822c11d`).
             """)
     with col_fc2:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown", label_visibility="collapsed")
@@ -1608,7 +1609,7 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
-# Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20)
+# Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20) with table-like headers
 side_col1, side_col2 = st.columns(2, vertical_alignment="top")
 
 with side_col1:
@@ -1616,19 +1617,24 @@ with side_col1:
     piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
-        piq_scroll = st.container(height=420)
+        
+        # Table Header
+        h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 3.2, 4.5, 1.5])
+        h_c1.markdown("**#**")
+        h_c2.markdown("**Author**")
+        h_c3.markdown("**Book Address**")
+        h_c4.markdown("**piQ**")
+        st.markdown("<hr style='margin:4px 0px 8px 0px;'>", unsafe_allow_html=True)
+
+        piq_scroll = st.container(height=380)
         with piq_scroll:
             for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
                 book_addr = book_dict.get(author, "None")
-                with st.container(border=True):
-                    r_c1, r_c2, r_c3 = st.columns([1, 6, 3], vertical_alignment="center")
-                    with r_c1:
-                        st.markdown(f"**#{rank}**")
-                    with r_c2:
-                        st.markdown(f"**{author}**")
-                        st.markdown(f"`{book_addr[:16]}...`")
-                    with r_c3:
-                        st.markdown(f"**{piq:.2f} piQ**")
+                r_c1, r_c2, r_c3, r_c4 = st.columns([0.8, 3.2, 4.5, 1.5], vertical_alignment="center")
+                r_c1.markdown(f"**{rank}**")
+                r_c2.markdown(f"**{author}**")
+                r_c3.markdown(f"`{book_addr}`")
+                r_c4.markdown(f"**{piq:.2f}**")
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1650,7 +1656,15 @@ with side_col2:
         conn_pi.close()
     
     if top_papers:
-        pix_scroll = st.container(height=420)
+        # Table Header
+        h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 4.2, 2.5, 2.5])
+        h_c1.markdown("**#**")
+        h_c2.markdown("**Manuscript Title**")
+        h_c3.markdown("**Author**")
+        h_c4.markdown("**Score / Action**")
+        st.markdown("<hr style='margin:4px 0px 8px 0px;'>", unsafe_allow_html=True)
+
+        pix_scroll = st.container(height=380)
         with pix_scroll:
             for rank, tp in enumerate(top_papers, start=1):
                 (
@@ -1660,48 +1674,44 @@ with side_col2:
                     p_consensus, p_report, p_scilem
                 ) = tp
                 clean_auth = clean_author_name(p_author)
-                with st.container(border=True):
-                    r_c1, r_c2, r_c3 = st.columns([1.5, 5, 2.5], vertical_alignment="center")
-                    with r_c1:
-                        st.markdown(f"**#{rank}**")
-                        st.markdown(f"Score: `{p_score:.2f}`")
-                    with r_c2:
-                        st.markdown(f"**{p_title}**")
-                        st.markdown(f"*{clean_auth}*")
-                    with r_c3:
-                        if st.button("View Dossier", key=f"pix_row_dossier_{rank}_{p_hash}", use_container_width=True):
-                            item_dossier = {
-                                "title": p_title,
-                                "author_name": p_author,
-                                "score": p_score,
-                                "logic_integrity": p_logic if p_logic is not None else 75.0,
-                                "scores_dict": {
-                                    "C1_Semantic_Originality": p_c1, "C2_Methodological_Rigor_SciScore": p_c2,
-                                    "C3_Interdisciplinary_Entropy": p_c3, "C4_Societal_Impact": p_c4,
-                                    "C5_Open_Science_Repro": p_c5, "C6_Literature_Integration": p_c6,
-                                    "C7_Empirical_Density": p_c7, "C8_Future_Actionability_FAIR": p_c8
-                                },
-                                "used_weights": [1.0]*8,
-                                "eval_hash": p_hash,
-                                "piq": p_piq,
-                                "tx_hash": p_tx,
-                                "zk_proof": p_zk,
-                                "h_idx": p_mdar,
-                                "i10_idx": p_rrid,
-                                "repro_score": p_repro,
-                                "filename": p_filename or "N/A",
-                                "warnings": [],
-                                "consensus_raw": json.loads(p_consensus) if p_consensus else {},
-                                "evidence_report_text": p_report or "",
-                                "scilem_rating": p_scilem if p_scilem is not None else 50.0
-                            }
-                            more_details_dialog(item_dossier)
+                r_c1, r_c2, r_c3, r_c4 = st.columns([0.8, 4.2, 2.5, 2.5], vertical_alignment="center")
+                r_c1.markdown(f"**{rank}**")
+                r_c2.markdown(f"**{p_title}**")
+                r_c3.markdown(f"*{clean_auth}*")
+                with r_c4:
+                    if st.button("View Dossier", key=f"pix_row_dossier_{rank}_{p_hash}", use_container_width=True):
+                        item_dossier = {
+                            "title": p_title,
+                            "author_name": p_author,
+                            "score": p_score,
+                            "logic_integrity": p_logic if p_logic is not None else 75.0,
+                            "scores_dict": {
+                                "C1_Semantic_Originality": p_c1, "C2_Methodological_Rigor_SciScore": p_c2,
+                                "C3_Interdisciplinary_Entropy": p_c3, "C4_Societal_Impact": p_c4,
+                                "C5_Open_Science_Repro": p_c5, "C6_Literature_Integration": p_c6,
+                                "C7_Empirical_Density": p_c7, "C8_Future_Actionability_FAIR": p_c8
+                            },
+                            "used_weights": [1.0]*8,
+                            "eval_hash": p_hash,
+                            "piq": p_piq,
+                            "tx_hash": p_tx,
+                            "zk_proof": p_zk,
+                            "h_idx": p_mdar,
+                            "i10_idx": p_rrid,
+                            "repro_score": p_repro,
+                            "filename": p_filename or "N/A",
+                            "warnings": [],
+                            "consensus_raw": json.loads(p_consensus) if p_consensus else {},
+                            "evidence_report_text": p_report or "",
+                            "scilem_rating": p_scilem if p_scilem is not None else 50.0
+                        }
+                        more_details_dialog(item_dossier)
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
 
 st.markdown("---")
 
-# Dedicated line for Latest Assessed Papers using scrollable native interactive containers (Limit 20)
+# Dedicated line for Latest Assessed Papers using scrollable native interactive containers (Limit 20) with table-like headers
 st.markdown("### Latest Assessed Papers")
 conn_recent = get_db_connection()
 try:
@@ -1722,8 +1732,16 @@ finally:
     conn_recent.close()
 
 if merged_papers:
-    st.markdown("<p style='font-size:12px; color:#64748b; margin-bottom:8px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size:12px; color:#64748b; margin-bottom:6px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
     
+    # Table Header
+    h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
+    h_c1.markdown("**Block**")
+    h_c2.markdown("**Manuscript & Author**")
+    h_c3.markdown("**Score / piQ**")
+    h_c4.markdown("**Action**")
+    st.markdown("<hr style='margin:4px 0px 8px 0px;'>", unsafe_allow_html=True)
+
     recent_scroll_container = st.container(height=420)
     with recent_scroll_container:
         for idx, mp in enumerate(merged_papers):
@@ -1738,42 +1756,42 @@ if merged_papers:
             bh = m_block_height if m_block_height is not None else "Pending"
             clean_auth = clean_author_name(m_author)
             
-            with st.container(border=True):
-                r_col1, r_col2, r_col3 = st.columns([1.5, 5, 2.5], vertical_alignment="center")
-                with r_col1:
-                    st.markdown(f"**Block {bh}**")
-                    st.markdown(f"Score: `{m_score:.2f}`")
-                with r_col2:
-                    st.markdown(f"**{m_title}**")
-                    st.markdown(f"*{clean_auth}* | piQ: `{m_piq:.2f}`")
-                with r_col3:
-                    if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
-                        item_dossier = {
-                            "title": m_title,
-                            "author_name": m_author,
-                            "score": m_score,
-                            "logic_integrity": m_logic if m_logic is not None else 75.0,
-                            "scores_dict": {
-                                "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                                "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                                "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                                "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
-                            },
-                            "used_weights": [1.0]*8,
-                            "eval_hash": m_hash,
-                            "piq": m_piq,
-                            "tx_hash": m_tx,
-                            "zk_proof": m_zk,
-                            "h_idx": m_mdar,
-                            "i10_idx": m_rrid,
-                            "repro_score": m_repro,
-                            "filename": m_filename or "N/A",
-                            "warnings": [],
-                            "consensus_raw": json.loads(m_consensus) if m_consensus else {},
-                            "evidence_report_text": m_report or "",
-                            "scilem_rating": m_scilem if m_scilem is not None else 50.0
-                        }
-                        more_details_dialog(item_dossier)
+            r_col1, r_col2, r_col3, r_col4 = st.columns([1.5, 4.5, 2.0, 2.0], vertical_alignment="center")
+            with r_col1:
+                st.markdown(f"**Block {bh}**")
+            with r_col2:
+                st.markdown(f"**{m_title}**")
+                st.markdown(f"*{clean_auth}*")
+            with r_col3:
+                st.markdown(f"`{m_score:.2f}` / `{m_piq:.2f}`")
+            with r_col4:
+                if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
+                    item_dossier = {
+                        "title": m_title,
+                        "author_name": m_author,
+                        "score": m_score,
+                        "logic_integrity": m_logic if m_logic is not None else 75.0,
+                        "scores_dict": {
+                            "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                            "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                            "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                            "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                        },
+                        "used_weights": [1.0]*8,
+                        "eval_hash": m_hash,
+                        "piq": m_piq,
+                        "tx_hash": m_tx,
+                        "zk_proof": m_zk,
+                        "h_idx": m_mdar,
+                        "i10_idx": m_rrid,
+                        "repro_score": m_repro,
+                        "filename": m_filename or "N/A",
+                        "warnings": [],
+                        "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                        "evidence_report_text": m_report or "",
+                        "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                    }
+                    more_details_dialog(item_dossier)
 else:
     st.info("No paper assessments recorded on ledger yet.")
 
