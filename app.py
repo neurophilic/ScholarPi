@@ -418,7 +418,6 @@ if not st.session_state.is_authenticated:
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
 
-            // Automatically open in a new tab upon successful signature validation
             window.open(targetUrl.href, '_blank');
 
             statusDiv.innerHTML = `<a href="${targetUrl.href}" target="_blank" style="display:block; margin-top:8px; background:#0f172a; color:white; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">Open Authenticated App in New Tab</a>`;
@@ -437,7 +436,7 @@ if not st.session_state.is_authenticated:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Academic ID Alternative (ORCID)")
     
-    orcid_client_id = "YOUR_REAL_ORCID_CLIENT_ID"
+    orcid_client_id = "APP-4C9H89YFZQ7JGC6Z"
     current_app_url = "https://scholarpi.streamlit.app"
     orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={orcid_client_id}&response_type=code&scope=/authenticate&redirect_uri={current_app_url}"
     
