@@ -7,6 +7,7 @@ transformers
 web3
 groq
 openai
+openrouter
 cloudscraper
 pymupdf
 pyvis
