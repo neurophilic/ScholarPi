@@ -18,3 +18,7 @@ networkx
 altair
 graphviz
 requests
+
+
+accelerate
+
