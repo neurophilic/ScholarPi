@@ -36,11 +36,6 @@ def safe_extract_zip(zip_path: str, extract_to: str):
 
 def restore_state_from_web3():
     if not w3.is_connected() or not REGISTRY_CONTRACT_ADDRESS or not ETH_ADMIN_PRIVATE_KEY:
-        # Backups are always encrypted with ETH_ADMIN_PRIVATE_KEY (see
-        # backup_state_to_web3, which requires it). Without it here we'd
-        # previously fall through to a "fallback_key" that can never match a
-        # real backup, guaranteeing a decrypt failure -- so skip outright
-        # instead of doing pointless network/IO work.
         return
     try:
         abi = '[{"inputs":[],"name":"getCID","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
@@ -74,10 +69,6 @@ def restore_state_from_web3():
                 if os.path.exists(zip_path):
                     os.remove(zip_path)
 
-                # The DB file on disk may just have been overwritten by the
-                # restored snapshot -- force schema migrations to re-run on
-                # the next connection instead of trusting the in-process
-                # "already initialized" cache from before the restore.
                 from database import reset_schema_cache
                 reset_schema_cache()
     except Exception as e:
@@ -186,13 +177,15 @@ def mint_pi_quotient_token(book_address: str, amount: float, eval_hash: str, zk_
         return "Eth Tx Failed: Invalid Contract Address Configuration"
 
     try:
-        abi = '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
+        amount_wei = int(round(amount * (10 ** 18)))
+
+        abi = '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amountWei","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
         contract = w3.eth.contract(address=w3.to_checksum_address(PIQ_CONTRACT_ADDRESS), abi=json.loads(abi))
         account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
 
         tx = contract.functions.verifyProofAndMint(
             target_addr,
-            int(amount),
+            amount_wei,
             eval_hash,
             bytes.fromhex(zk_proof[2:] if zk_proof.startswith("0x") else zk_proof),
         ).build_transaction({
