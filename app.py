@@ -112,11 +112,13 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# Initialize Dual-Identity Session States
+# Initialize Unified Session States
 if "web3_wallet" not in st.session_state:
     st.session_state.web3_wallet = None
 if "orcid_profile" not in st.session_state:
     st.session_state.orcid_profile = None
+if "researcher_name" not in st.session_state:
+    st.session_state.researcher_name = "Anonymous Researcher"
 
 # Handle Web3 SIWE Query Params
 if "siwe_address" in st.query_params:
@@ -148,8 +150,10 @@ if "siwe_address" in st.query_params:
 # Handle ORCID OAuth Callback Query Params
 if "orcid_id" in st.query_params or "code" in st.query_params:
     raw_orcid = st.query_params.get("orcid_id") or "0000-0002-1825-0097"
+    raw_name = st.query_params.get("orcid_name") or f"Dr. Academic Scholar ({raw_orcid[-4:]})"
     st.session_state.orcid_profile = raw_orcid.strip()
-    add_log(f"ORCID Profile Linked: {raw_orcid}")
+    st.session_state.researcher_name = raw_name.strip()
+    add_log(f"ORCID Profile Linked: {raw_orcid} ({raw_name})")
     st.query_params.clear()
     st.rerun()
 
@@ -432,9 +436,14 @@ if not has_orcid:
     )
     
     manual_id = st.sidebar.text_input("Or Enter ORCID iD Manually", placeholder="0000-0000-0000-0000", label_visibility="collapsed")
+    manual_name = st.sidebar.text_input("Researcher Name (Optional)", placeholder="Dr. Jane Doe", label_visibility="collapsed")
     if st.sidebar.button("Link Academic ID", use_container_width=True):
         if validate_orcid_did(manual_id):
             st.session_state.orcid_profile = manual_id.strip()
+            if manual_name.strip():
+                st.session_state.researcher_name = manual_name.strip()
+            else:
+                st.session_state.researcher_name = f"Academic Scholar ({manual_id.strip()[-4:]})"
             add_log(f"Linked Academic ID Manually: {manual_id.strip()}")
             st.rerun()
         else:
@@ -462,7 +471,9 @@ if has_web3 or has_orcid:
     finally:
         conn_hist.close()
 
+    researcher_display = st.session_state.researcher_name if has_orcid else "Anonymous Researcher"
     st.sidebar.markdown(
+        f"**Researcher:** {researcher_display}\n\n"
         f"**Synced Status:** Active\n\n"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
@@ -471,6 +482,7 @@ if has_web3 or has_orcid:
         add_log("Synced session unlinked.")
         st.session_state.web3_wallet = None
         st.session_state.orcid_profile = None
+        st.session_state.researcher_name = "Anonymous Researcher"
         st.rerun()
 
 current_user = st.session_state.orcid_profile if has_orcid else (st.session_state.web3_wallet if has_web3 else "Anonymous")
