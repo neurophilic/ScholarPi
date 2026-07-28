@@ -1336,7 +1336,7 @@ if (
     st.session_state["evaluated_papers_buffer"]
     or st.session_state.get("download_errors")
 ):
-    st.markdown("### Active Session Assessment Results")
+    st.markdown("### Assessment Results")
     st.markdown("<br>", unsafe_allow_html=True)
 
     if st.session_state.get("download_errors"):
@@ -1881,7 +1881,7 @@ exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
 with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
 with exp_head_col2:
-    with st.popover("ℹ️", help="View Extra Ledger Info"):
+    with st.popover("ⓘ", help="View Extra Ledger Info"):
         st.markdown(
             "**Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, "
             "sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) "
