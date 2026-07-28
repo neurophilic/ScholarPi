@@ -1,0 +1,14 @@
+// scholarpi.zok
+
+// final_score and logic_score are private (hidden from the blockchain)
+// eval_hash_trunc is public (visible on the blockchain to bind the proof)
+def main(private field final_score_scaled, private field logic_score_scaled, field eval_hash_trunc) {
+    
+    // Assert the paper meets the 50.00 threshold (scaled by 100 to avoid decimals)
+    assert(final_score_scaled >= 5000);
+    assert(logic_score_scaled >= 5000);
+    
+    // We simply return, but by defining eval_hash_trunc in the parameters, 
+    // it becomes part of the cryptographic public inputs (the "instance").
+    return;
+}
