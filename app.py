@@ -1323,7 +1323,7 @@ with top_analytics_col1:
     with col_fc1:
         st.markdown("### Pidyne Forecast", unsafe_allow_html=True)
     with col_fc_pop:
-        with st.popover("❓", help="What's Pidyne?"):
+        with st.popover("❔", help="What's Pidyne?"):
             st.markdown(r"""
             **What's Pidyne?**
             Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
