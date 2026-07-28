@@ -1388,7 +1388,8 @@ with top_analytics_col1:
             ).properties(height=350)
             st.altair_chart(base, use_container_width=True)
 
-        with st.expander("Evaluation Metrics & High-Precision Ledger Forecast", expanded=False):
+        st.markdown("### Evaluation Metrics & High-Precision Ledger Forecast")
+        with st.container(border=True):
             st.markdown(f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** Click a criterion below for logic formulas.")
             
             crit_info = get_criteria_info(st.session_state.predicted_next_weights)
@@ -1408,10 +1409,10 @@ with top_analytics_col1:
             st.markdown("---")
             st.markdown(r"""
             **What's Pidyne?**
-            Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
-            1. **Active Epoch & Block Height**: Tracks incremental block updates.
-            2. **Proof-of-Research (PoR) Validation**: Combines block index, criteria weights, and hashes into an unalterable SHA-256 block hash.
-            3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in evaluation standards.
+            Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
+            1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria.
+            2. **Multi-Model Consensus:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini) to synthesize an adversarial Evidence Report and unified AI Rating.
+            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block.
             """)
 
 with top_analytics_col2:
