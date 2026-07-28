@@ -852,7 +852,7 @@ with st.container(border=True):
                         )
 
                         eval_record = {
-                            "title": title, "author_name": clean_author_name(author_name),
+                            "title": title, "author_name": clean_author_name(author_name)[cite: 7],
                             "score": score, "logic_integrity": logic_integrity, "drift": drift,
                             "rec": rec, "fields": fields, "subfields": subfields,
                             "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
@@ -909,7 +909,7 @@ with st.container(border=True):
                     )
 
                     eval_record = {
-                        "title": title, "author_name": clean_author_name(author_name),
+                        "title": title, "author_name": clean_author_name(author_name)[cite: 7],
                         "score": score, "logic_integrity": logic_integrity, "drift": drift,
                         "rec": rec, "fields": fields, "subfields": subfields,
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
@@ -953,7 +953,7 @@ with st.container(border=True):
                     )
 
                     eval_record = {
-                        "title": title, "author_name": clean_author_name(author_name),
+                        "title": title, "author_name": clean_author_name(author_name)[cite: 7],
                         "score": score, "logic_integrity": logic_integrity, "drift": drift,
                         "rec": rec, "fields": fields, "subfields": subfields,
                         "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
@@ -1278,9 +1278,18 @@ if (
 top_analytics_col1, top_analytics_col2 = st.columns(2)
 
 with top_analytics_col1:
-    col_fc1, col_fc2 = st.columns([3, 1])
+    col_fc1, col_fc_pop, col_fc2 = st.columns([2.5, 0.5, 1], vertical_alignment="center")
     with col_fc1:
         st.markdown("### Pidyne Forecast", unsafe_allow_html=True)
+    with col_fc_pop:
+        with st.popover("❓", help="What's Pidyne?"):
+            st.markdown(r"""
+            **What's Pidyne?**
+            Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure[cite: 3, 8]:
+            1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria[cite: 3].
+            2. **Multi-Model Consensus:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini) to synthesize an adversarial Evidence Report and unified AI Rating[cite: 3].
+            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block[cite: 8].
+            """)
     with col_fc2:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown", label_visibility="collapsed")
         actual_lookback = int(forecast_horizon.split()[0])
@@ -1388,7 +1397,7 @@ with top_analytics_col1:
             ).properties(height=350)
             st.altair_chart(base, use_container_width=True)
 
-        st.markdown("### Evaluation Metrics & High-Precision Ledger Forecast")
+        st.markdown("### Evaluation Metrics")
         with st.container(border=True):
             st.markdown(f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** Click a criterion below for logic formulas.")
             
@@ -1405,15 +1414,6 @@ with top_analytics_col1:
                 with cols2[idx]:
                     if st.button(f"{c_data[0]}: {c_data[3]:.5f}", key=f"btn_crit_{c_data[0]}", use_container_width=True):
                         criterion_details_dialog(*c_data)
-                        
-            st.markdown("---")
-            st.markdown(r"""
-            **What's Pidyne?**
-            Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
-            1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria[cite: 3].
-            2. **Multi-Model Consensus:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini) to synthesize an adversarial Evidence Report and unified AI Rating[cite: 3].
-            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block[cite: 8].
-            """)
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
@@ -1609,8 +1609,8 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
-# Three-Column Layout: Author Leaderboard (Col 1), Paper Leaderboard (Col 2), Latest Assessed Papers & Ledger Proofs (Col 3)
-side_col1, side_col2, side_col3 = st.columns(3, vertical_alignment="top")
+# Two-Column Side-by-Side Leaderboards
+side_col1, side_col2 = st.columns(2, vertical_alignment="top")
 
 with side_col1:
     st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
@@ -1622,9 +1622,9 @@ with side_col1:
             book_addr = book_dict.get(author, "None")
             rows_html += f"""
                 <tr>
-                    <td style="text-align: center; font-weight: bold; width: 10%;"><b>{rank}</b></td>
-                    <td style="font-weight: bold; word-break: break-word; width: 35%;">{author}</td>
-                    <td style="width: 40%;"><code style="font-size: 9px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
+                    <td style="text-align: center; font-weight: bold; width: 8%;"><b>{rank}</b></td>
+                    <td style="font-weight: bold; word-break: break-word; width: 25%;">{author}</td>
+                    <td style="width: 52%;"><code style="font-size: 10px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
                     <td style="text-align: right; font-weight: bold; width: 15%;">{piq:.2f}</td>
                 </tr>
             """
@@ -1645,14 +1645,14 @@ with side_col1:
             }
             .leaderboard-table {
                 width: 100%;
-                font-size: 12px;
+                font-size: 13px;
                 border-collapse: collapse;
                 table-layout: fixed;
             }
             .leaderboard-table th {
                 background-color: #2c3e50;
                 color: white;
-                padding: 6px 8px;
+                padding: 8px 10px;
                 text-align: left;
                 font-weight: 600;
                 position: sticky;
@@ -1660,7 +1660,7 @@ with side_col1:
                 z-index: 1;
             }
             .leaderboard-table td {
-                padding: 6px 8px;
+                padding: 8px 10px;
                 border-bottom: 1px solid #ecf0f1;
                 color: #2c3e50;
                 vertical-align: middle;
@@ -1675,9 +1675,9 @@ with side_col1:
             <table class="leaderboard-table">
                 <thead>
                     <tr>
-                        <th style="text-align: center; width: 10%;">#</th>
-                        <th style="width: 35%;">Author</th>
-                        <th style="width: 40%;">Book Address</th>
+                        <th style="text-align: center; width: 8%;">#</th>
+                        <th style="width: 25%;">Contributing Author</th>
+                        <th style="width: 52%;">Book Address</th>
                         <th style="text-align: right; width: 15%;">piQ</th>
                     </tr>
                 </thead>
@@ -1710,9 +1710,9 @@ with side_col2:
             clean_auth = clean_author_name(p_author)[cite: 7]
             pi_rows_html += f"""
                 <tr>
-                    <td style="text-align: center; font-weight: bold; width: 10%;"><b>{rank}</b></td>
-                    <td style="font-weight: bold; word-break: break-word; width: 50%;">{p_title[:35]}...</td>
-                    <td style="width: 25%; font-size: 11px;">{clean_auth[:12]}</td>
+                    <td style="text-align: center; font-weight: bold; width: 8%;"><b>{rank}</b></td>
+                    <td style="font-weight: bold; word-break: break-word; width: 57%;">{p_title[:45]}...</td>
+                    <td style="width: 20%; font-size: 11px;">{clean_auth[:15]}</td>
                     <td style="text-align: right; font-weight: bold; width: 15%;">{p_score:.2f}</td>
                 </tr>
             """
@@ -1732,7 +1732,7 @@ with side_col2:
             }
             .leaderboard-table {
                 width: 100%;
-                font-size: 12px;
+                font-size: 13px;
                 border-collapse: collapse;
                 table-layout: fixed;
             }
@@ -1762,9 +1762,9 @@ with side_col2:
             <table class="leaderboard-table">
                 <thead>
                     <tr>
-                        <th style="text-align: center; width: 10%;">#</th>
-                        <th style="width: 50%;">Manuscript Title</th>
-                        <th style="width: 25%;">Author</th>
+                        <th style="text-align: center; width: 8%;">#</th>
+                        <th style="width: 57%;">Manuscript Title</th>
+                        <th style="width: 20%;">Author</th>
                         <th style="text-align: right; width: 15%;">Score</th>
                     </tr>
                 </thead>
@@ -1781,161 +1781,163 @@ with side_col2:
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
 
-with side_col3:
-    st.markdown("### Latest Assessed Papers & Ledger Proofs")
-    conn_recent = get_db_connection()[cite: 6]
-    try:
-        cur_recent = conn_recent.cursor()
-        cur_recent.execute(
-            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                      b.block_height, b.block_hash,
-                      p.consensus_data, p.evidence_report, p.scilem_score
-               FROM papers_assessment p
-               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-               ORDER BY p.timestamp DESC LIMIT 5"""
-        )
-        merged_papers = cur_recent.fetchall()
-    finally:
-        conn_recent.close()[cite: 6]
+st.markdown("---")
 
-    if merged_papers:
-        rows_html = ""
-        for mp in merged_papers:
-            (
-                m_title, m_author, m_filename, m_score, m_logic,
-                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                m_block_height, m_block_hash,
-                m_consensus, m_report, m_scilem
-            ) = mp
-            
-            bh = m_block_height if m_block_height is not None else "Pending"
-            eh_short = m_hash[:8] + "..." if m_hash else "N/A"
-            piq_val = f"{m_piq:.2f}"
-            clean_auth = clean_author_name(m_author)[cite: 7]
-            
-            tx_url = safe_get_sepolia_url(m_tx)[cite: 8]
-            tx_short = m_tx[:8] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
-            tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
-            title_short = (m_title[:28] + "...") if len(m_title) > 28 else m_title
-            
-            rows_html += f"""
-                <tr>
-                    <td style="text-align: center; width: 10%;"><b>{bh}</b></td>
-                    <td style="width: 42%; font-weight: bold;" title="{m_title} by {clean_auth}">{title_short}<br><span style="font-size:10px; color:#64748b; font-weight:normal;">{clean_auth[:20]}</span></td>
-                    <td style="text-align: center; width: 13%;"><b>{m_score:.2f}</b></td>
-                    <td style="text-align: right; width: 12%;"><b>{piq_val}</b></td>
-                    <td style="width: 23%; font-size:11px;"><code>{eh_short}</code><br>{tx_link}</td>
-                </tr>
-            """
-            
-        merged_table_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-            body { margin: 0; padding: 0; font-family: sans-serif; }
-            .table-container {
-                max-height: 150px;
-                overflow-y: auto;
-                overflow-x: hidden;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-            .leaderboard-table {
-                width: 100%;
-                font-size: 12px;
-                border-collapse: collapse;
-                table-layout: fixed;
-            }
-            .leaderboard-table th {
-                background-color: #2c3e50;
-                color: white;
-                padding: 6px 8px;
-                text-align: left;
-                font-weight: 600;
-                position: sticky;
-                top: 0;
-                z-index: 1;
-            }
-            .leaderboard-table td {
-                padding: 6px 8px;
-                border-bottom: 1px solid #ecf0f1;
-                color: #2c3e50;
-                vertical-align: middle;
-            }
-            .leaderboard-table tr:hover {
-                background-color: #f8fafc;
-            }
-        </style>
-        </head>
-        <body>
-        <div class="table-container">
-            <table class="leaderboard-table">
-                <thead>
-                    <tr>
-                        <th style="text-align: center; width: 10%;">Block</th>
-                        <th style="width: 42%;">Manuscript & Author</th>
-                        <th style="text-align: center; width: 13%;">Score</th>
-                        <th style="text-align: right; width: 12%;">piQ</th>
-                        <th style="width: 23%;">Eval / Tx Hash</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    __ROWS_PLACEHOLDER__
-                </tbody>
-            </table>
-        </div>
-        </body>
-        </html>
-        """
-        components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=160, scrolling=False)
+# Dedicated line for Latest Assessed Papers & Ledger Proofs
+st.markdown("### Latest Assessed Papers & Ledger Proofs")
+conn_recent = get_db_connection()[cite: 6]
+try:
+    cur_recent = conn_recent.cursor()
+    cur_recent.execute(
+        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                  b.block_height, b.block_hash,
+                  p.consensus_data, p.evidence_report, p.scilem_score
+           FROM papers_assessment p
+           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+           ORDER BY p.timestamp DESC LIMIT 5"""
+    )
+    merged_papers = cur_recent.fetchall()
+finally:
+    conn_recent.close()[cite: 6]
+
+if merged_papers:
+    rows_html = ""
+    for mp in merged_papers:
+        (
+            m_title, m_author, m_filename, m_score, m_logic,
+            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+            m_block_height, m_block_hash,
+            m_consensus, m_report, m_scilem
+        ) = mp
         
-        st.markdown("<p style='font-size:11px; color:#64748b; margin-top:4px; margin-bottom:4px;'>Click any manuscript to view its complete Detailed Research Integrity Dossier:</p>", unsafe_allow_html=True)
-        for idx, mp in enumerate(merged_papers):
-            (
-                m_title, m_author, m_filename, m_score, m_logic,
-                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                m_block_height, m_block_hash,
-                m_consensus, m_report, m_scilem
-            ) = mp
-            
-            m_author_clean = clean_author_name(m_author)[cite: 7]
-            btn_txt = f"[{idx+1}] {m_title[:32]}... — {m_author_clean[:12]} ({m_score:.1f})"
-            if st.button(btn_txt, key=f"btn_row_dossier_{idx}_{m_hash}", use_container_width=True):
-                item_dossier = {
-                    "title": m_title,
-                    "author_name": m_author,
-                    "score": m_score,
-                    "logic_integrity": m_logic if m_logic is not None else 75.0,
-                    "scores_dict": {
-                        "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                        "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                        "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                        "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
-                    },
-                    "used_weights": [1.0]*8,
-                    "eval_hash": m_hash,
-                    "piq": m_piq,
-                    "tx_hash": m_tx,
-                    "zk_proof": m_zk,
-                    "h_idx": m_mdar,
-                    "i10_idx": m_rrid,
-                    "repro_score": m_repro,
-                    "filename": m_filename or "N/A",
-                    "warnings": [],
-                    "consensus_raw": json.loads(m_consensus) if m_consensus else {},
-                    "evidence_report_text": m_report or "",
-                    "scilem_rating": m_scilem if m_scilem is not None else 50.0
-                }
-                more_details_dialog(item_dossier)
-    else:
-        st.info("No paper assessments recorded on ledger yet.")
+        bh = m_block_height if m_block_height is not None else "Pending"
+        eh_short = m_hash[:8] + "..." if m_hash else "N/A"
+        piq_val = f"{m_piq:.2f}"
+        clean_auth = clean_author_name(m_author)[cite: 7]
+        
+        tx_url = safe_get_sepolia_url(m_tx)[cite: 8]
+        tx_short = m_tx[:8] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
+        tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
+        title_short = (m_title[:45] + "...") if len(m_title) > 45 else m_title
+        
+        rows_html += f"""
+            <tr>
+                <td style="text-align: center; width: 8%;"><b>{bh}</b></td>
+                <td style="width: 45%; font-weight: bold;" title="{m_title} by {clean_auth}">{title_short}<br><span style="font-size:10px; color:#64748b; font-weight:normal;">{clean_auth[:35]}</span></td>
+                <td style="text-align: center; width: 12%;"><b>{m_score:.2f}</b></td>
+                <td style="text-align: right; width: 12%;"><b>{piq_val}</b></td>
+                <td style="width: 23%; font-size:11px;"><code>{eh_short}</code><br>{tx_link}</td>
+            </tr>
+        """
+        
+    merged_table_template = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        .table-container {
+            max-height: 200px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background-color: #ffffff;
+        }
+        .leaderboard-table {
+            width: 100%;
+            font-size: 13px;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .leaderboard-table th {
+            background-color: #2c3e50;
+            color: white;
+            padding: 8px 10px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .leaderboard-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #ecf0f1;
+            color: #2c3e50;
+            vertical-align: middle;
+        }
+        .leaderboard-table tr:hover {
+            background-color: #f8fafc;
+        }
+    </style>
+    </head>
+    <body>
+    <div class="table-container">
+        <table class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th style="text-align: center; width: 8%;">Block</th>
+                    <th style="width: 45%;">Manuscript & Author</th>
+                    <th style="text-align: center; width: 12%;">Score</th>
+                    <th style="text-align: right; width: 12%;">piQ</th>
+                    <th style="width: 23%;">Eval / Tx Hash</th>
+                </tr>
+            </thead>
+            <tbody>
+                __ROWS_PLACEHOLDER__
+            </tbody>
+        </table>
+    </div>
+    </body>
+    </html>
+    """
+    components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=210, scrolling=False)
+    
+    st.markdown("<p style='font-size:12px; color:#64748b; margin-top:6px; margin-bottom:6px;'>Click any manuscript to view its complete Detailed Research Integrity Dossier:</p>", unsafe_allow_html=True)
+    for idx, mp in enumerate(merged_papers):
+        (
+            m_title, m_author, m_filename, m_score, m_logic,
+            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+            m_block_height, m_block_hash,
+            m_consensus, m_report, m_scilem
+        ) = mp
+        
+        m_author_clean = clean_author_name(m_author)[cite: 7]
+        btn_txt = f"[{idx+1}] {m_title} — {m_author_clean} (Score: {m_score:.2f} | Block: {m_block_height if m_block_height is not None else 'Pending'})"
+        if st.button(btn_txt, key=f"btn_row_dossier_{idx}_{m_hash}", use_container_width=True):
+            item_dossier = {
+                "title": m_title,
+                "author_name": m_author,
+                "score": m_score,
+                "logic_integrity": m_logic if m_logic is not None else 75.0,
+                "scores_dict": {
+                    "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                    "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                    "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                    "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                },
+                "used_weights": [1.0]*8,
+                "eval_hash": m_hash,
+                "piq": m_piq,
+                "tx_hash": m_tx,
+                "zk_proof": m_zk,
+                "h_idx": m_mdar,
+                "i10_idx": m_rrid,
+                "repro_score": m_repro,
+                "filename": m_filename or "N/A",
+                "warnings": [],
+                "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                "evidence_report_text": m_report or "",
+                "scilem_rating": m_scilem if m_scilem is not None else 50.0
+            }
+            more_details_dialog(item_dossier)
+else:
+    st.info("No paper assessments recorded on ledger yet.")
 
 st.markdown("---")
 
