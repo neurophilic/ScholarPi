@@ -136,6 +136,30 @@ hr {
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04) !important;
 }
 
+/* --- Primary Button Color Matching Total Analyzed Papers Badge (#0f172a) --- */
+button[kind="primary"], [data-testid="baseButton-primary"] {
+    background-color: #0f172a !important;
+    border-color: #0f172a !important;
+    color: #ffffff !important;
+}
+button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
+    background-color: #1e293b !important;
+    border-color: #1e293b !important;
+    color: #ffffff !important;
+}
+
+/* --- Stop Button (Red Alert) --- */
+div.stButton > button:has(p:contains("Stop")) {
+    background-color: #dc2626 !important;
+    border-color: #dc2626 !important;
+    color: #ffffff !important;
+}
+div.stButton > button:has(p:contains("Stop")):hover {
+    background-color: #b91c1c !important;
+    border-color: #b91c1c !important;
+    color: #ffffff !important;
+}
+
 /* --- Interactive Buttons --- */
 .stButton>button {
     border-radius: 8px !important;
