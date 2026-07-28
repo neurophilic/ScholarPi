@@ -1802,8 +1802,8 @@ with side_col2:
         conn_recent.close()
 
     if merged_papers:
-        st.markdown("<p style='font-size:12px; color:#64748b; margin-bottom:5px;'>Click any row below to open its Detailed Research Integrity Dossier:</p>", unsafe_allow_html=True)
-        for idx, mp in enumerate(merged_papers):
+        rows_html = ""
+        for mp in merged_papers:
             (
                 m_title, m_author, m_filename, m_score, m_logic,
                 m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
@@ -1813,13 +1813,101 @@ with side_col2:
             ) = mp
             
             bh = m_block_height if m_block_height is not None else "Pending"
-            eh_short = m_hash[:10] + "..." if m_hash else "N/A"
+            eh_short = m_hash[:8] + "..." if m_hash else "N/A"
+            piq_val = f"{m_piq:.2f}"
             clean_auth = clean_author_name(m_author)
-            title_disp = (m_title[:38] + "...") if len(m_title) > 38 else m_title
             
-            btn_label = f"[{bh}] {title_disp} | {clean_auth[:18]} | Score: {m_score:.2f} | piQ: {m_piq:.1f} | Hash: {eh_short}"
+            tx_url = safe_get_sepolia_url(m_tx)
+            tx_short = m_tx[:8] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
+            tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
+            title_short = (m_title[:32] + "...") if len(m_title) > 32 else m_title
             
-            if st.button(btn_label, key=f"btn_paper_row_{idx}_{m_hash}", use_container_width=True):
+            rows_html += f"""
+                <tr>
+                    <td style="text-align: center; width: 10%;"><b>{bh}</b></td>
+                    <td style="width: 42%; font-weight: bold;" title="{m_title} by {clean_auth}">{title_short}<br><span style="font-size:10px; color:#64748b; font-weight:normal;">{clean_auth[:25]}</span></td>
+                    <td style="text-align: center; width: 13%;"><b>{m_score:.2f}</b></td>
+                    <td style="text-align: right; width: 12%;"><b>{piq_val}</b></td>
+                    <td style="width: 23%; font-size:11px;"><code>{eh_short}</code><br>{tx_link}</td>
+                </tr>
+            """
+            
+        merged_table_template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+            body { margin: 0; padding: 0; font-family: sans-serif; }
+            .table-container {
+                max-height: 200px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                background-color: #ffffff;
+            }
+            .leaderboard-table {
+                width: 100%;
+                font-size: 12px;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .leaderboard-table th {
+                background-color: #2c3e50;
+                color: white;
+                padding: 6px 8px;
+                text-align: left;
+                font-weight: 600;
+                position: sticky;
+                top: 0;
+                z-index: 1;
+            }
+            .leaderboard-table td {
+                padding: 6px 8px;
+                border-bottom: 1px solid #ecf0f1;
+                color: #2c3e50;
+                vertical-align: middle;
+            }
+            .leaderboard-table tr:hover {
+                background-color: #f8fafc;
+            }
+        </style>
+        </head>
+        <body>
+        <div class="table-container">
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: center; width: 10%;">Block</th>
+                        <th style="width: 42%;">Manuscript & Author</th>
+                        <th style="text-align: center; width: 13%;">Score</th>
+                        <th style="text-align: right; width: 12%;">piQ</th>
+                        <th style="width: 23%;">Eval / Tx Hash</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    __ROWS_PLACEHOLDER__
+                </tbody>
+            </table>
+        </div>
+        </body>
+        </html>
+        """
+        components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=205, scrolling=False)
+        
+        st.markdown("<p style='font-size:12px; color:#64748b; margin-top:5px; margin-bottom:5px;'>Click any manuscript to view its complete Detailed Research Integrity Dossier:</p>", unsafe_allow_html=True)
+        for idx, mp in enumerate(merged_papers):
+            (
+                m_title, m_author, m_filename, m_score, m_logic,
+                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                m_block_height, m_block_hash,
+                m_consensus, m_report, m_scilem
+            ) = mp
+            
+            m_author_clean = clean_author_name(m_author)
+            btn_txt = f"[{idx+1}] {m_title[:42]}... — {m_author_clean[:18]} (Score: {m_score:.2f})"
+            if st.button(btn_txt, key=f"btn_row_dossier_{idx}_{m_hash}", use_container_width=True):
                 item_dossier = {
                     "title": m_title,
                     "author_name": m_author,
@@ -1850,7 +1938,32 @@ with side_col2:
         st.info("No paper assessments recorded on ledger yet.")
 
 st.markdown("---")
-st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
+
+# Merged Title & Popover Button for Blockchain Explorer & Ledger Record Verification
+exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
+with exp_head_col1:
+    st.markdown("### Proof-of-Research Blockchain Explorer & Ledger Record Verification", unsafe_allow_html=True)
+with exp_head_col2:
+    with st.popover("ℹ️", help="View Extra Ledger Info"):
+        conn_pop = get_db_connection()
+        try:
+            cur_pop = conn_pop.cursor()
+            cur_pop.execute(
+                "SELECT por_proof, block_hash, formulas_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+            )
+            p_data = cur_pop.fetchone()
+        except Exception:
+            p_data = None
+        finally:
+            conn_pop.close()
+            
+        if p_data:
+            p_proof, b_hash, f_hash = p_data
+            st.markdown(f"**Latest Proof-of-Research:** `{p_proof}` successfully verified and sealed to block `{b_hash}`.")
+            st.markdown(f"**Unalterable Criteria State Hash:** `{f_hash}` (Guarantees grading mathematical constants cannot be tampered with).")
+        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
 
 conn = get_db_connection()
 try:
@@ -1866,15 +1979,6 @@ try:
         epoch_data = None
 
     if epoch_data:
-        (
-            block_height, weights, model_used, eval_hash,
-            block_hash, por_proof, formulas_hash,
-        ) = (
-            epoch_data[0], epoch_data[1:9], epoch_data[9],
-            epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
-        )
-
-        st.markdown("#### Ledger Verification & Record Search")
         explore_col1, explore_col2 = st.columns([3, 1])
         with explore_col1:
             search_query = st.text_input(
@@ -1974,13 +2078,6 @@ try:
                     )
             except Exception as e:
                 st.error(f"Error reading database: {str(e)}")
-
-        st.markdown(f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and sealed to block `{block_hash}`.")
-        st.markdown(f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees grading mathematical constants cannot be tampered with).")
-
-        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
 
 finally:
     conn.close()
