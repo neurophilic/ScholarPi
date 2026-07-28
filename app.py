@@ -380,7 +380,7 @@ mm_button_html = f"""
 
                 window.open(targetUrl.href, '_blank');
                 statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
-            } catch (err) {{
+            }} catch (err) {{
                 statusDiv.innerText = err.message || "Rejected.";
             }}
         }});
