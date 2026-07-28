@@ -153,7 +153,7 @@ if "siwe_address" in st.query_params:
                 add_log(f"SIWE signature verification fallback: {str(e)}")
         
         st.session_state.web3_wallet = clean_wallet
-        st.toast(f"MetaMask Linked: {clean_wallet[:6]}...{clean_wallet[-4:]}", icon="🦊")
+        st.toast(f"MetaMask Linked: {clean_wallet[:6]}...{clean_wallet[-4:]}")
 
     st.query_params.clear()
     st.rerun()
@@ -163,12 +163,10 @@ if "code" in st.query_params:
     auth_code = st.query_params.get("code")
     returned_state = st.query_params.get("state")
     
-    # Restore Web3 Wallet from OAuth 'state' parameter to keep dual-sync
     if returned_state and returned_state != "none" and w3.is_address(returned_state):
         st.session_state.web3_wallet = w3.to_checksum_address(returned_state)
 
     try:
-        # Perform backend exchange for the ORCID identifier and Name
         token_url = "https://orcid.org/oauth/token"
         headers = {"Accept": "application/json"}
         payload = {
@@ -189,7 +187,7 @@ if "code" in st.query_params:
             if real_orcid:
                 st.session_state.orcid_profile = real_orcid
                 st.session_state.researcher_name = real_name if real_name else f"ORCID Scholar ({real_orcid[-4:]})"
-                st.toast(f"ORCID Linked: {st.session_state.researcher_name}", icon="🪪")
+                st.toast(f"ORCID Linked: {st.session_state.researcher_name}")
                 add_log(f"ORCID Profile Successfully Authenticated: {real_orcid}")
             else:
                 st.error("Authentication failed: ORCID identifier not returned.")
@@ -355,12 +353,6 @@ if "scilem_messages" not in st.session_state:
         }
     ]
 
-def validate_orcid_did(identifier: str) -> bool:
-    clean_id = identifier.strip()
-    is_orcid = re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", clean_id)
-    is_did = re.match(r"^did:[a-z0-9]+:[a-zA-Z0-9.\-_:]+$", clean_id)
-    return bool(is_orcid or is_did)
-
 # Sidebar Dual Identity Sync Dashboard
 st.sidebar.markdown("### Unified Identity & Sync")
 
@@ -390,7 +382,7 @@ if not has_web3:
             box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
             transition: all 0.2s ease;
         ">
-            <span>🦊 Connect MetaMask Wallet</span>
+            <span>Connect MetaMask Wallet</span>
         </button>
         <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
     </div>
@@ -453,7 +445,7 @@ if not has_web3:
             if (currentOrcidName) targetUrl.searchParams.set("restore_orcid_name", currentOrcidName);
 
             window.open(targetUrl.href, '_blank');
-            statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">✅ Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
+            statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
         }} catch (err) {{
             statusDiv.innerText = err.message || "Rejected.";
         }}
@@ -462,7 +454,7 @@ if not has_web3:
     """
     components.html(metamask_ui_html, height=120)
 else:
-    st.sidebar.success(f"🦊 Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
+    st.sidebar.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
 if not has_orcid:
     state_payload = st.session_state.web3_wallet if has_web3 else "none"
@@ -485,30 +477,13 @@ if not has_orcid:
             box-shadow: 0 2px 6px rgba(166, 206, 57, 0.3);
             margin-bottom: 8px;
         ">
-            🪪 Link ORCID Account (OAuth)
+            Link ORCID Account (OAuth)
         </a>
-        <div style="font-size: 10px; color: gray; text-align: center; margin-bottom: 12px;">
-            Note: Opens in a new tab. Must match {ORCID_REDIRECT_URI}
-        </div>
         """,
         unsafe_allow_html=True
     )
-    
-    manual_id = st.sidebar.text_input("Or Enter ORCID iD Manually", placeholder="0000-0000-0000-0000", key="manual_orcid_id_input")
-    manual_name = st.sidebar.text_input("Researcher Name (Optional)", placeholder="Dr. Jane Doe", key="manual_orcid_name_input")
-    if st.sidebar.button("Link Academic ID", use_container_width=True):
-        if validate_orcid_did(manual_id):
-            st.session_state.orcid_profile = manual_id.strip()
-            if manual_name.strip():
-                st.session_state.researcher_name = manual_name.strip()
-            else:
-                st.session_state.researcher_name = f"Academic Scholar ({manual_id.strip()[-4:]})"
-            add_log(f"Linked Academic ID Manually: {manual_id.strip()}")
-            st.rerun()
-        else:
-            st.sidebar.error("Invalid ORCID or DID format.")
 else:
-    st.sidebar.success(f"🪪 ORCID Linked: `{st.session_state.orcid_profile}`")
+    st.sidebar.success(f"ORCID Linked: `{st.session_state.orcid_profile}`")
 
 if has_web3 or has_orcid:
     conn_hist = get_db_connection()
@@ -876,7 +851,6 @@ st.markdown("<br>", unsafe_allow_html=True)
 with st.container(border=True):
     st.markdown("### Assess a Manuscript")
     
-    # User Awareness Banner for Dual-Auth Synchronization
     st.info(
         "💡 **Dual-Auth Synchronization Guide:**\n"
         "• **Link Both Before You Run:** Always connect both your MetaMask wallet and your ORCID account in the sidebar *prior* to clicking **Run Assessment Pipeline**.\n"
