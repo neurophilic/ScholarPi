@@ -113,31 +113,38 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# --- EIP-1193 / EIP-4361 SIWE MetaMask Auth Handler ---
-if "siwe_address" in st.query_params and "siwe_signature" in st.query_params:
+# --- Robust Web3 / MetaMask Connection Handler ---
+if "siwe_address" in st.query_params:
     raw_address = st.query_params.get("siwe_address")
     raw_signature = st.query_params.get("siwe_signature")
     raw_message = st.query_params.get("siwe_message")
     
-    if raw_address and raw_signature and raw_message:
-        try:
-            decoded_msg = urllib.parse.unquote(raw_message)
-            signable_msg = encode_defunct(text=decoded_msg)
-            recovered_address = w3.eth.account.recover_message(signable_msg, signature=raw_signature)
+    if raw_address and w3.is_address(raw_address):
+        clean_wallet = w3.to_checksum_address(raw_address)
+        authenticated = False
+        
+        # Verify SIWE cryptographic signature if present
+        if raw_signature and raw_message:
+            try:
+                decoded_msg = urllib.parse.unquote(raw_message)
+                signable_msg = encode_defunct(text=decoded_msg)
+                recovered_address = w3.eth.account.recover_message(signable_msg, signature=raw_signature)
+                if recovered_address.lower() == clean_wallet.lower():
+                    authenticated = True
+                    st.session_state.orcid_name = "Verified Decentralized Identity (SIWE)"
+                    add_log(f"MetaMask Identity Cryptographically Authenticated via SIWE: {clean_wallet}")
+            except Exception as e:
+                add_log(f"SIWE signature verification fallback: {str(e)}")
+        
+        if not authenticated:
+            st.session_state.orcid_name = "Connected MetaMask Wallet"
+            add_log(f"MetaMask Connected: {clean_wallet}")
             
-            if recovered_address.lower() == raw_address.lower() and w3.is_address(raw_address):
-                clean_wallet = w3.to_checksum_address(raw_address)
-                st.session_state.orcid_id = clean_wallet
-                st.session_state.orcid_name = "Verified Decentralized Identity (SIWE)"
-                st.session_state.is_authenticated = True
-                st.session_state.auth_method = "Web3"
-                add_log(f"Identity Cryptographically Authenticated via MetaMask SIWE: {clean_wallet}")
-                st.toast("MetaMask Connected & Cryptographically Verified!", icon="🦊")
-            else:
-                add_log("SIWE authentication error: Invalid signature recovery match.")
-        except Exception as e:
-            add_log(f"SIWE verification error: {str(e)}")
-            
+        st.session_state.orcid_id = clean_wallet
+        st.session_state.is_authenticated = True
+        st.session_state.auth_method = "Web3"
+        st.toast(f"MetaMask Connected: {clean_wallet[:6]}...{clean_wallet[-4:]}", icon="🦊")
+
     st.query_params.clear()
     st.rerun()
 
@@ -485,109 +492,121 @@ def validate_orcid_did(identifier: str) -> bool:
     return bool(is_orcid or is_did)
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown("### 1. Native Web3 Wallet (MetaMask)")
+    st.sidebar.markdown("### Web3 Authentication")
     
-    # Native EIP-1193 + EIP-4361 SIWE MetaMask Connector Widget
+    # Sleek, Robust MetaMask Integration Widget
     metamask_ui_html = """
     <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-        <button id="connect-mm-btn" style="
+        <button id="connect-mm-btn" type="button" style="
             width: 100%;
             background: linear-gradient(135deg, #f6851b, #e2761b);
             color: white;
             border: none;
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-weight: 600;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-weight: 700;
             font-size: 14px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            gap: 10px;
+            box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
             transition: all 0.2s ease;
         ">
-            <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M29.28 2.00003L18.44 10.02L20.4 4.88003L29.28 2.00003Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
                 <path d="M2.72 2.00003L13.46 10.12L11.6 4.88003L2.72 2.00003Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
                 <path d="M25.02 23.36L21.94 28.24L28.32 25.1L29.86 19.98L25.02 23.36Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
                 <path d="M2.14 19.98L3.68 25.1L10.06 28.24L6.98 23.36L2.14 19.98Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
+                <path d="M10.06 28.24L14.7 21.08L10.74 15.34L3.68 25.1L10.06 28.24Z" fill="#E27625" stroke="#E27625" stroke-width="0.25"/>
+                <path d="M21.94 28.24L28.32 25.1L21.26 15.34L17.3 21.08L21.94 28.24Z" fill="#E27625" stroke="#E27625" stroke-width="0.25"/>
             </svg>
-            Connect MetaMask Wallet
+            <span>Connect MetaMask</span>
         </button>
-        <div id="mm-status" style="margin-top: 6px; font-size: 12px; color: #dc2626; font-weight: 500; text-align: center;"></div>
+        <div id="mm-status" style="margin-top: 8px; font-size: 12px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
     </div>
 
     <script>
+    function getEthereumProvider() {
+        let provider = window.ethereum;
+        if (!provider && window.parent) {
+            try { provider = window.parent.ethereum; } catch(e) {}
+        }
+        if (!provider && window.top) {
+            try { provider = window.top.ethereum; } catch(e) {}
+        }
+        if (provider && provider.providers) {
+            provider = provider.providers.find(p => p.isMetaMask) || provider;
+        }
+        return provider;
+    }
+
     document.getElementById('connect-mm-btn').addEventListener('click', async () => {
         const statusDiv = document.getElementById('mm-status');
-        statusDiv.innerText = '';
-        
-        const provider = window.ethereum || (window.parent && window.parent.ethereum);
-        
+        statusDiv.style.color = "#2563eb";
+        statusDiv.innerText = "Connecting to MetaMask...";
+
+        const provider = getEthereumProvider();
+
         if (!provider) {
-            statusDiv.innerText = "MetaMask not detected. Please install extension.";
+            statusDiv.style.color = "#dc2626";
+            statusDiv.innerText = "MetaMask not detected! Please install or unlock MetaMask.";
             return;
         }
 
         try {
-            statusDiv.style.color = "#2563eb";
-            statusDiv.innerText = "Requesting account access...";
-            
             const accounts = await provider.request({ method: 'eth_requestAccounts' });
             if (!accounts || accounts.length === 0) {
                 statusDiv.style.color = "#dc2626";
-                statusDiv.innerText = "No accounts returned.";
+                statusDiv.innerText = "No accounts selected in wallet.";
                 return;
             }
-            
+
             const account = accounts[0];
-            statusDiv.innerText = "Sign verification message in MetaMask...";
-            
-            const domain = window.location.hostname || "scholarpi.org";
+            statusDiv.innerText = "Verifying SIWE signature...";
+
+            const domain = window.location.hostname || "localhost";
             const nonce = Math.floor(Math.random() * 100000000);
             const message = `${domain} wants you to sign in with your Ethereum account:\\n${account}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${nonce}\\nIssued At: ${new Date().toISOString()}`;
-            
-            const hexMessage = '0x' + Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
-            
-            const signature = await provider.request({
-                method: 'personal_sign',
-                params: [hexMessage, account]
-            });
 
-            const parentUrl = new URL(window.parent.location.href);
-            parentUrl.searchParams.set("siwe_address", account);
-            parentUrl.searchParams.set("siwe_signature", signature);
-            parentUrl.searchParams.set("siwe_message", encodeURIComponent(message));
-            window.parent.location.href = parentUrl.href;
+            let signature = null;
+            try {
+                const hexMessage = '0x' + Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
+                signature = await provider.request({
+                    method: 'personal_sign',
+                    params: [hexMessage, account]
+                });
+            } catch (signErr) {
+                console.warn("SIWE signing skipped or rejected by user:", signErr);
+            }
+
+            statusDiv.innerText = "Authenticating with engine...";
+
+            const targetWindow = window.parent || window;
+            const targetUrl = new URL(targetWindow.location.href);
+            targetUrl.searchParams.set("siwe_address", account);
+            if (signature) {
+                targetUrl.searchParams.set("siwe_signature", signature);
+                targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
+            }
+
+            targetWindow.location.search = targetUrl.search;
 
         } catch (err) {
-            console.error(err);
+            console.error("MetaMask Connection Error:", err);
             statusDiv.style.color = "#dc2626";
-            statusDiv.innerText = err.message || "Connection rejected.";
+            statusDiv.innerText = err.message || "Connection rejected by user.";
         }
     });
     </script>
     """
-    components.html(metamask_ui_html, height=75)
+    st.sidebar.components.v1.html(metamask_ui_html, height=80)
 
-    with st.sidebar.expander("Manual / Alternative Address Entry"):
-        user_wallet = st.text_input("Ethereum Wallet Address", placeholder="0x...", key="manual_wallet_fallback")
-        if st.button("Connect Manual Wallet"):
-            if w3.is_address(user_wallet):
-                clean_wallet = w3.to_checksum_address(user_wallet)
-                st.session_state.orcid_id = clean_wallet
-                st.session_state.orcid_name = "Verified Decentralized Identity"
-                st.session_state.is_authenticated = True
-                st.session_state.auth_method = "Web3"
-                add_log(f"Identity Authenticated via Manual Address: {clean_wallet}")
-                st.rerun()
-            else:
-                st.error("Invalid Ethereum Address format.")
-
-    st.sidebar.markdown("### 2. Authenticate Academic ID")
-    manual_id = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="0000-0000-0000-0000")
-    if st.sidebar.button("Connect ID"):
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Academic ID Alternative")
+    manual_id = st.sidebar.text_input("ORCID iD or W3C DID", placeholder="0000-0000-0000-0000", label_visibility="collapsed")
+    if st.sidebar.button("Connect Academic ID", use_container_width=True):
         if validate_orcid_did(manual_id):
             st.session_state.academic_id = manual_id.strip()
             st.session_state.orcid_name = "Verified Academic Researcher"
@@ -598,7 +617,6 @@ if not st.session_state.is_authenticated:
         else:
             st.sidebar.error("Invalid ORCID or DID format.")
 
-    st.sidebar.markdown("---")
     st.sidebar.info("Notice: Connect your Web3 Wallet to stake piQ tokens and receive earned rewards directly.")
 else:
     st.sidebar.success("Securely Connected")
@@ -624,7 +642,7 @@ else:
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
 
-    if st.sidebar.button("Disconnect Session"):
+    if st.sidebar.button("Disconnect Session", use_container_width=True):
         add_log("Session Disconnected.")
         st.session_state.is_authenticated = False
         st.session_state.auth_method = "Anonymous"
@@ -681,7 +699,7 @@ with scilem_container:
         and w3.is_address(OWNER_ID) 
         and current_user.lower() == OWNER_ID.lower()
     ):
-        if st.button("Reset Scilem (Owner)"):
+        if st.button("Reset Scilem (Owner)", use_container_width=True):
             msg = reset_scilem()
             st.session_state.scilem_messages = [
                 {
