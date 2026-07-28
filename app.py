@@ -1571,7 +1571,7 @@ if st.session_state.is_authenticated:
     finally:
         conn_hist.close()
 
-    st.markdown("### Your Assessment History & Rewards")
+    st.markdown("### Your Assessment History")
 
     if user_history_rows:
         for idx, uh in enumerate(user_history_rows):
@@ -1831,7 +1831,7 @@ exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
 with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
 with exp_head_col2:
-    with st.popover("ℹ️", help="View Extra Ledger Info"):
+    with st.popover("ⓘ", help="View Extra Ledger Info"):
         st.markdown(
             "**Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, "
             "sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) "
