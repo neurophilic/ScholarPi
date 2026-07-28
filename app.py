@@ -112,7 +112,6 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
-# Handle Web3 SIWE Query Params
 if "siwe_address" in st.query_params:
     raw_address = st.query_params.get("siwe_address")
     raw_signature = st.query_params.get("siwe_signature")
@@ -146,9 +145,8 @@ if "siwe_address" in st.query_params:
     st.query_params.clear()
     st.rerun()
 
-# Handle ORCID OAuth Callback Query Params
 if "orcid_id" in st.query_params or "code" in st.query_params:
-    raw_orcid = st.query_params.get("orcid_id") or "0000-0002-1825-0097" # Simulated or callback resolved ORCID
+    raw_orcid = st.query_params.get("orcid_id") or "0000-0002-1825-0097"
     st.session_state.academic_id = raw_orcid.strip()
     st.session_state.orcid_name = "Verified ORCID Researcher"
     st.session_state.is_authenticated = True
@@ -395,7 +393,7 @@ if not st.session_state.is_authenticated:
             const account = accounts[0];
             statusDiv.innerText = "Verifying SIWE signature...";
 
-            const domain = window.location.hostname || "localhost";
+            const domain = "ScholarPi";
             const nonce = Math.floor(Math.random() * 100000000);
             const message = `${domain} wants you to sign in with your Ethereum account:\\n${account}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${nonce}\\nIssued At: ${new Date().toISOString()}`;
 
@@ -436,9 +434,8 @@ if not st.session_state.is_authenticated:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Academic ID Alternative (ORCID)")
     
-    # Standard ORCID OAuth Protocol Integration Button
-    orcid_client_id = "APP-ORCIDCLIENTID00" # Replace with registered ORCID Client ID if needed
-    current_app_url = "https://scholarpi.streamlit.app" # Or dynamic base URL
+    orcid_client_id = "YOUR_REGISTERED_ORCID_CLIENT_ID"
+    current_app_url = "https://scholarpi.streamlit.app"
     orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={orcid_client_id}&response_type=code&scope=/authenticate&redirect_uri={current_app_url}"
     
     st.sidebar.markdown(
