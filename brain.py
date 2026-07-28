@@ -106,6 +106,11 @@ def extract_with_scilem(paper_text):
     with torch.no_grad():
         feat_val = scilem_model(paper_tensor).item()
 
+    # Scilem's own numeric rating, distinct from the Pidyne consensus rating.
+    # (Previously process_single_pdf mistakenly reused pidyne_ai_rating for the
+    # "scilem_score" DB column, making it a duplicate of logic_score.)
+    scilem_numeric_score = 50.0 + (feat_val * 40.0)
+
     # Dynamic heuristics parsing for front-matter title/authors
     lines = [l.strip() for l in paper_text.split("\n") if l.strip()]
     cand_title = lines[0] if lines else "Scilem Neural Extraction"
@@ -126,7 +131,12 @@ def extract_with_scilem(paper_text):
         "authors": clean_author_name(cand_author)[:80],
         "opinion": opinion,
         "references": [],
-        "api_failed": False
+        "api_failed": False,
+        # NOTE: this is a heuristic fallback extraction, not a verified title/author.
+        # It should only be used when every real LLM extraction fails (see the
+        # selection loop in evaluate_pdf_text_ensemble).
+        "is_heuristic_fallback": True,
+        "scilem_score": scilem_numeric_score,
     }
 
 def train_scilem_on_input_and_report(raw_text, evidence_report):
@@ -432,14 +442,23 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
 
     best_title = "Parsed via Local Heuristics"
     best_author = "Independent Research Scholar"
+    title_found, author_found = False, False
+    # Real LLMs are preferred over Scilem's heuristic first-line/regex fallback.
+    # Scilem is tried last, and only used if no real LLM produced a usable value.
     for l_key in ["llama", "mistral", "qwen", "gemini", "scilem"]:
-        t_val = consensus_results.get(l_key, {}).get("title", "")
-        a_val = consensus_results.get(l_key, {}).get("authors", "")
-        if t_val and "N/A" not in t_val:
+        entry = consensus_results.get(l_key, {})
+        t_val = entry.get("title", "")
+        a_val = entry.get("authors", "")
+        if not title_found and t_val and "N/A" not in t_val:
             best_title = t_val
-        if a_val and "N/A" not in a_val:
+            title_found = True
+        if not author_found and a_val and "N/A" not in a_val:
             best_author = a_val
+            author_found = True
+        if title_found and author_found:
             break
+
+    scilem_score = consensus_results.get("scilem", {}).get("scilem_score", pidyne_ai_rating)
 
     return {
         "Extracted_Title": best_title,
@@ -449,6 +468,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         "_consensus_raw": consensus_results,
         "_evidence_report": evidence_report,
         "_pidyne_rating": pidyne_ai_rating,
+        "_scilem_score": scilem_score,
     }
 
 def get_formulas_hash():
@@ -500,10 +520,49 @@ def process_single_pdf(
         return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, 75.0, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", "N/A")
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
-    
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+
+        # Idempotency guard: don't re-run the (paid) LLM ensemble or re-mint an
+        # already-assessed manuscript. The on-chain contract rejects a second
+        # verifyProofAndMint() for the same eval_hash ("Fraud Detected"), and
+        # without this guard that revert string would silently overwrite the
+        # earlier successful tx_hash/zk_proof/piq_minted via INSERT OR REPLACE.
+        cursor.execute(
+            """SELECT title, author_name, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8,
+                      piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count,
+                      reproducibility_score, consensus_data, evidence_report, scilem_score
+               FROM papers_assessment WHERE eval_hash = ?""",
+            (file_hash,),
+        )
+        existing = cursor.fetchone()
+        if existing and not force_proceed:
+            tx_prev = existing[13]
+            was_minted_ok = (
+                (isinstance(tx_prev, str) and tx_prev.startswith("0x") and len(tx_prev) == 66)
+                or tx_prev == "Simulated_Ledger_Record"
+            )
+            if was_minted_ok:
+                (
+                    e_title, e_author, e_score, e_logic, e_c1, e_c2, e_c3, e_c4, e_c5, e_c6, e_c7, e_c8,
+                    e_piq, e_tx, e_zk, e_mdar, e_rrid, e_repro, e_consensus, e_report, e_scilem,
+                ) = existing
+                e_scores_dict = {
+                    "C1_Semantic_Originality": e_c1, "C2_Methodological_Rigor_SciScore": e_c2,
+                    "C3_Interdisciplinary_Entropy": e_c3, "C4_Societal_Impact": e_c4,
+                    "C5_Open_Science_Repro": e_c5, "C6_Literature_Integration": e_c6,
+                    "C7_Empirical_Density": e_c7, "C8_Future_Actionability_FAIR": e_c8,
+                }
+                return (
+                    e_title, e_author, e_score, e_logic, "N/A", "N/A",
+                    ["Computer Science"], ["Core Research Domain"], e_scores_dict, file_hash,
+                    e_piq, e_tx, e_zk, active_weights, e_mdar, e_rrid, e_repro, True,
+                    ["This manuscript was already assessed previously; returning the cached, already-minted record instead of re-processing."],
+                    json.loads(e_consensus) if e_consensus else {}, e_report or "", e_scilem,
+                )
+
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             pdf_meta_author = doc.metadata.get("author", "").strip()
@@ -519,6 +578,7 @@ def process_single_pdf(
         raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)
         
         pidyne_ai_rating = raw_data.get("_pidyne_rating", 75.0)
+        scilem_score = raw_data.get("_scilem_score", pidyne_ai_rating)
         consensus_raw = raw_data.get("_consensus_raw", {})
         evidence_report = raw_data.get("_evidence_report", "")
 
@@ -568,7 +628,7 @@ def process_single_pdf(
                 datetime.now().isoformat(), book_address, piq_minted,
                 tx_hash, zk_proof, user_id, "None", 0.0,
                 mdar_score, rrid_count, json.dumps(["Data Curation"]), 0.85,
-                provided_doi, json.dumps(consensus_raw), evidence_report, pidyne_ai_rating
+                provided_doi, json.dumps(consensus_raw), evidence_report, scilem_score
             ),
         )
 
@@ -602,5 +662,5 @@ def process_single_pdf(
         title, extracted_author, final_score, logic_integrity, drift, rec,
         ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
         active_weights, mdar_score, rrid_count, 0.85, False, warnings_list,
-        consensus_raw, evidence_report, pidyne_ai_rating
+        consensus_raw, evidence_report, scilem_score
     )
