@@ -281,6 +281,13 @@ components.html(custom_ui_code, height=0, width=0)
 
 st.sidebar.title("System Access & Sync")
 
+# Simplified Dual-Auth Synchronization Guide in System Access sidebar section
+st.sidebar.info(
+    "**Dual-Auth Synchronization Guide:**\n"
+    "• **Link Both First:** Connect both your MetaMask wallet and your ORCID account below before running assessments.\n"
+    "• **Seamless Rewards:** When both are active, your evaluation history and rewards merge automatically."
+)
+
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
 
@@ -359,6 +366,7 @@ st.sidebar.markdown("### Unified Identity & Sync")
 has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
 has_orcid = bool(st.session_state.orcid_profile)
 
+# 1. MetaMask Wallet Button on Top
 if not has_web3:
     current_orcid_js = st.session_state.orcid_profile if st.session_state.orcid_profile else ""
     current_orcid_name_js = st.session_state.researcher_name if st.session_state.researcher_name != "Anonymous Researcher" else ""
@@ -456,6 +464,7 @@ if not has_web3:
 else:
     st.sidebar.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
+# 2. ORCID Button Below MetaMask
 if not has_orcid:
     state_payload = st.session_state.web3_wallet if has_web3 else "none"
     orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
@@ -477,7 +486,7 @@ if not has_orcid:
             box-shadow: 0 2px 6px rgba(166, 206, 57, 0.3);
             margin-bottom: 8px;
         ">
-            Link ORCID Account (OAuth)
+            Link ORCID Account
         </a>
         """,
         unsafe_allow_html=True
@@ -850,13 +859,6 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 with st.container(border=True):
     st.markdown("### Assess a Manuscript")
-    
-    st.info(
-        "💡 **Dual-Auth Synchronization Guide:**\n"
-        "• **Link Both Before You Run:** Always connect both your MetaMask wallet and your ORCID account in the sidebar *prior* to clicking **Run Assessment Pipeline**.\n"
-        "• **Unified Database Stamping:** When both are active simultaneously, the backend binds both your `eth_book` and your `user_id` to new evaluation records, merging your total rewards seamlessly."
-    )
-
     reset_tok = st.session_state["reset_token"]
 
     research_scope = st.text_input(
