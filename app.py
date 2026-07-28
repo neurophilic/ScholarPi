@@ -798,8 +798,8 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         "mynetwork", f"pi_network_{int(time.time() * 1000)}"
     )
 
-    table_html = "<style>.table-big { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 10px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; } .table-big th { background-color: #f8fafc; color: #475569; padding: 8px; text-align: left; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; border-bottom: 2px solid #e2e8f0; } .table-big td { padding: 8px; border-bottom: 1px solid #f1f5f9; color: #1e293b; } .color-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1); } </style>"
-    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
+    table_html = "<style>.table-compact { width: 100%; font-size: 12px; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; } .table-compact th { background-color: #f8fafc; color: #475569; padding: 6px 8px; text-align: left; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 1; } .table-compact td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; color: #1e293b; } .color-box { width: 14px; height: 14px; border-radius: 3px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1); } </style>"
+    table_html += "<div style='max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;'><table class='table-compact'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
     for topic, metrics in sorted(
         topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True
     ):
@@ -1898,13 +1898,13 @@ if merged_papers:
     st.markdown("<p style='font-size:13px; color:#64748b; margin-bottom:10px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
     
     h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
-    h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Block</div>", unsafe_allow_html=True)
-    h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript & Author</div>", unsafe_allow_html=True)
-    h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Score / piQ</div>", unsafe_allow_html=True)
-    h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Action</div>", unsafe_allow_html=True)
-    st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
+    h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Block</div>", unsafe_allow_html=True)
+    h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Manuscript & Author</div>", unsafe_allow_html=True)
+    h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Score / piQ</div>", unsafe_allow_html=True)
+    h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Action</div>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin:4px 0px 12px 0px; border-top: 2px solid #cbd5e1;'>", unsafe_allow_html=True)
 
-    recent_scroll_container = st.container(height=420)
+    recent_scroll_container = st.container(height=450)
     with recent_scroll_container:
         for idx, mp in enumerate(merged_papers):
             (
@@ -1954,6 +1954,9 @@ if merged_papers:
                         "scilem_rating": safe_float(m_scilem, 50.0)
                     }
                     more_details_dialog(item_dossier)
+            
+            # Distinct row separator for enhanced readability
+            st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
 else:
     st.info("No paper assessments recorded on ledger yet.")
 
