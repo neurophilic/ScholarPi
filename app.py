@@ -113,7 +113,6 @@ def rbot(topic_key):
 
 custom_ui_code = """
 <style>
-/* --- Global Sleek Typography & Layout --- */
 h1, h2, h3, h4, h5, h6 {
     color: #0f172a !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
@@ -130,14 +129,12 @@ hr {
     display: none !important;
 }
 
-/* --- Sleek Sidebar --- */
 [data-testid="stSidebar"] {
     background-color: #f8fafc !important;
     border-right: 1px solid #e2e8f0 !important;
     overflow-y: auto !important;
 }
 
-/* --- Container Cards (Borders & Shadows) --- */
 [data-testid="stVerticalBlockBorderWrapper"] {
     border-radius: 12px !important;
     border: 1px solid #e2e8f0 !important;
@@ -150,7 +147,6 @@ hr {
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04) !important;
 }
 
-/* --- Primary Button Color Matching Total Analyzed Papers Badge (#0f172a) --- */
 button[kind="primary"], [data-testid="baseButton-primary"] {
     background-color: #0f172a !important;
     border-color: #0f172a !important;
@@ -162,7 +158,6 @@ button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
     color: #ffffff !important;
 }
 
-/* --- Stop Button (Red Alert) --- */
 .pi-stop-button, .pi-stop-button:focus {
     background-color: #dc2626 !important;
     border-color: #dc2626 !important;
@@ -174,7 +169,6 @@ button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
     color: #ffffff !important;
 }
 
-/* --- Interactive Buttons --- */
 .stButton>button {
     border-radius: 8px !important;
     font-weight: 600 !important;
@@ -185,13 +179,7 @@ button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
     transform: translateY(-1px) !important;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
 }
-button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
-    padding: 0.35rem 0.75rem !important;
-    font-size: 14px !important;
-    white-space: nowrap !important;
-}
 
-/* --- Expanders --- */
 [data-testid="stExpander"] {
     border-radius: 10px !important;
     border: 1px solid #e2e8f0 !important;
@@ -199,7 +187,6 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
     background-color: #ffffff !important;
 }
 
-/* --- Scilem Assistant Floating Chat --- */
 .pi-chat-user-msg {
     flex-direction: row-reverse !important;
     background-color: #f1f5f9 !important;
@@ -244,7 +231,6 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
     cursor: grabbing;
 }
 
-/* --- Iframe & PyVis --- */
 iframe {
     border: none !important;
     border-radius: 8px !important;
@@ -303,10 +289,6 @@ parentDoc.addEventListener('click', function(e) {
 }, true);
 
 function applyTextBasedStyling() {
-    // CSS has no standard :contains() pseudo-class (that is a jQuery-only
-    // extension) -- rules that tried to use it never matched anything in
-    // any real browser. Apply equivalent classes here based on text
-    // content instead, matched by real CSS above.
     parentDoc.querySelectorAll('div.stButton > button').forEach(btn => {
         if (btn.innerText && btn.innerText.trim() === 'Stop') {
             btn.classList.add('pi-stop-button');
@@ -841,7 +823,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
 def get_criteria_info(weights):
     tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = weights
     return [
-        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \vapri $$"),
+        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + v_{apri} $$"),
         ("C2", "Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
         ("C3", "Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
         ("C4", "Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
@@ -866,7 +848,7 @@ def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula)
         r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
         r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
         r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right)"
-        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \vapri $$"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot v_{apri} $$"
     )
 
 # --- Top Header with Title and Total Analyzed Papers Badge ---
@@ -968,7 +950,6 @@ with st.container(border=True):
         else:
             st.caption("No results yet — search a hot topic or custom query above.")
 
-    # --- Free Assessment vs Obligatory Web3 Stake Logic ---
     free_evals_used = st.session_state.get("free_evals_used", 0)
     is_web3_authenticated = (
         st.session_state.is_authenticated 
@@ -1244,7 +1225,6 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
-    # --- Section 1: Overview & Ledger ---
     st.markdown("### Overview & Ledger")
     st.write(f"**File Name:** `{filename}`")
     st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
@@ -1264,7 +1244,6 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
-    # --- Section 2: Multi-LLM Extractions ---
     st.markdown("### Multi-LLM Extractions")
     if consensus_raw and isinstance(consensus_raw, dict):
         llm_cols = st.columns(2, gap="medium")
@@ -1298,7 +1277,6 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
-    # --- Section 3: Merged Synthesized Evidence Report ---
     st.markdown("### Synthesized Evidence Report")
     if evidence_report_text:
         st.markdown(evidence_report_text)
@@ -1316,7 +1294,6 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
-    # --- Section 4: Criteria Breakdown & Score Matrix ---
     st.markdown("### Criteria Breakdown & Score Matrix")
     breakdown_df = pd.DataFrame({
         "Criterion": [
@@ -1709,7 +1686,6 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-# User History or Auth Prompt
 if st.session_state.is_authenticated:
     conn_hist = get_db_connection()
     try:
@@ -1810,16 +1786,14 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
-# Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20) with table-like headers
 side_col1, side_col2 = st.columns(2, gap="large")
 
 with side_col1:
-    st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
+    st.markdown("### Pi Quotient (piQ) Leaderboard [Top Authors]")
     piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
         
-        # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 3.2, 4.5, 1.5])
         h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
         h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
@@ -1857,7 +1831,6 @@ with side_col2:
         conn_pi.close()
     
     if top_papers:
-        # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 4.2, 2.5, 2.5])
         h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
         h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript Title</div>", unsafe_allow_html=True)
@@ -1912,7 +1885,6 @@ with side_col2:
 
 st.markdown("---")
 
-# Dedicated line for Latest Assessed Papers using scrollable native interactive containers (Limit 20) with table-like headers
 st.markdown("### Latest Assessed Papers")
 conn_recent = get_db_connection()
 try:
@@ -1935,7 +1907,6 @@ finally:
 if merged_papers:
     st.markdown("<p style='font-size:13px; color:#64748b; margin-bottom:10px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
     
-    # Table Header
     h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
     h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Block</div>", unsafe_allow_html=True)
     h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript & Author</div>", unsafe_allow_html=True)
@@ -1998,7 +1969,6 @@ else:
 
 st.markdown("---")
 
-# Proof-of-Research Blockchain Explorer
 exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
 with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
