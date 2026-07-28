@@ -1609,7 +1609,7 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
-# Two-Column Side-by-Side Leaderboards
+# Two-Column Side-by-Side Leaderboards using native interactive cards
 side_col1, side_col2 = st.columns(2, vertical_alignment="top")
 
 with side_col1:
@@ -1617,80 +1617,17 @@ with side_col1:
     piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
-        rows_html = ""
         for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
             book_addr = book_dict.get(author, "None")
-            rows_html += f"""
-                <tr>
-                    <td style="text-align: center; font-weight: bold; width: 8%;"><b>{rank}</b></td>
-                    <td style="font-weight: bold; word-break: break-word; width: 25%;">{author}</td>
-                    <td style="width: 52%;"><code style="font-size: 10px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
-                    <td style="text-align: right; font-weight: bold; width: 15%;">{piq:.2f}</td>
-                </tr>
-            """
-        
-        leaderboard_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-            body { margin: 0; padding: 0; font-family: sans-serif; }
-            .table-container {
-                max-height: 200px;
-                overflow-y: auto;
-                overflow-x: hidden;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-            .leaderboard-table {
-                width: 100%;
-                font-size: 13px;
-                border-collapse: collapse;
-                table-layout: fixed;
-            }
-            .leaderboard-table th {
-                background-color: #2c3e50;
-                color: white;
-                padding: 8px 10px;
-                text-align: left;
-                font-weight: 600;
-                position: sticky;
-                top: 0;
-                z-index: 1;
-            }
-            .leaderboard-table td {
-                padding: 8px 10px;
-                border-bottom: 1px solid #ecf0f1;
-                color: #2c3e50;
-                vertical-align: middle;
-            }
-            .leaderboard-table tr:hover {
-                background-color: #f8fafc;
-            }
-        </style>
-        </head>
-        <body>
-        <div class="table-container">
-            <table class="leaderboard-table">
-                <thead>
-                    <tr>
-                        <th style="text-align: center; width: 8%;">#</th>
-                        <th style="width: 25%;">Contributing Author</th>
-                        <th style="width: 52%;">Book Address</th>
-                        <th style="text-align: right; width: 15%;">piQ</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    __ROWS_PLACEHOLDER__
-                </tbody>
-            </table>
-        </div>
-        </body>
-        </html>
-        """
-        leaderboard_full_html = leaderboard_template.replace("__ROWS_PLACEHOLDER__", rows_html)
-        components.html(leaderboard_full_html, height=210, scrolling=False)
+            with st.container(border=True):
+                r_c1, r_c2, r_c3 = st.columns([1, 6, 3], vertical_alignment="center")
+                with r_c1:
+                    st.markdown(f"**#{rank}**")
+                with r_c2:
+                    st.markdown(f"**{author}**")
+                    st.markdown(f"`{book_addr[:16]}...`")
+                with r_c3:
+                    st.markdown(f"**{piq:.2f} piQ**")
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1705,79 +1642,17 @@ with side_col2:
         conn_pi.close()
     
     if top_papers:
-        pi_rows_html = ""
         for rank, (p_title, p_author, p_score, p_hash) in enumerate(top_papers, start=1):
             clean_auth = clean_author_name(p_author)
-            pi_rows_html += f"""
-                <tr>
-                    <td style="text-align: center; font-weight: bold; width: 8%;"><b>{rank}</b></td>
-                    <td style="font-weight: bold; word-break: break-word; width: 57%;">{p_title[:45]}...</td>
-                    <td style="width: 20%; font-size: 11px;">{clean_auth[:15]}</td>
-                    <td style="text-align: right; font-weight: bold; width: 15%;">{p_score:.2f}</td>
-                </tr>
-            """
-        pi_leaderboard_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-            body { margin: 0; padding: 0; font-family: sans-serif; }
-            .table-container {
-                max-height: 200px;
-                overflow-y: auto;
-                overflow-x: hidden;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-            .leaderboard-table {
-                width: 100%;
-                font-size: 13px;
-                border-collapse: collapse;
-                table-layout: fixed;
-            }
-            .leaderboard-table th {
-                background-color: #2c3e50;
-                color: white;
-                padding: 6px 8px;
-                text-align: left;
-                font-weight: 600;
-                position: sticky;
-                top: 0;
-                z-index: 1;
-            }
-            .leaderboard-table td {
-                padding: 6px 8px;
-                border-bottom: 1px solid #ecf0f1;
-                color: #2c3e50;
-                vertical-align: middle;
-            }
-            .leaderboard-table tr:hover {
-                background-color: #f8fafc;
-            }
-        </style>
-        </head>
-        <body>
-        <div class="table-container">
-            <table class="leaderboard-table">
-                <thead>
-                    <tr>
-                        <th style="text-align: center; width: 8%;">#</th>
-                        <th style="width: 57%;">Manuscript Title</th>
-                        <th style="width: 20%;">Author</th>
-                        <th style="text-align: right; width: 15%;">Score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    __ROWS_PLACEHOLDER__
-                </tbody>
-            </table>
-        </div>
-        </body>
-        </html>
-        """
-        pi_leaderboard_html = pi_leaderboard_template.replace("__ROWS_PLACEHOLDER__", pi_rows_html)
-        components.html(pi_leaderboard_html, height=210, scrolling=False)
+            with st.container(border=True):
+                r_c1, r_c2, r_c3 = st.columns([1, 6, 3], vertical_alignment="center")
+                with r_c1:
+                    st.markdown(f"**#{rank}**")
+                with r_c2:
+                    st.markdown(f"**{p_title}**")
+                    st.markdown(f"*{clean_auth}*")
+                with r_c3:
+                    st.markdown(f"**{p_score:.2f}**")
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
 
