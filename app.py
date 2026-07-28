@@ -407,8 +407,12 @@ if not st.session_state.is_authenticated:
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
 
-            // Force top-level browser window navigation to prevent iframe nesting bugs
-            window.top.location.href = targetUrl.href;
+            // Bypasses iframe sandbox restrictions using a programmatic anchor click with target="_top"
+            const link = document.createElement('a');
+            link.href = targetUrl.href;
+            link.target = "_top";
+            document.body.appendChild(link);
+            link.click();
 
         } catch (err) {
             console.error("MetaMask Connection Error:", err);
