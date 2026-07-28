@@ -128,13 +128,13 @@ if "siwe_address" in st.query_params:
                 recovered_address = w3.eth.account.recover_message(signable_msg, signature=raw_signature)
                 if recovered_address.lower() == clean_wallet.lower():
                     authenticated = True
-                    st.session_state.orcid_name = "Verified Decentralized Identity (SIWE)"
+                    st.session_state.orcid_name = "ScholarPi-Node-Mainnet (Verified SIWE)"
                     add_log(f"MetaMask Identity Cryptographically Authenticated via SIWE: {clean_wallet}")
             except Exception as e:
                 add_log(f"SIWE signature verification fallback: {str(e)}")
         
         if not authenticated:
-            st.session_state.orcid_name = "Connected MetaMask Wallet"
+            st.session_state.orcid_name = "ScholarPi-Node-Mainnet (Connected)"
             add_log(f"MetaMask Connected: {clean_wallet}")
             
         st.session_state.orcid_id = clean_wallet
@@ -408,7 +408,6 @@ if not st.session_state.is_authenticated:
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
 
-            // Open authenticated app cleanly in a new full-size tab (bypasses iframe sandbox restrictions)
             statusDiv.innerHTML = `<a href="${targetUrl.href}" target="_blank" style="display:block; margin-top:8px; background:#0f172a; color:white; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">Open Authenticated App in New Tab</a>`;
 
         } catch (err) {
@@ -1495,7 +1494,7 @@ with top_analytics_col1:
             or st.session_state.last_trained_blocks != current_block_count
             or st.session_state.get("last_lookback") != lookback_window
         ):
-            weight_data = np.array(historical_rows, dtype=np.float32)
+            weight_data = np.array(historical_rows, dtype=torch.float32)
 
             st.session_state.predicted_next_weights = train_pidyne_cached(weight_data, lookback_window)
             st.session_state.current_weights = weight_data[-1]
