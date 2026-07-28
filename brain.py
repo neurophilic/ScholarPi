@@ -8,6 +8,7 @@ import re
 import difflib
 import concurrent.futures
 from datetime import datetime
+from transformers import pipeline
 
 import fitz
 import numpy as np
@@ -61,31 +62,30 @@ class ScilemNetwork(nn.Module):
 scilem_model = ScilemNetwork()
 scilem_optimizer = optim.Adam(scilem_model.parameters(), lr=0.001)
 
+# Global initialization for Scilem Assistant pipeline
+scilem_nlp = None 
+
 def evaluate_scilem_analysis_report(raw_text):
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    if os.path.exists(scilem_weights_path):
+    global scilem_nlp
+    if scilem_nlp is None:
         try:
-            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
-        except Exception:
-            pass
+            # Loads a lightweight, local conversational model
+            scilem_nlp = pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v1.0", device_map="auto")
+        except Exception as e:
+            return f"Scilem Local Neural Engine initialization failed: {e}"
 
-    scilem_model.eval()
-    words = raw_text.lower().split()[:512]
-    tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
-    if not tokens:
-        tokens = [0]
-    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
-
-    with torch.no_grad():
-        feat_val = scilem_model(paper_tensor).item()
+    # Format the prompt for the model
+    prompt = f"<|system|>\nYou are Scilem, the AI assistant for the Pi-Index Framework.\n<|user|>\n{raw_text}\n<|assistant|>"
     
-    score_pred = 50.0 + (feat_val * 40.0)
-    analysis_summary = (
-        f"Scilem Local Neural Engine Audit: Manifold projection = {feat_val:.4f}. "
-        f"Structural integrity rating predicted at {score_pred:.1f}/100. "
-        f"Evaluated C1-C8 feature density directly from token sequences."
-    )
-    return analysis_summary
+    try:
+        response = scilem_nlp(prompt, max_new_tokens=150, truncation=True)
+        # Extract just the assistant's reply
+        generated_text = response[0]['generated_text'].split("<|assistant|>")[-1].strip()
+        
+        return f"**Scilem:** {generated_text}"
+        
+    except Exception as e:
+        return f"Scilem encountered an error while processing the request: {e}"
 
 def extract_with_scilem(paper_text):
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
