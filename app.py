@@ -385,7 +385,8 @@ if not has_web3:
     }});
     </script>
     """
-    st.sidebar.components.html(metamask_ui_html, height=120)
+    with st.sidebar:
+        components.html(metamask_ui_html, height=120)
 else:
     st.sidebar.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
