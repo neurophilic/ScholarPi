@@ -99,22 +99,76 @@ def rbot(topic_key):
 
 custom_ui_code = """
 <style>
-.stMarkdown h1 a, .stMarkdown h2 a, .stMarkdown h3 a, 
-.stMarkdown h4 a, .stMarkdown h5 a, .stMarkdown h6 a,
+/* --- Global Sleek Typography & Layout --- */
+h1, h2, h3, h4, h5, h6 {
+    color: #0f172a !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em !important;
+}
+
+hr {
+    border-color: #e2e8f0 !important;
+    margin: 1.5rem 0 !important;
+}
+
 [data-testid="stHeaderActionElements"] {
     display: none !important;
 }
 
+/* --- Sleek Sidebar --- */
 [data-testid="stSidebar"] {
+    background-color: #f8fafc !important;
+    border-right: 1px solid #e2e8f0 !important;
     overflow-y: auto !important;
 }
 
+/* --- Container Cards (Borders & Shadows) --- */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 12px !important;
+    border: 1px solid #e2e8f0 !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+    transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out !important;
+    padding: 0.5rem !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* --- Interactive Buttons --- */
+.stButton>button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.01em !important;
+    transition: all 0.2s ease !important;
+}
+.stButton>button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
+    padding: 0.35rem 0.75rem !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+}
+
+/* --- Expanders --- */
+[data-testid="stExpander"] {
+    border-radius: 10px !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+    background-color: #ffffff !important;
+}
+
+/* --- Scilem Assistant Floating Chat --- */
 [data-testid="stChatMessage"]:has(div:contains("👤")) {
     flex-direction: row-reverse !important;
-    background-color: #e8f0fe !important;
+    background-color: #f1f5f9 !important;
     border-radius: 10px 0 10px 10px !important;
     text-align: right !important;
     margin-left: 20px !important;
+    border: 1px solid #e2e8f0 !important;
 }
 
 .scilem-trigger {
@@ -131,7 +185,7 @@ custom_ui_code = """
 }
 
 #scilem-drag-handle {
-    background: linear-gradient(135deg, #1e293b, #0f172a);
+    background: linear-gradient(135deg, #0f172a, #1e293b);
     color: white;
     padding: 12px 16px;
     font-weight: 700;
@@ -152,12 +206,7 @@ custom_ui_code = """
     cursor: grabbing;
 }
 
-button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
-    padding: 0.35rem 0.75rem !important;
-    font-size: 14px !important;
-    white-space: nowrap !important;
-}
-
+/* --- Iframe & PyVis --- */
 iframe {
     border: none !important;
     border-radius: 8px !important;
@@ -251,9 +300,9 @@ function initUI() {
                     block.style.right = 'auto';
                     block.style.width = '380px';
                     block.style.backgroundColor = '#ffffff';
-                    block.style.border = '1px solid #d0d7de';
+                    block.style.border = '1px solid #cbd5e1';
                     block.style.borderRadius = '12px';
-                    block.style.boxShadow = '0 10px 40px rgba(0,0,0,0.3)';
+                    block.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)';
                     block.style.zIndex = '999999';
                     block.style.padding = '1rem';
                     block.style.transition = 'none'; 
@@ -716,7 +765,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
         "mynetwork", f"pi_network_{int(time.time() * 1000)}"
     )
 
-    table_html = "<style>.table-big { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 10px; font-family: sans-serif; } .table-big th { background-color: #2c3e50; color: white; padding: 6px; text-align: left; } .table-big td { padding: 6px; border-bottom: 1px solid #ecf0f1; } .color-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; } </style>"
+    table_html = "<style>.table-big { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 10px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; } .table-big th { background-color: #f8fafc; color: #475569; padding: 8px; text-align: left; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; border-bottom: 2px solid #e2e8f0; } .table-big td { padding: 8px; border-bottom: 1px solid #f1f5f9; color: #1e293b; } .color-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1); } </style>"
     table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
     for topic, metrics in sorted(
         topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True
@@ -771,13 +820,13 @@ with top_title_col:
 with top_badge_col:
     st.markdown(
         f"""
-        <div style="float: right; background-color: #2c3e50; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-            Total Analyzed Papers: {total_analyzed_count}
+        <div style="float: right; background-color: #0f172a; color: white; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            Total Analyzed Papers: <span style="color: #60a5fa;">{total_analyzed_count}</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
-st.markdown("")
+st.markdown("<br>", unsafe_allow_html=True)
 
 with st.container(border=True):
     selected_uploaded_files = []
@@ -830,7 +879,7 @@ with st.container(border=True):
             )
 
     if st.session_state["is_running"]:
-        col_run, col_stop = st.columns([4, 1])
+        col_run, col_stop = st.columns([4, 1], gap="medium")
         with col_run:
             st.button("Working...", type="primary", use_container_width=True, disabled=True)
         with col_stop:
@@ -1101,7 +1150,7 @@ def more_details_dialog(item):
     # --- Section 2: Multi-LLM Extractions ---
     st.markdown("### Multi-LLM Extractions")
     if consensus_raw and isinstance(consensus_raw, dict):
-        llm_cols = st.columns(2)
+        llm_cols = st.columns(2, gap="medium")
         target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"]
         for idx, llm_key in enumerate(target_llms):
             col = llm_cols[idx % 2]
@@ -1229,7 +1278,7 @@ def render_breakdown_item(item, index):
     acknowledged = item.get("warnings_acknowledged", False)
 
     with st.container(border=True):
-        col_info, col_actions = st.columns([6, 4])
+        col_info, col_actions = st.columns([6, 4], gap="medium")
         with col_info:
             if warnings and not acknowledged:
                 warn_badge = f" ⚠️ *({len(warnings)} warning checks active)*"
@@ -1271,7 +1320,7 @@ def render_breakdown_item(item, index):
                     else:
                         st.caption("Warnings acknowledged. Paper evaluated normally with piQ minted.")
         with col_actions:
-            c_det, c_strat, c_del = st.columns([3, 3, 1])
+            c_det, c_strat, c_del = st.columns([3, 3, 1], gap="small")
             with c_det:
                 if st.button("More Details", key=f"more_det_{index}_{eval_hash}", use_container_width=True):
                     more_details_dialog(item)
@@ -1288,14 +1337,14 @@ if (
     or st.session_state.get("download_errors")
 ):
     st.markdown("### Active Session Assessment Results")
-    st.markdown("")
+    st.markdown("<br>", unsafe_allow_html=True)
 
     if st.session_state.get("download_errors"):
         st.markdown("#### Publisher Access & Download Restrictions")
         for err_idx, err_data in enumerate(
             st.session_state["download_errors"]
         ):
-            err_col1, err_col2 = st.columns([6, 1])
+            err_col1, err_col2 = st.columns([6, 1], gap="medium")
             with err_col1:
                 st.warning(
                     f"**Could not directly download PDF for '{err_data['title']}':**"
@@ -1310,13 +1359,14 @@ if (
                 ):
                     st.session_state["download_errors"].pop(err_idx)
                     st.rerun()
-        st.markdown("")
+        st.markdown("<br>", unsafe_allow_html=True)
 
     for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
         render_breakdown_item(item, item_idx)
 
 # Analytics Section
-top_analytics_col1, top_analytics_col2 = st.columns(2)
+st.markdown("<br>", unsafe_allow_html=True)
+top_analytics_col1, top_analytics_col2 = st.columns(2, gap="large")
 
 with top_analytics_col1:
     col_fc1, col_fc_pop, col_fc2 = st.columns([2.5, 0.5, 1], vertical_alignment="center")
@@ -1437,19 +1487,19 @@ with top_analytics_col1:
             ).properties(height=350)
             st.altair_chart(base, use_container_width=True)
 
-        st.markdown("### Evaluation Metrics")
+        st.markdown("#### Evaluation Metrics")
         with st.container(border=True):
             st.markdown(f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):**")
             
             crit_info = get_criteria_info(st.session_state.predicted_next_weights)
             
-            cols1 = st.columns(4)
+            cols1 = st.columns(4, gap="small")
             for idx, c_data in enumerate(crit_info[:4]):
                 with cols1[idx]:
                     if st.button(f"{c_data[0]}: {c_data[3]:.5f}", key=f"btn_crit_{c_data[0]}", use_container_width=True):
                         criterion_details_dialog(*c_data)
                         
-            cols2 = st.columns(4)
+            cols2 = st.columns(4, gap="small")
             for idx, c_data in enumerate(crit_info[4:]):
                 with cols2[idx]:
                     if st.button(f"{c_data[0]}: {c_data[3]:.5f}", key=f"btn_crit_{c_data[0]}", use_container_width=True):
@@ -1524,7 +1574,7 @@ with top_analytics_col2:
             st.info("No authors available for filtering.")
 
     with tab_mod:
-        mod_col1, mod_col2 = st.columns(2)
+        mod_col1, mod_col2 = st.columns(2, gap="medium")
         with mod_col1:
             st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
             st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
@@ -1639,7 +1689,7 @@ if st.session_state.is_authenticated:
     st.markdown("---")
 
 # Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20) with table-like headers
-side_col1, side_col2 = st.columns(2, vertical_alignment="top")
+side_col1, side_col2 = st.columns(2, gap="large")
 
 with side_col1:
     st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
@@ -1649,11 +1699,11 @@ with side_col1:
         
         # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 3.2, 4.5, 1.5])
-        h_c1.markdown("**#**")
-        h_c2.markdown("**Author**")
-        h_c3.markdown("**Book Address**")
-        h_c4.markdown("**piQ**")
-        st.markdown("<hr style='margin:4px 0px 8px 0px;'>", unsafe_allow_html=True)
+        h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
+        h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
+        h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Book Address</div>", unsafe_allow_html=True)
+        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>piQ</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
 
         piq_scroll = st.container(height=380)
         with piq_scroll:
@@ -1687,11 +1737,11 @@ with side_col2:
     if top_papers:
         # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 4.2, 2.5, 2.5])
-        h_c1.markdown("**#**")
-        h_c2.markdown("**Manuscript Title**")
-        h_c3.markdown("**Author**")
-        h_c4.markdown("**Score / Action**")
-        st.markdown("<hr style='margin:4px 0px 8px 0px;'>", unsafe_allow_html=True)
+        h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
+        h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript Title</div>", unsafe_allow_html=True)
+        h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
+        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Score / Action</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
 
         pix_scroll = st.container(height=380)
         with pix_scroll:
@@ -1761,15 +1811,15 @@ finally:
     conn_recent.close()
 
 if merged_papers:
-    st.markdown("<p style='font-size:12px; color:#64748b; margin-bottom:6px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size:13px; color:#64748b; margin-bottom:10px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
     
     # Table Header
     h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
-    h_c1.markdown("**Block**")
-    h_c2.markdown("**Manuscript & Author**")
-    h_c3.markdown("**Score / piQ**")
-    h_c4.markdown("**Action**")
-    st.markdown("<hr style='margin:4px 0px 8px 0px;'>", unsafe_allow_html=True)
+    h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Block</div>", unsafe_allow_html=True)
+    h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript & Author</div>", unsafe_allow_html=True)
+    h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Score / piQ</div>", unsafe_allow_html=True)
+    h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Action</div>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
 
     recent_scroll_container = st.container(height=420)
     with recent_scroll_container:
@@ -1831,7 +1881,7 @@ exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
 with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
 with exp_head_col2:
-    with st.popover("ⓘ", help="View Extra Ledger Info"):
+    with st.popover("ℹ️", help="View Extra Ledger Info"):
         st.markdown(
             "**Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, "
             "sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) "
