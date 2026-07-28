@@ -23,19 +23,19 @@ import streamlit as st
 import streamlit.components.v1 as components
 from web3 import Web3
 
-from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS
-from database import get_db_connection
-from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url
+from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS[cite: 4]
+from database import get_db_connection[cite: 6]
+from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url[cite: 8]
 from integrations import (
     clean_author_name, is_likely_institution, fetch_doi_metadata, 
     fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics,
     fetch_core_text_by_doi, create_virtual_pdf_from_text
-)
+)[cite: 7]
 from brain import (
     process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
     PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem,
     evaluate_scilem_analysis_report
-)
+)[cite: 3]
 
 w3 = Web3()
 
@@ -59,27 +59,27 @@ def safe_get_sepolia_url(tx):
     if not tx or not isinstance(tx, str) or not tx.startswith("0x") or len(tx) != 66:
         return None
     try:
-        return get_sepolia_explorer_url(tx, "tx")
+        return get_sepolia_explorer_url(tx, "tx")[cite: 8]
     except Exception:
         return None
 
 def get_author_piq_dict():
-    conn = get_db_connection()
+    conn = get_db_connection()[cite: 6]
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT author_name, piq_minted, eth_book FROM papers_assessment")
         data = cursor.fetchall()
     finally:
-        conn.close()
+        conn.close()[cite: 6]
     
     author_piq, author_book = {}, {}
     for authors_str, piq, eth_book in data:
-        clean_authors = clean_author_name(authors_str)
+        clean_authors = clean_author_name(authors_str)[cite: 7]
         if (
             not clean_authors
             or clean_authors.lower()
             in ["unidentified", "unknown", "research scholar"]
-            or is_likely_institution(clean_authors)
+            or is_likely_institution(clean_authors)[cite: 7]
         ):
             continue
         alist = [a.strip() for a in clean_authors.split(",") if a.strip()]
@@ -298,7 +298,7 @@ try:
 except Exception:
     pass
 
-conn_ip = get_db_connection()
+conn_ip = get_db_connection()[cite: 6]
 try:
     cur_ip = conn_ip.cursor()
     cur_ip.execute(
@@ -312,18 +312,18 @@ try:
         )
         conn_ip.commit()
 finally:
-    conn_ip.close()
+    conn_ip.close()[cite: 6]
 
-conn_cnt = get_db_connection()
+conn_cnt = get_db_connection()[cite: 6]
 try:
     cur_cnt = conn_cnt.cursor()
     cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
     total_analyzed_count = cur_cnt.fetchone()[0]
 finally:
-    conn_cnt.close()
+    conn_cnt.close()[cite: 6]
 
 if "state_restored" not in st.session_state:
-    restore_state_from_web3()
+    restore_state_from_web3()[cite: 8]
     st.session_state["state_restored"] = True
     add_log("Synchronized state with Sepolia Ethereum Ledger.")
 
@@ -399,7 +399,7 @@ if not st.session_state.is_authenticated:
 else:
     st.sidebar.success("Securely Connected")
     
-    conn_hist = get_db_connection()
+    conn_hist = get_db_connection()[cite: 6]
     total_user_piq = 0.0
     try:
         cur_h = conn_hist.cursor()
@@ -410,7 +410,7 @@ else:
         piq_rows = cur_h.fetchall()
         total_user_piq = sum(float(r[0]) for r in piq_rows if r[0])
     finally:
-        conn_hist.close()
+        conn_hist.close()[cite: 6]
         
     auth_disp = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
     
@@ -463,7 +463,7 @@ with scilem_container:
             submitted_floating = st.form_submit_button("Send")
             if submitted_floating and floating_prompt.strip():
                 st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
-                scilem_neural_reply = evaluate_scilem_analysis_report(floating_prompt)
+                scilem_neural_reply = evaluate_scilem_analysis_report(floating_prompt)[cite: 3]
                 st.session_state.scilem_messages.append({
                     "role": "assistant",
                     "content": scilem_neural_reply
@@ -478,7 +478,7 @@ with scilem_container:
         and current_user.lower() == OWNER_ID.lower()
     ):
         if st.button("Reset Scilem (Owner)"):
-            msg = reset_scilem()
+            msg = reset_scilem()[cite: 3]
             st.session_state.scilem_messages = [
                 {
                     "role": "assistant", 
@@ -531,13 +531,13 @@ def refine_science_field(s):
         return f"Engineering & Technology > Applied Technical Research ({s.title()})"
 
 def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, size_scale=1.5, central_grav=0.15):
-    conn = get_db_connection()
+    conn = get_db_connection()[cite: 6]
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT fields, subfields, final_score, author_name FROM papers_assessment")
         data = cursor.fetchall()
     finally:
-        conn.close()
+        conn.close()[cite: 6]
 
     html_string, table_html = "", ""
     if not data:
@@ -550,7 +550,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
     }
 
     for fields_json, subfields_json, final_score, author_str in data:
-        cleaned_author = clean_author_name(author_str)
+        cleaned_author = clean_author_name(author_str)[cite: 7]
         if (
             target_author
             and target_author != "All Authors"
@@ -1012,7 +1012,7 @@ with st.container(border=True):
 @st.dialog("Detailed Research Integrity Dossier", width="large")
 def more_details_dialog(item):
     title = item["title"]
-    author_name = clean_author_name(item["author_name"])
+    author_name = clean_author_name(item["author_name"])[cite: 7]
     score = item["score"]
     logic_integrity = item["logic_integrity"]
     scores_dict = item["scores_dict"]
@@ -1043,12 +1043,12 @@ def more_details_dialog(item):
     st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
     st.write(f"**Unique Book Address:** `{author_book}`")
     st.write(f"**piQ Minted:** `{piq}`")
-    st.markdown(f"**zk-SNARK Proof:** `{zk_proof}`", unsafe_allow_html=True)
+    st.markdown(f"**zk-SNARK Proof:** `{zk_proof}`", unsafe_allow_html=True)[cite: 8]
     
-    tx_url = safe_get_sepolia_url(tx_hash)
+    tx_url = safe_get_sepolia_url(tx_hash)[cite: 8]
     tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
     if tx_url:
-        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
+        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")[cite: 8]
     else:
         st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
@@ -1179,7 +1179,7 @@ def defense_strategy_dialog(scores_dict):
 
 def render_breakdown_item(item, index):
     title = item["title"]
-    author_name = clean_author_name(item["author_name"])
+    author_name = clean_author_name(item["author_name"])[cite: 7]
     score = item["score"]
     eval_hash = item["eval_hash"]
     piq = item["piq"]
@@ -1287,12 +1287,12 @@ with top_analytics_col1:
 
     @st.cache_data(show_spinner="Training Pidyne LSTM Model in background...")
     def train_pidyne_cached(weight_data, actual_lookback):
-        dataset = PidyneBlockchainDataset(weight_data, actual_lookback)
+        dataset = PidyneBlockchainDataset(weight_data, actual_lookback)[cite: 3]
         dataloader = DataLoader(
             dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
         )
 
-        model = PidyneLSTM()
+        model = PidyneLSTM()[cite: 3]
         weights_path = os.path.join(BASE_DIR, "pidyne_weights.pt")
         if os.path.exists(weights_path):
             try:
@@ -1329,7 +1329,7 @@ with top_analytics_col1:
             torch.save(model.state_dict(), weights_path)
             return predicted
 
-    conn_pb = get_db_connection()
+    conn_pb = get_db_connection()[cite: 6]
     try:
         cursor_pb = conn_pb.cursor()
         cursor_pb.execute(
@@ -1338,7 +1338,7 @@ with top_analytics_col1:
         )
         historical_rows = cursor_pb.fetchall()
     finally:
-        conn_pb.close()
+        conn_pb.close()[cite: 6]
 
     min_blocks_required = 2
     if len(historical_rows) < min_blocks_required:
@@ -1410,9 +1410,9 @@ with top_analytics_col1:
             st.markdown(r"""
             **What's Pidyne?**
             Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
-            1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria.
-            2. **Multi-Model Consensus:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini) to synthesize an adversarial Evidence Report and unified AI Rating.
-            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block.
+            1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria[cite: 3].
+            2. **Multi-Model Consensus:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini) to synthesize an adversarial Evidence Report and unified AI Rating[cite: 3].
+            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block[cite: 8].
             """)
 
 with top_analytics_col2:
@@ -1429,19 +1429,19 @@ with top_analytics_col2:
             unsafe_allow_html=True,
         )
 
-    conn_m = get_db_connection()
+    conn_m = get_db_connection()[cite: 6]
     try:
         cursor_m = conn_m.cursor()
         cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
         all_global_authors = []
         for row in cursor_m.fetchall():
             if row[0]:
-                cleaned = clean_author_name(row[0])
+                cleaned = clean_author_name(row[0])[cite: 7]
                 for a in cleaned.split(","):
-                    if a.strip() and not is_likely_institution(a.strip()):
+                    if a.strip() and not is_likely_institution(a.strip()):[cite: 7]
                         all_global_authors.append(a.strip())
     finally:
-        conn_m.close()
+        conn_m.close()[cite: 6]
     all_global_authors = sorted(list(set(all_global_authors)))
 
     piq_dict, book_dict = get_author_piq_dict()
@@ -1510,7 +1510,7 @@ st.markdown("---")
 
 # User History or Auth Prompt
 if st.session_state.is_authenticated:
-    conn_hist = get_db_connection()
+    conn_hist = get_db_connection()[cite: 6]
     try:
         cur_h = conn_hist.cursor()
         history_clauses = []
@@ -1540,7 +1540,7 @@ if st.session_state.is_authenticated:
             cur_h.execute("SELECT NULL WHERE 0")
         user_history_rows = cur_h.fetchall()
     finally:
-        conn_hist.close()
+        conn_hist.close()[cite: 6]
 
     st.markdown("### Your Assessment History & Rewards")
 
@@ -1554,9 +1554,9 @@ if st.session_state.is_authenticated:
                 u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8
             ) = uh
 
-            u_author_clean = clean_author_name(u_author)
+            u_author_clean = clean_author_name(u_author)[cite: 7]
             u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
-            u_tx_url = safe_get_sepolia_url(u_tx)
+            u_tx_url = safe_get_sepolia_url(u_tx)[cite: 8]
             
             tx_disp_val = u_tx if u_tx and str(u_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
@@ -1568,10 +1568,10 @@ if st.session_state.is_authenticated:
                 st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
                 st.write(f"**Unique Book Address:** `{u_book}`")
                 st.write(f"**piQ Minted:** `{u_piq}`")
-                st.markdown(f"**zk-SNARK Proof:** `{u_zk}`", unsafe_allow_html=True)
+                st.markdown(f"**zk-SNARK Proof:** `{u_zk}`", unsafe_allow_html=True)[cite: 8]
                 
                 if u_tx_url:
-                    st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({u_tx_url})")
+                    st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({u_tx_url})")[cite: 8]
                 else:
                     st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
@@ -1696,18 +1696,18 @@ with side_col1:
 
 with side_col2:
     st.markdown("### pi-Index (piX) Leaderboard [Top Papers]")
-    conn_pi = get_db_connection()
+    conn_pi = get_db_connection()[cite: 6]
     try:
         cur_pi = conn_pi.cursor()
         cur_pi.execute("SELECT title, author_name, final_score, eval_hash FROM papers_assessment ORDER BY final_score DESC LIMIT 5")
         top_papers = cur_pi.fetchall()
     finally:
-        conn_pi.close()
+        conn_pi.close()[cite: 6]
     
     if top_papers:
         pi_rows_html = ""
         for rank, (p_title, p_author, p_score, p_hash) in enumerate(top_papers, start=1):
-            clean_auth = clean_author_name(p_author)
+            clean_auth = clean_author_name(p_author)[cite: 7]
             pi_rows_html += f"""
                 <tr>
                     <td style="text-align: center; font-weight: bold; width: 10%;"><b>{rank}</b></td>
@@ -1783,7 +1783,7 @@ with side_col2:
 
 with side_col3:
     st.markdown("### Latest Assessed Papers & Ledger Proofs")
-    conn_recent = get_db_connection()
+    conn_recent = get_db_connection()[cite: 6]
     try:
         cur_recent = conn_recent.cursor()
         cur_recent.execute(
@@ -1799,7 +1799,7 @@ with side_col3:
         )
         merged_papers = cur_recent.fetchall()
     finally:
-        conn_recent.close()
+        conn_recent.close()[cite: 6]
 
     if merged_papers:
         rows_html = ""
@@ -1815,9 +1815,9 @@ with side_col3:
             bh = m_block_height if m_block_height is not None else "Pending"
             eh_short = m_hash[:8] + "..." if m_hash else "N/A"
             piq_val = f"{m_piq:.2f}"
-            clean_auth = clean_author_name(m_author)
+            clean_auth = clean_author_name(m_author)[cite: 7]
             
-            tx_url = safe_get_sepolia_url(m_tx)
+            tx_url = safe_get_sepolia_url(m_tx)[cite: 8]
             tx_short = m_tx[:8] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
             tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
             title_short = (m_title[:28] + "...") if len(m_title) > 28 else m_title
@@ -1905,7 +1905,7 @@ with side_col3:
                 m_consensus, m_report, m_scilem
             ) = mp
             
-            m_author_clean = clean_author_name(m_author)
+            m_author_clean = clean_author_name(m_author)[cite: 7]
             btn_txt = f"[{idx+1}] {m_title[:32]}... — {m_author_clean[:12]} ({m_score:.1f})"
             if st.button(btn_txt, key=f"btn_row_dossier_{idx}_{m_hash}", use_container_width=True):
                 item_dossier = {
@@ -1945,7 +1945,7 @@ with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
 with exp_head_col2:
     with st.popover("ℹ️", help="View Extra Ledger Info"):
-        conn_pop = get_db_connection()
+        conn_pop = get_db_connection()[cite: 6]
         try:
             cur_pop = conn_pop.cursor()
             cur_pop.execute(
@@ -1955,17 +1955,17 @@ with exp_head_col2:
         except Exception:
             p_data = None
         finally:
-            conn_pop.close()
+            conn_pop.close()[cite: 6]
             
         if p_data:
             p_proof, b_hash, f_hash = p_data
             st.markdown(f"**Latest Proof-of-Research:** `{p_proof}` successfully verified and sealed to block `{b_hash}`.")
             st.markdown(f"**Unalterable Criteria State Hash:** `{f_hash}` (Guarantees grading mathematical constants cannot be tampered with).")
-        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"[cite: 4]
+        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"[cite: 4]
+        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")[cite: 4]
 
-conn = get_db_connection()
+conn = get_db_connection()[cite: 6]
 try:
     cursor = conn.cursor()
     try:
@@ -2018,9 +2018,9 @@ try:
                             m_consensus, m_report, m_scilem
                         ) = mr
 
-                        m_author_clean = clean_author_name(m_author)
+                        m_author_clean = clean_author_name(m_author)[cite: 7]
                         m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
-                        m_tx_url = safe_get_sepolia_url(m_tx)
+                        m_tx_url = safe_get_sepolia_url(m_tx)[cite: 8]
                         
                         tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
@@ -2033,10 +2033,10 @@ try:
                             st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
                             st.write(f"**Unique Book Address:** `{m_book}`")
                             st.write(f"**piQ Minted:** `{m_piq}`")
-                            st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
+                            st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)[cite: 8]
                             
                             if m_tx_url:
-                                st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
+                                st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")[cite: 8]
                             else:
                                 st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
@@ -2078,7 +2078,7 @@ try:
                 st.error(f"Error reading database: {str(e)}")
 
 finally:
-    conn.close()
+    conn.close()[cite: 6]
 
 @st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
 def framework_workflow_dialog():
