@@ -750,7 +750,7 @@ def evaluation_metrics_dialog():
         tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
 
     st.markdown(
-        f"**Adversarial Logic Gap ($\Delta_{{Logic}}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+        r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
         unsafe_allow_html=True
     )
     st.markdown(
@@ -1609,19 +1609,37 @@ with bottom_col1:
         conn_hist = get_db_connection()
         try:
             cur_h = conn_hist.cursor()
-            cur_h.execute(
-                """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                          p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                          b.block_height, b.block_hash, p.mdar_adherence_score, 
-                          p.rrid_valid_count, p.reproducibility_score,
-                          p.consensus_data, p.evidence_report, p.scilem_score,
-                          p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8
-                   FROM papers_assessment p
-                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                   WHERE p.eth_book = ? OR p.user_id = ? OR p.eth_book = '0009-0009-8456-8050'
-                   ORDER BY p.timestamp DESC""",
-                (st.session_state.orcid_id, st.session_state.academic_id)
-            )
+            history_clauses = []
+            history_params = []
+            # Only match on an identifier if it's an actual, non-default value
+            # for *this* auth method -- otherwise a Web3 user (whose
+            # academic_id stays "None") or an Academic-ID user (whose wallet
+            # stays the zero address) could match every record stored under
+            # that same shared default, leaking other users' / anonymous
+            # submissions into "your" history.
+            if st.session_state.auth_method == "Web3" and w3.is_address(st.session_state.orcid_id):
+                history_clauses.append("p.eth_book = ?")
+                history_params.append(st.session_state.orcid_id)
+            if st.session_state.auth_method == "Academic ID" and st.session_state.academic_id not in ("None", ""):
+                history_clauses.append("p.user_id = ?")
+                history_params.append(st.session_state.academic_id)
+
+            if history_clauses:
+                cur_h.execute(
+                    f"""SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                              p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                              b.block_height, b.block_hash, p.mdar_adherence_score, 
+                              p.rrid_valid_count, p.reproducibility_score,
+                              p.consensus_data, p.evidence_report, p.scilem_score,
+                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8
+                       FROM papers_assessment p
+                       LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                       WHERE {' OR '.join(history_clauses)}
+                       ORDER BY p.timestamp DESC""",
+                    tuple(history_params)
+                )
+            else:
+                cur_h.execute("SELECT NULL WHERE 0")
             user_history_rows = cur_h.fetchall()
         finally:
             conn_hist.close()
