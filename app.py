@@ -1399,7 +1399,7 @@ with top_analytics_col1:
 
         st.markdown("### Evaluation Metrics")
         with st.container(border=True):
-            st.markdown(f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** Click a criterion below for logic formulas.")
+            st.markdown(f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):**")
             
             crit_info = get_criteria_info(st.session_state.predicted_next_weights)
             
@@ -1609,25 +1609,27 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
-# Two-Column Side-by-Side Leaderboards using native interactive cards
+# Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20)
 side_col1, side_col2 = st.columns(2, vertical_alignment="top")
 
 with side_col1:
     st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
     piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
-        sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
-        for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
-            book_addr = book_dict.get(author, "None")
-            with st.container(border=True):
-                r_c1, r_c2, r_c3 = st.columns([1, 6, 3], vertical_alignment="center")
-                with r_c1:
-                    st.markdown(f"**#{rank}**")
-                with r_c2:
-                    st.markdown(f"**{author}**")
-                    st.markdown(f"`{book_addr[:16]}...`")
-                with r_c3:
-                    st.markdown(f"**{piq:.2f} piQ**")
+        sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
+        piq_scroll = st.container(height=420)
+        with piq_scroll:
+            for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
+                book_addr = book_dict.get(author, "None")
+                with st.container(border=True):
+                    r_c1, r_c2, r_c3 = st.columns([1, 6, 3], vertical_alignment="center")
+                    with r_c1:
+                        st.markdown(f"**#{rank}**")
+                    with r_c2:
+                        st.markdown(f"**{author}**")
+                        st.markdown(f"`{book_addr[:16]}...`")
+                    with r_c3:
+                        st.markdown(f"**{piq:.2f} piQ**")
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1636,29 +1638,71 @@ with side_col2:
     conn_pi = get_db_connection()
     try:
         cur_pi = conn_pi.cursor()
-        cur_pi.execute("SELECT title, author_name, final_score, eval_hash FROM papers_assessment ORDER BY final_score DESC LIMIT 5")
+        cur_pi.execute(
+            """SELECT title, author_name, final_score, logic_score, 
+                      c1, c2, c3, c4, c5, c6, c7, c8, 
+                      piq_minted, tx_hash, zk_proof, mdar_adherence_score, 
+                      rrid_valid_count, reproducibility_score, eval_hash, filename,
+                      consensus_data, evidence_report, scilem_score
+               FROM papers_assessment ORDER BY final_score DESC LIMIT 20"""
+        )
         top_papers = cur_pi.fetchall()
     finally:
         conn_pi.close()
     
     if top_papers:
-        for rank, (p_title, p_author, p_score, p_hash) in enumerate(top_papers, start=1):
-            clean_auth = clean_author_name(p_author)
-            with st.container(border=True):
-                r_c1, r_c2, r_c3 = st.columns([1, 6, 3], vertical_alignment="center")
-                with r_c1:
-                    st.markdown(f"**#{rank}**")
-                with r_c2:
-                    st.markdown(f"**{p_title}**")
-                    st.markdown(f"*{clean_auth}*")
-                with r_c3:
-                    st.markdown(f"**{p_score:.2f}**")
+        pix_scroll = st.container(height=420)
+        with pix_scroll:
+            for rank, tp in enumerate(top_papers, start=1):
+                (
+                    p_title, p_author, p_filename, p_score, p_logic,
+                    p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7, p_c8,
+                    p_piq, p_tx, p_zk, p_mdar, p_rrid, p_repro, p_hash,
+                    p_consensus, p_report, p_scilem
+                ) = tp
+                clean_auth = clean_author_name(p_author)
+                with st.container(border=True):
+                    r_c1, r_c2, r_c3 = st.columns([1.5, 5, 2.5], vertical_alignment="center")
+                    with r_c1:
+                        st.markdown(f"**#{rank}**")
+                        st.markdown(f"Score: `{p_score:.2f}`")
+                    with r_c2:
+                        st.markdown(f"**{p_title}**")
+                        st.markdown(f"*{clean_auth}*")
+                    with r_c3:
+                        if st.button("View Dossier", key=f"pix_row_dossier_{rank}_{p_hash}", use_container_width=True):
+                            item_dossier = {
+                                "title": p_title,
+                                "author_name": p_author,
+                                "score": p_score,
+                                "logic_integrity": p_logic if p_logic is not None else 75.0,
+                                "scores_dict": {
+                                    "C1_Semantic_Originality": p_c1, "C2_Methodological_Rigor_SciScore": p_c2,
+                                    "C3_Interdisciplinary_Entropy": p_c3, "C4_Societal_Impact": p_c4,
+                                    "C5_Open_Science_Repro": p_c5, "C6_Literature_Integration": p_c6,
+                                    "C7_Empirical_Density": p_c7, "C8_Future_Actionability_FAIR": p_c8
+                                },
+                                "used_weights": [1.0]*8,
+                                "eval_hash": p_hash,
+                                "piq": p_piq,
+                                "tx_hash": p_tx,
+                                "zk_proof": p_zk,
+                                "h_idx": p_mdar,
+                                "i10_idx": p_rrid,
+                                "repro_score": p_repro,
+                                "filename": p_filename or "N/A",
+                                "warnings": [],
+                                "consensus_raw": json.loads(p_consensus) if p_consensus else {},
+                                "evidence_report_text": p_report or "",
+                                "scilem_rating": p_scilem if p_scilem is not None else 50.0
+                            }
+                            more_details_dialog(item_dossier)
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
 
 st.markdown("---")
 
-# Dedicated line for Latest Assessed Papers using native interactive cards inside a scrollable container
+# Dedicated line for Latest Assessed Papers using scrollable native interactive containers (Limit 20)
 st.markdown("### Latest Assessed Papers")
 conn_recent = get_db_connection()
 try:
