@@ -290,35 +290,34 @@ st.sidebar.title("System Access & Sync")
 has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
 has_orcid = bool(st.session_state.orcid_profile)
 
-# Sidebar Dual Identity Sync Dashboard
-# 1. MetaMask Wallet Button on Top of ORCID Button with exact user label "Conncet MetaMask"
-if not has_web3:
-    current_orcid_js = st.session_state.orcid_profile if st.session_state.orcid_profile else ""
-    current_orcid_name_js = st.session_state.researcher_name if st.session_state.researcher_name != "Anonymous Researcher" else ""
-    
-    metamask_ui_html = f"""
-    <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2px;">
-        <button id="connect-mm-btn" type="button" style="
-            width: 100%;
-            background: linear-gradient(135deg, #f6851b, #e2761b);
-            color: white;
-            border: none;
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 13px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
-            transition: all 0.2s ease;
-        ">
-            <span>Conncet MetaMask</span>
-        </button>
-        <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
-    </div>
+# Sidebar Unified Identity & Sync Dashboard
+current_orcid_js = st.session_state.orcid_profile if st.session_state.orcid_profile else ""
+current_orcid_name_js = st.session_state.researcher_name if st.session_state.researcher_name != "Anonymous Researcher" else ""
+state_payload = st.session_state.web3_wallet if has_web3 else "none"
+orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
+
+mm_button_html = f"""
+    <button id="connect-mm-btn" type="button" style="
+        width: 100%;
+        background: linear-gradient(135deg, #f6851b, #e2761b);
+        color: white;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
+        transition: all 0.2s ease;
+        box-sizing: border-box;
+    ">
+        <span>Conncet MetaMask</span>
+    </button>
+    <div id="mm-status" style="margin-top: 4px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
 
     <script>
     function getEthereumProvider() {{
@@ -335,90 +334,92 @@ if not has_web3:
         return provider;
     }}
 
-    document.getElementById('connect-mm-btn').addEventListener('click', async () => {{
-        const statusDiv = document.getElementById('mm-status');
-        statusDiv.style.color = "#2563eb";
-        statusDiv.innerText = "Connecting...";
+    const mmBtn = document.getElementById('connect-mm-btn');
+    if (mmBtn) {{
+        mmBtn.addEventListener('click', async () => {{
+            const statusDiv = document.getElementById('mm-status');
+            statusDiv.style.color = "#2563eb";
+            statusDiv.innerText = "Connecting...";
 
-        const provider = getEthereumProvider();
-        if (!provider) {{
-            statusDiv.innerText = "MetaMask not detected!";
-            return;
-        }}
-
-        try {{
-            const accounts = await provider.request({{ method: 'eth_requestAccounts' }});
-            if (!accounts || accounts.length === 0) return;
-            const account = accounts[0];
-            statusDiv.innerText = "Signing SIWE...";
-
-            const domain = "ScholarPi";
-            const nonce = Math.floor(Math.random() * 100000000);
-            const message = `${{domain}} wants you to sign in with your Ethereum account:\\n${{account}}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${{nonce}}\\nIssued At: ${{new Date().toISOString()}}`;
-
-            let signature = null;
-            try {{
-                const hexMessage = '0x' + Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
-                signature = await provider.request({{
-                    method: 'personal_sign',
-                    params: [hexMessage, account]
-                }});
-            }} catch (e) {{}}
-
-            const targetUrl = new URL(window.top.location.href.split('?')[0]);
-            targetUrl.searchParams.set("siwe_address", account);
-            if (signature) {{
-                targetUrl.searchParams.set("siwe_signature", signature);
-                targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
+            const provider = getEthereumProvider();
+            if (!provider) {{
+                statusDiv.innerText = "MetaMask not detected!";
+                return;
             }}
-            
-            const currentOrcid = "{current_orcid_js}";
-            const currentOrcidName = "{current_orcid_name_js}";
-            if (currentOrcid) targetUrl.searchParams.set("restore_orcid", currentOrcid);
-            if (currentOrcidName) targetUrl.searchParams.set("restore_orcid_name", currentOrcidName);
 
-            window.open(targetUrl.href, '_blank');
-            statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
-        }} catch (err) {{
-            statusDiv.innerText = err.message || "Rejected.";
-        }}
-    }});
+            try {{
+                const accounts = await provider.request({{ method: 'eth_requestAccounts' }});
+                if (!accounts || accounts.length === 0) return;
+                const account = accounts[0];
+                statusDiv.innerText = "Signing SIWE...";
+
+                const domain = "ScholarPi";
+                const nonce = Math.floor(Math.random() * 100000000);
+                const message = `${{domain}} wants you to sign in with your Ethereum account:\\n${{account}}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${{nonce}}\\nIssued At: ${{new Date().toISOString()}}`;
+
+                let signature = null;
+                try {{
+                    const hexMessage = '0x' + Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
+                    signature = await provider.request({{
+                        method: 'personal_sign',
+                        params: [hexMessage, account]
+                    }});
+                }} catch (e) {{}}
+
+                const targetUrl = new URL(window.top.location.href.split('?')[0]);
+                targetUrl.searchParams.set("siwe_address", account);
+                if (signature) {{
+                    targetUrl.searchParams.set("siwe_signature", signature);
+                    targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
+                }}
+                
+                const currentOrcid = "{current_orcid_js}";
+                const currentOrcidName = "{current_orcid_name_js}";
+                if (currentOrcid) targetUrl.searchParams.set("restore_orcid", currentOrcid);
+                if (currentOrcidName) targetUrl.searchParams.set("restore_orcid_name", currentOrcidName);
+
+                window.open(targetUrl.href, '_blank');
+                statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
+            } catch (err) {{
+                statusDiv.innerText = err.message || "Rejected.";
+            }}
+        }});
+    }}
     </script>
-    """
-    with st.sidebar:
-        components.html(metamask_ui_html, height=120)
-else:
-    st.sidebar.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
+"""
 
-# 2. ORCID Button Below MetaMask
-if not has_orcid:
-    state_payload = st.session_state.web3_wallet if has_web3 else "none"
-    orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
-    
-    st.sidebar.markdown(
-        f"""
-        <a href="{orcid_auth_url}" target="_blank" style="
-            width: 100%;
-            background: #A6CE39;
-            color: #ffffff;
-            border: none;
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-weight: 700;
-            font-size: 13px;
-            text-align: center;
-            text-decoration: none;
-            display: block;
-            box-shadow: 0 2px 6px rgba(166, 206, 57, 0.3);
-            margin-bottom: 8px;
-        ">
-            Link ORCID Account
-        </a>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.sidebar.success(f"ORCID Linked: `{st.session_state.orcid_profile}`")
+orcid_button_html = f"""
+    <a href="{orcid_auth_url}" target="_blank" style="
+        width: 100%;
+        background: #A6CE39;
+        color: #ffffff;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 13px;
+        text-align: center;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 6px rgba(166, 206, 57, 0.3);
+        box-sizing: border-box;
+    ">
+        Link ORCID Account
+    </a>
+"""
+
+with st.sidebar:
+    if not has_web3:
+        components.html(mm_button_html, height=100)
+    else:
+        st.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
+
+    if not has_orcid:
+        components.html(orcid_button_html, height=60)
+    else:
+        st.success(f"ORCID Linked: `{st.session_state.orcid_profile}`")
 
 # Make sure Dual-Auth Synchronization Guide disappears if both auth methods are connected
 if not (has_web3 and has_orcid):
@@ -1466,7 +1467,7 @@ with top_analytics_col1:
             or st.session_state.last_trained_blocks != current_block_count
             or st.session_state.get("last_lookback") != lookback_window
         ):
-            weight_data = np.array(historical_rows, dtype=np.float32)
+            weight_data = np.array(historical_rows, dtype=torch.float32)
 
             st.session_state.predicted_next_weights = train_pidyne_cached(weight_data, lookback_window)
             st.session_state.current_weights = weight_data[-1]
