@@ -1658,8 +1658,8 @@ with side_col2:
 
 st.markdown("---")
 
-# Dedicated line for Latest Assessed Papers & Ledger Proofs using native interactive cards
-st.markdown("### Latest Assessed Papers & Ledger Proofs")
+# Dedicated line for Latest Assessed Papers using native interactive cards inside a scrollable container
+st.markdown("### Latest Assessed Papers")
 conn_recent = get_db_connection()
 try:
     cur_recent = conn_recent.cursor()
@@ -1672,62 +1672,65 @@ try:
                   p.consensus_data, p.evidence_report, p.scilem_score
            FROM papers_assessment p
            LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-           ORDER BY p.timestamp DESC LIMIT 5"""
+           ORDER BY p.timestamp DESC LIMIT 20"""
     )
     merged_papers = cur_recent.fetchall()
 finally:
     conn_recent.close()
 
 if merged_papers:
-    st.markdown("<p style='font-size:12px; color:#64748b; margin-bottom:8px;'>Click <b>View Dossier</b> on any manuscript card below to open its complete research integrity record:</p>", unsafe_allow_html=True)
-    for idx, mp in enumerate(merged_papers):
-        (
-            m_title, m_author, m_filename, m_score, m_logic,
-            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-            m_block_height, m_block_hash,
-            m_consensus, m_report, m_scilem
-        ) = mp
-        
-        bh = m_block_height if m_block_height is not None else "Pending"
-        clean_auth = clean_author_name(m_author)
-        
-        with st.container(border=True):
-            r_col1, r_col2, r_col3 = st.columns([1.5, 5, 2.5], vertical_alignment="center")
-            with r_col1:
-                st.markdown(f"**Block {bh}**")
-                st.markdown(f"Score: `{m_score:.2f}`")
-            with r_col2:
-                st.markdown(f"**{m_title}**")
-                st.markdown(f"*{clean_auth}* | piQ: `{m_piq:.2f}`")
-            with r_col3:
-                if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
-                    item_dossier = {
-                        "title": m_title,
-                        "author_name": m_author,
-                        "score": m_score,
-                        "logic_integrity": m_logic if m_logic is not None else 75.0,
-                        "scores_dict": {
-                            "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                            "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                            "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                            "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
-                        },
-                        "used_weights": [1.0]*8,
-                        "eval_hash": m_hash,
-                        "piq": m_piq,
-                        "tx_hash": m_tx,
-                        "zk_proof": m_zk,
-                        "h_idx": m_mdar,
-                        "i10_idx": m_rrid,
-                        "repro_score": m_repro,
-                        "filename": m_filename or "N/A",
-                        "warnings": [],
-                        "consensus_raw": json.loads(m_consensus) if m_consensus else {},
-                        "evidence_report_text": m_report or "",
-                        "scilem_rating": m_scilem if m_scilem is not None else 50.0
-                    }
-                    more_details_dialog(item_dossier)
+    st.markdown("<p style='font-size:12px; color:#64748b; margin-bottom:8px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
+    
+    recent_scroll_container = st.container(height=420)
+    with recent_scroll_container:
+        for idx, mp in enumerate(merged_papers):
+            (
+                m_title, m_author, m_filename, m_score, m_logic,
+                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                m_block_height, m_block_hash,
+                m_consensus, m_report, m_scilem
+            ) = mp
+            
+            bh = m_block_height if m_block_height is not None else "Pending"
+            clean_auth = clean_author_name(m_author)
+            
+            with st.container(border=True):
+                r_col1, r_col2, r_col3 = st.columns([1.5, 5, 2.5], vertical_alignment="center")
+                with r_col1:
+                    st.markdown(f"**Block {bh}**")
+                    st.markdown(f"Score: `{m_score:.2f}`")
+                with r_col2:
+                    st.markdown(f"**{m_title}**")
+                    st.markdown(f"*{clean_auth}* | piQ: `{m_piq:.2f}`")
+                with r_col3:
+                    if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
+                        item_dossier = {
+                            "title": m_title,
+                            "author_name": m_author,
+                            "score": m_score,
+                            "logic_integrity": m_logic if m_logic is not None else 75.0,
+                            "scores_dict": {
+                                "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                                "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                                "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                                "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                            },
+                            "used_weights": [1.0]*8,
+                            "eval_hash": m_hash,
+                            "piq": m_piq,
+                            "tx_hash": m_tx,
+                            "zk_proof": m_zk,
+                            "h_idx": m_mdar,
+                            "i10_idx": m_rrid,
+                            "repro_score": m_repro,
+                            "filename": m_filename or "N/A",
+                            "warnings": [],
+                            "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                            "evidence_report_text": m_report or "",
+                            "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                        }
+                        more_details_dialog(item_dossier)
 else:
     st.info("No paper assessments recorded on ledger yet.")
 
