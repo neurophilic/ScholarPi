@@ -126,6 +126,13 @@ if "siwe_address" in st.query_params:
     raw_signature = st.query_params.get("siwe_signature")
     raw_message = st.query_params.get("siwe_message")
     
+    # State Preservation: Restore ORCID if passing through Web3 auth
+    restored_orcid = st.query_params.get("restore_orcid")
+    restored_name = st.query_params.get("restore_orcid_name")
+    if restored_orcid:
+        st.session_state.orcid_profile = restored_orcid
+        st.session_state.researcher_name = restored_name if restored_name else f"Academic Scholar ({restored_orcid[-4:]})"
+    
     if raw_address and w3.is_address(raw_address):
         clean_wallet = w3.to_checksum_address(raw_address)
         authenticated = False
@@ -151,6 +158,12 @@ if "siwe_address" in st.query_params:
 if "orcid_id" in st.query_params or "code" in st.query_params:
     raw_orcid = st.query_params.get("orcid_id") or "0000-0002-1825-0097"
     raw_name = st.query_params.get("orcid_name") or f"Verified ORCID Scholar ({raw_orcid[-4:]})"
+    
+    # State Preservation: Restore Web3 Wallet from OAuth 'state' parameter
+    returned_state = st.query_params.get("state")
+    if returned_state and returned_state != "none" and w3.is_address(returned_state):
+        st.session_state.web3_wallet = w3.to_checksum_address(returned_state)
+
     st.session_state.orcid_profile = raw_orcid.strip()
     st.session_state.researcher_name = raw_name.strip()
     add_log(f"ORCID Profile Linked: {raw_orcid} ({raw_name})")
@@ -322,7 +335,10 @@ has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.
 has_orcid = bool(st.session_state.orcid_profile)
 
 if not has_web3:
-    metamask_ui_html = """
+    current_orcid_js = st.session_state.orcid_profile if st.session_state.orcid_profile else ""
+    current_orcid_name_js = st.session_state.researcher_name if st.session_state.researcher_name != "Anonymous Researcher" else ""
+    
+    metamask_ui_html = f"""
     <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2px;">
         <button id="connect-mm-btn" type="button" style="
             width: 100%;
@@ -347,63 +363,70 @@ if not has_web3:
     </div>
 
     <script>
-    function getEthereumProvider() {
+    function getEthereumProvider() {{
         let provider = window.ethereum;
-        if (!provider && window.parent) {
-            try { provider = window.parent.ethereum; } catch(e) {}
-        }
-        if (!provider && window.top) {
-            try { provider = window.top.ethereum; } catch(e) {}
-        }
-        if (provider && provider.providers) {
+        if (!provider && window.parent) {{
+            try {{ provider = window.parent.ethereum; }} catch(e) {{}}
+        }}
+        if (!provider && window.top) {{
+            try {{ provider = window.top.ethereum; }} catch(e) {{}}
+        }}
+        if (provider && provider.providers) {{
             provider = provider.providers.find(p => p.isMetaMask) || provider;
-        }
+        }}
         return provider;
-    }
+    }}
 
-    document.getElementById('connect-mm-btn').addEventListener('click', async () => {
+    document.getElementById('connect-mm-btn').addEventListener('click', async () => {{
         const statusDiv = document.getElementById('mm-status');
         statusDiv.style.color = "#2563eb";
         statusDiv.innerText = "Connecting...";
 
         const provider = getEthereumProvider();
-        if (!provider) {
+        if (!provider) {{
             statusDiv.innerText = "MetaMask not detected!";
             return;
-        }
+        }}
 
-        try {
-            const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        try {{
+            const accounts = await provider.request({{ method: 'eth_requestAccounts' }});
             if (!accounts || accounts.length === 0) return;
             const account = accounts[0];
             statusDiv.innerText = "Signing SIWE...";
 
             const domain = "ScholarPi";
             const nonce = Math.floor(Math.random() * 100000000);
-            const message = `${domain} wants you to sign in with your Ethereum account:\\n${account}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${nonce}\\nIssued At: ${new Date().toISOString()}`;
+            const message = `${{domain}} wants you to sign in with your Ethereum account:\\n${{account}}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${{nonce}}\\nIssued At: ${{new Date().toISOString()}}`;
 
             let signature = null;
-            try {
+            try {{
                 const hexMessage = '0x' + Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
-                signature = await provider.request({
+                signature = await provider.request({{
                     method: 'personal_sign',
                     params: [hexMessage, account]
-                });
-            } catch (e) {}
+                }});
+            }} catch (e) {{}}
 
-            const targetUrl = new URL(window.top.location.href);
+            // Clean the base URL and append parameters safely
+            const targetUrl = new URL(window.top.location.href.split('?')[0]);
             targetUrl.searchParams.set("siwe_address", account);
-            if (signature) {
+            if (signature) {{
                 targetUrl.searchParams.set("siwe_signature", signature);
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
-            }
+            }}
             
-            // Redirect top window in SAME TAB to preserve active session state!
-            window.top.location.href = targetUrl.href;
-        } catch (err) {
+            // Preserve ORCID state during Web3 reload
+            const currentOrcid = "{current_orcid_js}";
+            const currentOrcidName = "{current_orcid_name_js}";
+            if (currentOrcid) targetUrl.searchParams.set("restore_orcid", currentOrcid);
+            if (currentOrcidName) targetUrl.searchParams.set("restore_orcid_name", currentOrcidName);
+
+            // Output explicit top-level anchor tag to respect browser Iframe sandbox policies
+            statusDiv.innerHTML = `<a href="${{targetUrl.href}}" target="_top" style="display:block; margin-top:8px; background:#10b981; color:white; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">✅ Click to Complete Sync</a>`;
+        }} catch (err) {{
             statusDiv.innerText = err.message || "Rejected.";
-        }
-    });
+        }}
+    }});
     </script>
     """
     components.html(metamask_ui_html, height=100)
@@ -413,11 +436,14 @@ else:
 if not has_orcid:
     orcid_client_id = "APP-4C9H89YFZQ7JGC6Z"
     current_app_url = "https://scholarpi.streamlit.app"
-    orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={orcid_client_id}&response_type=code&scope=/authenticate&redirect_uri={current_app_url}"
+    
+    # State Preservation: Pass Web3 wallet to ORCID 'state' parameter
+    state_payload = st.session_state.web3_wallet if has_web3 else "none"
+    orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={orcid_client_id}&response_type=code&scope=/authenticate&redirect_uri={current_app_url}&state={state_payload}"
     
     st.sidebar.markdown(
         f"""
-        <a href="{orcid_auth_url}" target="_self" style="
+        <a href="{orcid_auth_url}" target="_top" style="
             width: 100%;
             background: #A6CE39;
             color: #ffffff;
@@ -474,9 +500,8 @@ if has_web3 or has_orcid:
     finally:
         conn_hist.close()
 
-    researcher_display = st.session_state.researcher_name if has_orcid else ("Verified Web3 Validator" if has_web3 else "Anonymous Researcher")
     st.sidebar.markdown(
-        f"**Researcher:** {researcher_display}\n\n"
+        f"**Researcher:** {st.session_state.researcher_name}\n\n"
         f"**Synced Status:** Active Sync\n\n"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
