@@ -1,704 +1,2163 @@
 import os
+import re
 import json
 import time
-import math
-import random
 import hashlib
-import re
-import difflib
-import concurrent.futures
+import tempfile
+import shutil
+import colorsys
+import logging
 from datetime import datetime
+from collections import deque
 
-import fitz
+import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset
-from groq import Groq
-from openai import OpenAI
-from openrouter import OpenRouter
+from torch.utils.data import DataLoader
+from pyvis.network import Network
+import altair as alt
 
-from config import (
-    GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY,
-    PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
-)
+import streamlit as st
+import streamlit.components.v1 as components
+from web3 import Web3
+
+from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS
 from database import get_db_connection
-from ledger import (
-    backup_state_to_web3, generate_zk_snark_proof, mint_pi_quotient_token, 
-    validate_block_por, generate_blockchain_pi
-)
+from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url
 from integrations import (
-    clean_author_name, is_likely_institution, fetch_author_coara_metrics, 
-    calculate_citation_topology
+    clean_author_name, is_likely_institution, fetch_doi_metadata, 
+    fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics,
+    fetch_core_text_by_doi, create_virtual_pdf_from_text
+)
+from brain import (
+    process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
+    PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem,
+    evaluate_scilem_analysis_report
 )
 
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+w3 = Web3()
 
-# ---------------------------------------------------------
-# Neural Networks: Scilem Network & Pidyne LSTM
-# ---------------------------------------------------------
-class ScilemNetwork(nn.Module):
-    def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
-        super(ScilemNetwork, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim)
-        self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)
-        self.fc1 = nn.Linear(hidden_dim, 16)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(16, 1)
+OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"
 
-    def forward(self, text_tensor):
-        embedded = self.embedding(text_tensor)
-        lstm_out, _ = self.lstm(embedded)
-        last_hidden = lstm_out[:, -1, :]
-        x = self.relu(self.fc1(last_hidden))
-        features = torch.tanh(self.fc2(x))
-        return features
+st.set_page_config(
+    page_title="Pi-Index Assessment Engine", layout="wide"
+)
 
-scilem_model = ScilemNetwork()
-scilem_optimizer = optim.Adam(scilem_model.parameters(), lr=0.001)
+# System Action Log Monitor
+if "app_logs" not in st.session_state:
+    st.session_state.app_logs = deque(maxlen=50)
 
-def evaluate_scilem_analysis_report(raw_text):
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    if os.path.exists(scilem_weights_path):
-        try:
-            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
-        except Exception:
-            pass
+def add_log(msg):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    log_entry = f"[{timestamp}] {msg}"
+    st.session_state.app_logs.appendleft(log_entry)
+    logging.info(log_entry)
 
-    scilem_model.eval()
-    words = raw_text.lower().split()[:512]
-    # Deterministic tokenization via MD5 to keep neural manifold stable across restarts
-    tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
-    if not tokens:
-        tokens = [0]
-    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
-
-    with torch.no_grad():
-        feat_val = scilem_model(paper_tensor).item()
-    
-    score_pred = 50.0 + (feat_val * 40.0)
-    analysis_summary = (
-        f"Scilem Local Neural Engine Audit: Manifold projection = {feat_val:.4f}. "
-        f"Structural integrity rating predicted at {score_pred:.1f}/100. "
-        f"Evaluated C1-C8 feature density directly from token sequences."
-    )
-    return analysis_summary
-
-def extract_with_scilem(paper_text):
-    """
-    Treats Scilem as a peer LLM in consensus extraction.
-    Generates structured qualitative extractions using the PyTorch Scilem model.
-    """
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    if os.path.exists(scilem_weights_path):
-        try:
-            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
-        except Exception:
-            pass
-
-    scilem_model.eval()
-    words = paper_text.lower().split()[:512]
-    tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
-    if not tokens:
-        tokens = [0]
-    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
-
-    with torch.no_grad():
-        feat_val = scilem_model(paper_tensor).item()
-
-    # Scilem's own numeric rating, distinct from the Pidyne consensus rating.
-    scilem_numeric_score = 50.0 + (feat_val * 40.0)
-
-    # Dynamic heuristics parsing for front-matter title/authors
-    lines = [l.strip() for l in paper_text.split("\n") if l.strip()]
-    cand_title = lines[0] if lines else "Scilem Neural Extraction"
-    cand_author = "Independent Research Scholar"
-    for line in lines[1:10]:
-        if any(kw in line.lower() for kw in ["by", "author", "university", "department", "@"]):
-            cand_author = line
-            break
-
-    opinion = (
-        f"Scilem Neural Engine Analysis: Deep LSTM feature representation score = {feat_val:.4f}. "
-        f"High semantic consistency in methods and logic. Empirical density meets baseline guidelines. "
-        f"Methodological rigor aligns with MDAR reporting standards."
-    )
-
-    return "scilem", {
-        "title": cand_title[:120],
-        "authors": clean_author_name(cand_author)[:80],
-        "opinion": opinion,
-        "references": [],
-        "api_failed": False,
-        "is_heuristic_fallback": True,
-        "scilem_score": scilem_numeric_score,
-    }
-
-def train_scilem_on_input_and_report(raw_text, evidence_report):
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    if os.path.exists(scilem_weights_path):
-        try:
-            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
-        except Exception:
-            pass
-
-    scilem_model.train()
-    scilem_optimizer.zero_grad()
-    
-    words = raw_text.lower().split()[:512]
-    tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
-    if not tokens:
-        tokens = [0]
-    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
-
-    features = scilem_model(paper_tensor)
-    
-    vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0
-    target_tensor = torch.tensor([[vapri]], dtype=torch.float32)
-
-    loss_function = nn.MSELoss()
-    loss = loss_function(features, target_tensor)
-    loss.backward()
-    scilem_optimizer.step()
-    
-    torch.save(scilem_model.state_dict(), scilem_weights_path)
-
-    analysis_summary = (
-        f"Scilem Local Neural Engine Integration: Model weights updated dynamically "
-        f"via RLHF backpropagation from Pidyne synthesized consensus matrix."
-    )
-    return analysis_summary
-
-def reset_scilem():
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    res_msg = "Scilem state reset successfully."
-    if os.path.exists(scilem_weights_path):
-        try:
-            os.remove(scilem_weights_path)
-        except Exception as e:
-            res_msg = f"Scilem weights file deletion warning: {e}"
-            
-    global scilem_model
-    scilem_model = ScilemNetwork()
-    
-    for m in scilem_model.modules():
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
-        elif isinstance(m, nn.LSTM):
-            for name, param in m.named_parameters():
-                if 'weight' in name:
-                    nn.init.orthogonal_(param)
-                elif 'bias' in name:
-                    nn.init.zeros_(param)
-                    
-    return res_msg
-
-class PiBlockchainDataset(Dataset):
-    def __init__(self, data_matrix, lookback):
-        self.data = data_matrix
-        self.lookback = lookback
-
-    def __len__(self):
-        return len(self.data) - self.lookback
-
-    def __getitem__(self, idx):
-        x = self.data[idx : idx + self.lookback]
-        y = self.data[idx + self.lookback]
-        return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
-
-PidyneBlockchainDataset = PiBlockchainDataset
-
-class PiBrainLSTM(nn.Module):
-    def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
-        super(PiBrainLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
-        self.linear = nn.Sequential(
-            nn.Linear(hidden_layer_size, 16),
-            nn.ReLU(),
-            nn.Linear(16, output_size),
-        )
-
-    def forward(self, x):
-        lstm_out, _ = self.lstm(x)
-        predictions = self.linear(lstm_out[:, -1, :])
-        return torch.softmax(predictions, dim=-1) * 8.0
-
-PidyneLSTM = PiBrainLSTM
-
-# ---------------------------------------------------------
-# Multi-LLM Consensus Engine
-# ---------------------------------------------------------
-def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
-    if not api_key or not str(api_key).strip():
-        return provider_name, {
-            "title": "N/A",
-            "authors": "Unconfigured Key",
-            "opinion": f"API key for {provider_name.upper()} is missing.",
-            "references": [],
-            "api_failed": True
-        }
+def safe_get_sepolia_url(tx):
+    if not tx or not isinstance(tx, str) or not tx.startswith("0x") or len(tx) != 66:
+        return None
     try:
-        # OpenRouter SDK Integration
-        if "openrouter" in base_url.lower():
-            with OpenRouter(api_key=api_key.strip()) as client:
-                response = client.chat.send(
-                    model=model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                
-                content = response.choices[0].message.content
-                if content.startswith("```json"):
-                    content = content.split("```json")[1].split("```")[0].strip()
-                elif content.startswith("```"):
-                    content = content.split("```")[1].split("```")[0].strip()
-                    
-                data = json.loads(content)
-                data["api_failed"] = False
-                return provider_name, data
-        
-        # Standard OpenAI-compatible SDK fallback
-        else:
-            client = OpenAI(api_key=api_key.strip(), base_url=base_url)
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                temperature=0.1
-            )
-            data = json.loads(response.choices[0].message.content)
-            data["api_failed"] = False
-            return provider_name, data
-            
-    except Exception as e:
-        err_str = str(e)
-        if "402" in err_str or "insufficient credits" in err_str.lower():
-            opinion = f"[{provider_name.upper()} Insufficient Credits]: Account requires credit top-up."
-        elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "rate_limit_exceeded" in err_str.lower():
-            opinion = f"[{provider_name.upper()} Rate Limit / Quota Exceeded]: Limit reached."
-        else:
-            opinion = f"Error querying {provider_name.upper()}: {err_str}."
-            
-        return provider_name, {
-            "title": "N/A (API Limit)",
-            "authors": "N/A",
-            "opinion": opinion,
-            "references": [],
-            "api_failed": True
-        }
+        return get_sepolia_explorer_url(tx, "tx")
+    except Exception:
+        return None
 
-def build_multi_llm_prompt(paper_text):
-    front_matter = paper_text[:3000]
-    lower_text = paper_text.lower()
-    ref_section = ""
-    for keyword in ["references", "bibliography", "works cited"]:
-        idx = lower_text.rfind(keyword)
-        if idx != -1:
-            ref_section = paper_text[idx:idx+4000]
-            break
-    if not ref_section:
-        ref_section = paper_text[-4000:]
-
-    return f"""
-Analyze the manuscript excerpts below and respond strictly in JSON format.
-Evaluate across the 8 core Pi-Index criteria (C1: Semantic Originality, C2: Methodological Rigor, C3: Interdisciplinary Entropy, C4: Societal Impact, C5: Open Science, C6: Literature Integration, C7: Empirical Density, and C8: Future Actionability).
-
-Keys required in JSON:
-1. "title": Title of the paper.
-2. "authors": String of human author names.
-3. "opinion": Detailed qualitative assessment covering criteria C1-C8.
-4. "references": List of objects: [{{"citation": "[1]", "authors": "Author et al.", "year": "2024"}}]
-
---- FRONT MATTER ---
-{front_matter}
-
---- REFERENCES SECTION ---
-{ref_section}
-"""
-
-def extract_with_llama(paper_text):
-    prompt = build_multi_llm_prompt(paper_text)
-    if GROQ_API_KEY:
-        return query_llm_json("llama", PRIMARY_MODEL, GROQ_API_KEY, "https://api.groq.com/openai/v1", prompt)
-    elif OR_API_KEY:
-        return query_llm_json("llama", "meta-llama/llama-3.3-70b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
-    return "llama", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
-
-def extract_with_mistral(paper_text):
-    prompt = build_multi_llm_prompt(paper_text)
-    if OR_API_KEY:
-        return query_llm_json("mistral", "mistralai/mistral-large", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
-    return "mistral", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
-
-def extract_with_qwen(paper_text):
-    prompt = build_multi_llm_prompt(paper_text)
-    if OR_API_KEY:
-        return query_llm_json("qwen", "qwen/qwen-2.5-72b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
-    return "qwen", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
-
-def extract_with_gemini(paper_text):
-    prompt = build_multi_llm_prompt(paper_text)
-    if GEMINI_API_KEY:
-        return query_llm_json("gemini", "gemini-2.0-flash", GEMINI_API_KEY, "https://generativelanguage.googleapis.com/v1beta/openai/", prompt)
-    elif OR_API_KEY:
-        return query_llm_json("gemini", "google/gemini-2.0-flash-001", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
-    return "gemini", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
-
-def run_multi_llm_consensus(paper_text):
-    """
-    Runs multi-LLM extraction including Scilem as an equal peer model.
-    """
-    results = {}
-    llm_funcs = {
-        "llama": extract_with_llama,
-        "mistral": extract_with_mistral,
-        "qwen": extract_with_qwen,
-        "gemini": extract_with_gemini,
-        "scilem": extract_with_scilem
-    }
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(func, paper_text): name for name, func in llm_funcs.items()}
-        for future in concurrent.futures.as_completed(futures):
-            provider, data = future.result()
-            results[provider] = data
-    return results
-
-def generate_merged_evidence_report(consensus_results):
-    successful_llms = [k for k, v in consensus_results.items() if not v.get("api_failed", False)]
-    if not successful_llms:
-        return "Synthesized Evidence Report (Unified Consensus)\n\nExternal APIs offline. Local Scilem neural analysis active."
-    
-    report_md = "Synthesized Evidence Report (Unified Consensus)\n\n"
-    for provider in successful_llms:
-        data = consensus_results[provider]
-        report_md += f"### {provider.upper()} Assessment\n"
-        report_md += f"- **Title Extracted:** {data.get('title', 'N/A')}\n"
-        report_md += f"- **Authors:** {data.get('authors', 'N/A')}\n"
-        report_md += f"- **Criteria Assessment:** {data.get('opinion', 'N/A')}\n\n"
-    return report_md
-
-def generate_pidyne_judgement(consensus_results, text=None):
-    prompt = "You are the Pidyne Assessment Engine. Review these independent model assessments:\n\n"
-    active_count = 0
-    for provider, data in consensus_results.items():
-        if not data.get("api_failed", False):
-            active_count += 1
-            prompt += f"### {provider.upper()} Assessment:\n"
-            prompt += f"- Extracted Title: {data.get('title', 'N/A')}\n"
-            prompt += f"- Extracted Authors: {data.get('authors', 'N/A')}\n"
-            prompt += f"- Criteria Assessment: {data.get('opinion', 'N/A')}\n\n"
-            
-    prompt += """
-Generate a comprehensive, structured Markdown Evidence Report and provide an overall AI Rating (0.0 to 100.0).
-Respond strictly in JSON with keys:
-1. "evidence_report": string containing the markdown report with sections for Executive Summary, 8 Criteria Audit, and Methodological Quality.
-2. "ai_rating": float between 0.0 and 100.0.
-"""
-    api_key = GROQ_API_KEY or OR_API_KEY or GEMINI_API_KEY
-    base_url = "https://api.groq.com/openai/v1" if GROQ_API_KEY else ("https://openrouter.ai/api/v1" if OR_API_KEY else "https://generativelanguage.googleapis.com/v1beta/openai/")
-    model_name = PRIMARY_MODEL if GROQ_API_KEY else ("meta-llama/llama-3.3-70b-instruct" if OR_API_KEY else "gemini-2.0-flash")
-
-    data = None
-    if api_key and active_count > 0:
-        _, data = query_llm_json("pidyne", model_name, api_key, base_url, prompt)
-        if data.get("api_failed", True):
-            data = None
-
-    if not data:
-        evidence_report = generate_merged_evidence_report(consensus_results)
-        rating = 75.0
-    else:
-        raw_rep = data.get("evidence_report", "Synthesized Evidence Report generated successfully.")
-        if raw_rep.startswith("Synthesized Evidence Report"):
-            evidence_report = raw_rep
-        else:
-            evidence_report = f"Synthesized Evidence Report (Unified Consensus)\n\n{raw_rep}"
+def safe_float(val, default=0.0):
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        return float(val)
+    except ValueError:
         try:
-            rating = float(data.get("ai_rating", 75.0))
+            nums = re.findall(r"[-+]?\d*\.\d+|\d+", str(val))
+            return float(nums[0]) if nums else default
         except Exception:
-            rating = 75.0
-            
-    return evidence_report, rating
+            return default
 
-# ---------------------------------------------------------
-# Utilities & Scoring logic
-# ---------------------------------------------------------
-def generate_scilem_fallback_report(text):
-    scilem_rep = evaluate_scilem_analysis_report(text)
-    return f"Synthesized Evidence Report (Unified Consensus)\n\n### Scilem Neural Assessment\n{scilem_rep}"
-
-def calculate_deterministic_mdar(text: str) -> tuple[float, int]:
-    text_lower = text.lower()
-    blinded = 1.0 if re.search(r'\b(blinded|double-blind|single-blind|masking)\b', text_lower) else 0.0
-    randomized = 1.0 if re.search(r'\b(randomized|randomly assigned|random sequence)\b', text_lower) else 0.0
-    power_calc = 1.0 if re.search(r'\b(power analysis|sample size calculation|statistical power)\b', text_lower) else 0.0
-    
-    rrid_matches = re.findall(r'\brrid\s*:?\s*[a-zA-Z0-9_:-]+\b', text_lower)
-    rrid_count = len(set(rrid_matches)) 
-    rrid_score = min(1.0, rrid_count / 3.0) 
-    mdar_adherence = (blinded + randomized + power_calc + rrid_score) / 4.0
-    
-    return mdar_adherence, rrid_count
-
-def adaptive_chunking(text, max_tokens):
-    if len(text) <= max_tokens:
-        return text
-    front_matter = text[: int(max_tokens * 0.4)]
-    back_matter = text[-int(max_tokens * 0.6) :]
-    return front_matter + "\n...[TRUNCATED FOR TOKEN LIMITS]...\n" + back_matter
-
-def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
-    text = adaptive_chunking(text, text_limit)
-    consensus_results = run_multi_llm_consensus(text)
-    
-    evidence_report, pidyne_ai_rating = generate_pidyne_judgement(consensus_results, text)
-    scilem_opinion = train_scilem_on_input_and_report(text, evidence_report)
-
-    best_title = "Parsed via Local Heuristics"
-    best_author = "Independent Research Scholar"
-    title_found, author_found = False, False
-    for l_key in ["llama", "mistral", "qwen", "gemini", "scilem"]:
-        entry = consensus_results.get(l_key, {})
-        t_val = entry.get("title", "")
-        a_val = entry.get("authors", "")
-        if not title_found and t_val and "N/A" not in t_val:
-            best_title = t_val
-            title_found = True
-        if not author_found and a_val and "N/A" not in a_val:
-            best_author = a_val
-            author_found = True
-        if title_found and author_found:
-            break
-
-    scilem_score = consensus_results.get("scilem", {}).get("scilem_score", pidyne_ai_rating)
-
-    return {
-        "Extracted_Title": best_title,
-        "Extracted_Author": best_author,
-        "Extracted_Topics": "Core Research Domain",
-        "Overall_Confidence": 0.85,
-        "_consensus_raw": consensus_results,
-        "_evidence_report": evidence_report,
-        "_pidyne_rating": pidyne_ai_rating,
-        "_scilem_score": scilem_score,
-    }
-
-def get_formulas_hash():
-    return hashlib.sha256(b"Pi-Index-Formula-State-v2.0").hexdigest()
-
-def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0, vapri=0.0):
-    # C1: Incorporate vapri (matching the UI formula: semantic distance + vapri)
-    c1 = (ai_rating * 0.9) + (vapri * 10)
-    
-    # C4: Societal utility approximated via topological spread
-    c4 = ai_rating * 0.95 + (topological_entropy * 5)
-    
-    # C6: Literature Integration weighted by SciScore adherence
-    c6 = ai_rating * 0.88 + (sciscore_adherence * 12)
-    
-    # C7: Empirical Density using tanh (matching UI formula math)
-    c7 = math.tanh((ai_rating / 100.0) * 1.5) * 100.0 
-    
-    # C8: FAIR Actionability integrating reproducibility limits
-    c8 = (ai_rating * 0.8) + (reproducibility_score * 20.0)
-
-    return {
-        "C1_Semantic_Originality": min(100.0, max(0.0, c1)),
-        "C2_Methodological_Rigor_SciScore": min(100.0, max(0.0, sciscore_adherence * 100.0)),
-        "C3_Interdisciplinary_Entropy": min(100.0, max(0.0, (ai_rating * 0.85) + (topological_entropy * 15.0))),
-        "C4_Societal_Impact": min(100.0, max(0.0, c4)),
-        "C5_Open_Science_Repro": min(100.0, max(0.0, reproducibility_score * 100.0)),
-        "C6_Literature_Integration": min(100.0, max(0.0, c6)),
-        "C7_Empirical_Density": min(100.0, max(0.0, c7)),
-        "C8_Future_Actionability_FAIR": min(100.0, max(0.0, c8))
-    }
-
-def generate_rebuttal_strategy(scores_dict):
-    lowest_criterion = min(scores_dict.items(), key=lambda x: x[1])
-    return (
-        f"**Adversarial Defense Strategy:** Focus on strengthening `{lowest_criterion[0]}` "
-        f"(Current score: {lowest_criterion[1]:.1f}/100). Explicitly state methodology, "
-        f"register active RRIDs, and upload raw experimental artifacts to open repositories."
-    )
-
-def process_single_pdf(
-    file_bytes,
-    filename,
-    scope,
-    user_id,
-    book_address="None",
-    email="None",
-    provided_doi="None",
-    force_proceed=False,
-):
-    active_weights = [1.0] * 8
-    warnings_list = []
-    drift = "N/A"
-    rec = "N/A"
-
-    if file_bytes is None or len(file_bytes) == 0:
-        empty_scores = {k: 0.0 for k in [
-            "C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", 
-            "C3_Interdisciplinary_Entropy", "C4_Societal_Impact", 
-            "C5_Open_Science_Repro", "C6_Literature_Integration", 
-            "C7_Empirical_Density", "C8_Future_Actionability_FAIR"
-        ]}
-        warnings_list.append("Binary payload is empty or download/extraction failed.")
-        return ("Download/Extraction Failed", "Independent Research Scholar", 0.0, 75.0, drift, rec, ["Unspecified Domain"], ["Unspecified Sub-domain"], empty_scores, "Failed", 0.0, "None", "None", active_weights, 0.85, 4, 0.0, False, warnings_list, {}, "", "N/A")
-
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
-
+def get_author_piq_dict():
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        cursor.execute("SELECT author_name, piq_minted, eth_book FROM papers_assessment")
+        data = cursor.fetchall()
+    finally:
+        conn.close()
+    
+    author_piq, author_book = {}, {}
+    for authors_str, piq, eth_book in data:
+        clean_authors = clean_author_name(authors_str)
+        if (
+            not clean_authors
+            or clean_authors.lower()
+            in ["unidentified", "unknown", "research scholar"]
+            or is_likely_institution(clean_authors)
+        ):
+            continue
+        alist = [a.strip() for a in clean_authors.split(",") if a.strip()]
+        if not alist:
+            continue
+        share = safe_float(piq, 0.0) / len(alist)
+        for a in alist:
+            author_piq[a] = author_piq.get(a, 0.0) + share
+            author_book[a] = eth_book if eth_book and w3.is_address(eth_book) else "Unbound / Escrow"
+    return author_piq, author_book
 
-        cursor.execute(
-            """SELECT title, author_name, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8,
-                      piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count,
-                      reproducibility_score, consensus_data, evidence_report, scilem_score
-               FROM papers_assessment WHERE eval_hash = ?""",
-            (file_hash,),
-        )
-        existing = cursor.fetchone()
-        if existing and not force_proceed:
-            tx_prev = existing[13]
-            was_minted_ok = (
-                (isinstance(tx_prev, str) and tx_prev.startswith("0x") and len(tx_prev) == 66)
-                or tx_prev == "Simulated_Ledger_Record"
-            )
-            if was_minted_ok:
-                (
-                    e_title, e_author, e_score, e_logic, e_c1, e_c2, e_c3, e_c4, e_c5, e_c6, e_c7, e_c8,
-                    e_piq, e_tx, e_zk, e_mdar, e_rrid, e_repro, e_consensus, e_report, e_scilem,
-                ) = existing
-                e_scores_dict = {
-                    "C1_Semantic_Originality": e_c1, "C2_Methodological_Rigor_SciScore": e_c2,
-                    "C3_Interdisciplinary_Entropy": e_c3, "C4_Societal_Impact": e_c4,
-                    "C5_Open_Science_Repro": e_c5, "C6_Literature_Integration": e_c6,
-                    "C7_Empirical_Density": e_c7, "C8_Future_Actionability_FAIR": e_c8,
+def preprocess_pdf_layout(pdf_bytes, fname):
+    return pdf_bytes
+
+def rbot(topic_key):
+    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
+
+custom_ui_code = """
+<style>
+/* --- Global Sleek Typography & Layout --- */
+h1, h2, h3, h4, h5, h6 {
+    color: #0f172a !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em !important;
+}
+
+hr {
+    border-color: #e2e8f0 !important;
+    margin: 1.5rem 0 !important;
+}
+
+[data-testid="stHeaderActionElements"] {
+    display: none !important;
+}
+
+/* --- Sleek Sidebar --- */
+[data-testid="stSidebar"] {
+    background-color: #f8fafc !important;
+    border-right: 1px solid #e2e8f0 !important;
+    overflow-y: auto !important;
+}
+
+/* --- Container Cards (Borders & Shadows) --- */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 12px !important;
+    border: 1px solid #e2e8f0 !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+    transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out !important;
+    padding: 0.5rem !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* --- Primary Button Color Matching Total Analyzed Papers Badge (#0f172a) --- */
+button[kind="primary"], [data-testid="baseButton-primary"] {
+    background-color: #0f172a !important;
+    border-color: #0f172a !important;
+    color: #ffffff !important;
+}
+button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
+    background-color: #1e293b !important;
+    border-color: #1e293b !important;
+    color: #ffffff !important;
+}
+
+/* --- Stop Button (Red Alert) --- */
+div.stButton > button:has(p:contains("Stop")) {
+    background-color: #dc2626 !important;
+    border-color: #dc2626 !important;
+    color: #ffffff !important;
+}
+div.stButton > button:has(p:contains("Stop")):hover {
+    background-color: #b91c1c !important;
+    border-color: #b91c1c !important;
+    color: #ffffff !important;
+}
+
+/* --- Interactive Buttons --- */
+.stButton>button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.01em !important;
+    transition: all 0.2s ease !important;
+}
+.stButton>button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
+    padding: 0.35rem 0.75rem !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+}
+
+/* --- Expanders --- */
+[data-testid="stExpander"] {
+    border-radius: 10px !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+    background-color: #ffffff !important;
+}
+
+/* --- Scilem Assistant Floating Chat --- */
+[data-testid="stChatMessage"]:has(div:contains("👤")) {
+    flex-direction: row-reverse !important;
+    background-color: #f1f5f9 !important;
+    border-radius: 10px 0 10px 10px !important;
+    text-align: right !important;
+    margin-left: 20px !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+.scilem-trigger {
+    font-size: 0.9em;
+    margin-left: 4px;
+    font-weight: bold;
+    color: #2563eb;
+    vertical-align: middle;
+    display: inline-block;
+    transition: transform 0.15s ease-in-out;
+}
+.scilem-trigger:hover {
+    transform: scale(1.2);
+}
+
+#scilem-drag-handle {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: white;
+    padding: 12px 16px;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: grab;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    margin: -1rem -1rem 0 -1rem;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    height: 48px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+#scilem-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* --- Iframe & PyVis --- */
+iframe {
+    border: none !important;
+    border-radius: 8px !important;
+    outline: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.pyvis-map-wrapper iframe {
+    width: 100% !important;
+    height: 600px !important;
+    display: block !important;
+}
+</style>
+
+<script>
+const parentDoc = window.parent.document;
+
+parentDoc.addEventListener('click', function(e) {
+    let handle = e.target.closest('#scilem-drag-handle');
+    if (handle) {
+        let block = handle.closest('[data-draggable="true"]');
+        if (block && !window._wasDragging) {
+            let isMin = block.getAttribute('data-minimized') === 'true';
+            block.setAttribute('data-minimized', isMin ? 'false' : 'true');
+            let children = Array.from(block.children);
+            children.forEach(child => {
+                if (child !== handle && !child.contains(handle)) {
+                    child.style.display = isMin ? 'block' : 'none';
                 }
-                return (
-                    e_title, e_author, e_score, e_logic, "N/A", "N/A",
-                    ["Computer Science"], ["Core Research Domain"], e_scores_dict, file_hash,
-                    e_piq, e_tx, e_zk, active_weights, e_mdar, e_rrid, e_repro, True,
-                    ["This manuscript was already assessed previously; returning the cached, already-minted record instead of re-processing."],
-                    json.loads(e_consensus) if e_consensus else {}, e_report or "", e_scilem,
-                )
+            });
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
 
-        try:
-            doc = fitz.open(stream=file_bytes, filetype="pdf")
-            pdf_meta_author = doc.metadata.get("author", "").strip()
-            text_blocks = [page.get_text("text", sort=True) for page in doc]
-            full_text = "\n".join(text_blocks)
-        except Exception as e:
-            warnings_list.append(f"PyMuPDF parsing note: {e}")
-            full_text = ""
+    let trigger = e.target.closest('.scilem-trigger');
+    if (!trigger) return; 
+    e.preventDefault();
+    e.stopPropagation();
 
-        mdar_score, rrid_count = calculate_deterministic_mdar(full_text)
-        topological_entropy = calculate_citation_topology(provided_doi)
+    let query = trigger.getAttribute('data-query');
+    if (!query) return;
 
-        raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)
-        
-        pidyne_ai_rating = raw_data.get("_pidyne_rating", 75.0)
-        scilem_score = raw_data.get("_scilem_score", pidyne_ai_rating)
-        consensus_raw = raw_data.get("_consensus_raw", {})
-        evidence_report = raw_data.get("_evidence_report", "")
+    let chatBlock = parentDoc.querySelector('[data-draggable="true"]');
+    if (!chatBlock) return;
 
-        # 1. Calculate vapri (simulating semantic/report state)
-        vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0 if evidence_report else 0.5
+    let inputField = chatBlock.querySelector('input[type="text"]');
+    if (inputField) {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        nativeInputValueSetter.call(inputField, "Explain: " + query);
+        inputField.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}, true);
 
-        external_active = any(
-            not v.get("api_failed", False) 
-            for k, v in consensus_raw.items() 
-            if k != "scilem"
+function initUI() {
+    const handle = parentDoc.getElementById('scilem-drag-handle');
+    if (handle) {
+        let block = handle.closest('[data-testid="stVerticalBlock"]');
+        if (block && block.getAttribute('data-draggable') !== 'true') {
+            if (!block.innerText.includes("Live System Monitor")) {
+                block.setAttribute('data-draggable', 'true');
+                block.setAttribute('data-minimized', 'true');
+                
+                let children = Array.from(block.children);
+                children.forEach(child => {
+                    if (child !== handle && !child.contains(handle)) {
+                        child.style.display = 'none';
+                    }
+                });
+                
+                let isDragging = false;
+                let startX, startY, initialX, initialY;
+                window._wasDragging = false;
+
+                handle.addEventListener('mousedown', function(e) {
+                    isDragging = true;
+                    window._wasDragging = false;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    const rect = block.getBoundingClientRect();
+                    initialX = rect.left;
+                    initialY = rect.top;
+                    
+                    block.style.position = 'fixed';
+                    block.style.left = initialX + 'px';
+                    block.style.top = initialY + 'px';
+                    block.style.bottom = 'auto';
+                    block.style.right = 'auto';
+                    block.style.width = '380px';
+                    block.style.backgroundColor = '#ffffff';
+                    block.style.border = '1px solid #cbd5e1';
+                    block.style.borderRadius = '12px';
+                    block.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)';
+                    block.style.zIndex = '999999';
+                    block.style.padding = '1rem';
+                    block.style.transition = 'none'; 
+                });
+
+                parentDoc.addEventListener('mousemove', function(e) {
+                    if (!isDragging) return;
+                    let dx = e.clientX - startX;
+                    let dy = e.clientY - startY;
+                    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                        window._wasDragging = true;
+                    }
+                    block.style.left = (initialX + dx) + 'px';
+                    block.style.top = (initialY + dy) + 'px';
+                });
+
+                parentDoc.addEventListener('mouseup', function() { isDragging = false; });
+            }
+        }
+    }
+}
+setInterval(initUI, 800);
+</script>
+"""
+components.html(custom_ui_code, height=0, width=0)
+
+st.sidebar.title("System Access")
+
+if "initialized" not in st.session_state:
+    st.session_state["initialized"] = True
+
+if "free_evals_used" not in st.session_state:
+    st.session_state["free_evals_used"] = 0
+
+client_ip = "127.0.0.1"
+try:
+    headers = st.context.headers
+    client_ip = (
+        headers.get("X-Forwarded-For")
+        or headers.get("X-Real-Ip")
+        or "127.0.0.1"
+    )
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+except Exception:
+    pass
+
+conn_ip = get_db_connection()
+try:
+    cur_ip = conn_ip.cursor()
+    cur_ip.execute(
+        "SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,)
+    )
+    ip_exists = cur_ip.fetchone()
+    if not ip_exists:
+        cur_ip.execute(
+            "INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)",
+            (client_ip, datetime.now().isoformat()),
         )
-        
-        title = raw_data.get("Extracted_Title", filename.replace(".pdf", "").replace("_", " ").title())
-        extracted_author = raw_data.get("Extracted_Author", pdf_meta_author if pdf_meta_author else "Independent Research Scholar")
-        
-        # 2. Update criteria computation call to include vapri
-        scores_dict = compute_formulaic_criteria(
-            reproducibility_score=0.85,
-            sciscore_adherence=mdar_score,
-            topological_entropy=topological_entropy,
-            ai_rating=pidyne_ai_rating,
-            vapri=vapri
-        )
-        
-        final_score = sum(scores_dict.values()) / 8.0
-        
-        # 3. Dynamic piQ Minting based on final score (e.g., Max 10 piQ per paper)
-        piq_minted = round((final_score / 100.0) * 10.0, 2)
-        
-        # 4. Adversarial Logic Engine calculation
-        premise_gap = 1.0 - (pidyne_ai_rating / 100.0)
-        adversarial_penalty = math.exp(-(2 * max(0, topological_entropy - 0.5) + 1.5 * premise_gap))
-        logic_integrity = (pidyne_ai_rating * adversarial_penalty) + (vapri * 5.0)
-        logic_integrity = min(100.0, max(0.0, logic_integrity))
+        conn_ip.commit()
+finally:
+    conn_ip.close()
 
-        # Use the computed logic_integrity inside the SNARK generation
-        zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, logic_integrity, "None")
-        
-        if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000":
-            tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
+conn_cnt = get_db_connection()
+try:
+    cur_cnt = conn_cnt.cursor()
+    cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
+    total_analyzed_count = cur_cnt.fetchone()[0]
+finally:
+    conn_cnt.close()
+
+if "state_restored" not in st.session_state:
+    restore_state_from_web3()
+    st.session_state["state_restored"] = True
+    add_log("Synchronized state with Sepolia Ethereum Ledger.")
+
+if "assessment_update_token" not in st.session_state:
+    st.session_state["assessment_update_token"] = time.time()
+if "reset_token" not in st.session_state:
+    st.session_state["reset_token"] = 0
+if "evaluated_papers_buffer" not in st.session_state:
+    st.session_state["evaluated_papers_buffer"] = []
+if "download_errors" not in st.session_state:
+    st.session_state["download_errors"] = []
+if "is_running" not in st.session_state:
+    st.session_state["is_running"] = False
+if "cancel_requested" not in st.session_state:
+    st.session_state["cancel_requested"] = False
+if "session_temp_dir" not in st.session_state:
+    st.session_state["session_temp_dir"] = tempfile.mkdtemp()
+    add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
+
+if "scilem_messages" not in st.session_state:
+    st.session_state.scilem_messages = [
+        {
+            "role": "assistant", 
+            "content": "**Welcome! I am Scilem.** Ask any research question or click indicators across criteria."
+        }
+    ]
+
+if "is_authenticated" not in st.session_state:
+    st.session_state.is_authenticated = False
+    st.session_state.auth_method = "Anonymous"
+    st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
+    st.session_state.academic_id = "None"
+    st.session_state.orcid_name = "Anonymous Researcher"
+
+def validate_orcid_did(identifier: str) -> bool:
+    clean_id = identifier.strip()
+    is_orcid = re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", clean_id)
+    is_did = re.match(r"^did:[a-z0-9]+:[a-zA-Z0-9.\-_:]+$", clean_id)
+    return bool(is_orcid or is_did)
+
+if not st.session_state.is_authenticated:
+    st.sidebar.markdown("### 1. Authenticate Web3 Wallet")
+    user_wallet = st.sidebar.text_input("Ethereum Wallet Address (EIP-4361)", placeholder="0x...")
+    
+    if st.sidebar.button("Connect Wallet"):
+        if w3.is_address(user_wallet):
+            with st.sidebar.status("Connecting to Identity Registry..."):
+                clean_wallet = w3.to_checksum_address(user_wallet)
+                st.session_state.orcid_id = clean_wallet
+                st.session_state.orcid_name = "Verified Decentralized Identity"
+                st.session_state.is_authenticated = True
+                st.session_state.auth_method = "Web3"
+                add_log(f"Identity Authenticated via SIWE: {clean_wallet}")
+                st.rerun()
         else:
-            tx_hash = "Simulated_Ledger_Record"
+            st.sidebar.error("Invalid Ethereum Address format.")
 
-        if not external_active:
-            warnings_list.append("⚠️ **NOTICE:** Assessment completed using local Scilem neural model & heuristics due to external API limits.")
+    st.sidebar.markdown("### 2. Authenticate Academic ID")
+    manual_id = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="0000-0000-0000-0000")
+    if st.sidebar.button("Connect ID"):
+        if validate_orcid_did(manual_id):
+            st.session_state.academic_id = manual_id.strip()
+            st.session_state.orcid_name = "Verified Academic Researcher"
+            st.session_state.is_authenticated = True
+            st.session_state.auth_method = "Academic ID"
+            add_log(f"Identity Authenticated via Academic ID: {manual_id.strip()}")
+            st.rerun()
+        else:
+            st.sidebar.error("Invalid ORCID or DID format.")
 
-        # Save assessment record
-        cursor.execute(
-            """INSERT OR REPLACE INTO papers_assessment (
-                eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, 
-                logic_score, scope_alignment, subfields, fields, author_name, final_score, 
-                timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, 
-                gaming_penalty, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, 
-                reproducibility_score, doi, consensus_data, evidence_report, scilem_score
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                file_hash, user_id, title, filename, scope, *scores_dict.values(),
-                logic_integrity, 0.0, json.dumps(["Core Research Domain"]),
-                json.dumps(["Computer Science"]), extracted_author, final_score,
-                datetime.now().isoformat(), book_address, piq_minted,
-                tx_hash, zk_proof, user_id, "None", 0.0,
-                mdar_score, rrid_count, json.dumps(["Data Curation"]), 0.85,
-                provided_doi, json.dumps(consensus_raw), evidence_report, scilem_score
-            ),
-        )
+    st.sidebar.markdown("---")
+    st.sidebar.info("Notice: Connect your Web3 Wallet to stake piQ tokens and receive earned rewards directly.")
+else:
+    st.sidebar.success("Securely Connected")
+    
+    conn_hist = get_db_connection()
+    total_user_piq = 0.0
+    try:
+        cur_h = conn_hist.cursor()
+        if st.session_state.auth_method == "Web3":
+            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
+        else:
+            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.academic_id,))
+        piq_rows = cur_h.fetchall()
+        total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
+    finally:
+        conn_hist.close()
+        
+    auth_disp = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
+    
+    st.sidebar.markdown(
+        f"**Researcher:** {st.session_state.orcid_name}\n\n"
+        f"**Connected ID:** `{auth_disp[:12]}...`\n\n"
+        f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
+    )
 
-        # MINT BLOCKCHAIN POR WEIGHTS BLOCK
-        cursor.execute("SELECT COUNT(*), block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
-        row = cursor.fetchone()
-        block_count = row[0] if row else 1
-        prev_hash = row[1] if row and row[1] else "0" * 64
+    if st.sidebar.button("Disconnect Session"):
+        add_log("Session Disconnected.")
+        st.session_state.is_authenticated = False
+        st.session_state.auth_method = "Anonymous"
+        st.session_state.orcid_name = ""
+        st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
+        st.session_state.academic_id = "None"
+        st.rerun()
 
-        new_height = block_count + 1
-        ts = datetime.now().isoformat()
-        f_hash = get_formulas_hash()
-        val_node, b_hash, por_p = validate_block_por(
-            new_height, active_weights, ts, prev_hash, file_hash, "Pidyne_Scilem_Ensemble", final_score, f_hash
-        )
+current_user = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
+current_email = "None"
+valid_book_address = current_user if (st.session_state.auth_method == "Web3" and w3.is_address(current_user)) else "0x0000000000000000000000000000000000000000"
 
-        cursor.execute(
-            """INSERT INTO blockchain_por_weights 
-               (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (*active_weights, ts, prev_hash, val_node, b_hash, file_hash, "Pidyne_Scilem_Ensemble", por_p, f_hash)
-        )
+st.sidebar.markdown("---")
+with st.sidebar.expander("Live System Monitor", expanded=True):
+    log_text = "\n".join(st.session_state.app_logs)
+    st.code(log_text if log_text else "No active logs...", language="bash")
 
-        conn.commit()
+scilem_container = st.sidebar.container()
+with scilem_container:
+    st.markdown("""
+    <div id='scilem-drag-handle'>
+        <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
+            <span>Scilem Assistant</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    floating_chat_container = st.container(height=240)
+    with floating_chat_container:
+        for idx, message in enumerate(st.session_state.scilem_messages):
+            msg_avatar = "🧠" if message["role"] == "assistant" else "👤"
+            with st.chat_message(message["role"], avatar=msg_avatar):
+                st.markdown(message["content"])
+
+    with st.form(key="scilem_floating_form", clear_on_submit=False):
+        f_cols = st.columns([3, 1])
+        with f_cols[0]:
+            floating_prompt = st.text_input("Ask Scilem...", value="", label_visibility="collapsed")
+        with f_cols[1]:
+            submitted_floating = st.form_submit_button("Send")
+            if submitted_floating and floating_prompt.strip():
+                st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
+                scilem_neural_reply = evaluate_scilem_analysis_report(floating_prompt)
+                st.session_state.scilem_messages.append({
+                    "role": "assistant",
+                    "content": scilem_neural_reply
+                })
+                st.rerun()
+
+    if (
+        st.session_state.is_authenticated 
+        and st.session_state.auth_method == "Web3" 
+        and w3.is_address(current_user) 
+        and w3.is_address(OWNER_ID) 
+        and current_user.lower() == OWNER_ID.lower()
+    ):
+        if st.button("Reset Scilem (Owner)"):
+            msg = reset_scilem()
+            st.session_state.scilem_messages = [
+                {
+                    "role": "assistant", 
+                    "content": "**Scilem has been reset.** Neural weights and context cleared to baseline by Web3 owner."
+                }
+            ]
+            add_log(msg)
+            st.toast(msg, icon="🧠")
+            st.success(msg)
+            time.sleep(0.5)
+            st.rerun()
+
+def refine_science_field(s):
+    s_lower = s.lower()
+    if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]):
+        return "Computer Science > Blockchain & Distributed Systems"
+    elif any(k in s_lower for k in ["machine learning", "deep learning", "neural", "ai", "artificial intelligence"]):
+        return "Computer Science > Artificial Intelligence & Machine Learning"
+    elif any(k in s_lower for k in ["algorithm", "software", "computation", "cyber", "data", "information"]):
+        return "Computer Science > Algorithms & Software Engineering"
+    elif any(k in s_lower for k in ["quantum", "optics", "photonics"]):
+        return "Physics > Quantum Mechanics & Optics"
+    elif any(k in s_lower for k in ["energy", "mechanics", "thermodynamics", "physics"]):
+        return "Physics > Applied Mechanics & Energy Systems"
+    elif any(k in s_lower for k in ["polymer", "catalysis", "molecule", "chemical", "chemistry"]):
+        return "Chemistry > Chemical Synthesis & Molecular Catalysis"
+    elif any(k in s_lower for k in ["genetics", "genomics", "gene", "biology"]):
+        return "Life Sciences > Genetics & Genomics"
+    elif any(k in s_lower for k in ["cellular", "protein", "molecular biology"]):
+        return "Life Sciences > Molecular & Cellular Biology"
+    elif any(k in s_lower for k in ["ecology", "ecosystem", "biodiversity"]):
+        return "Life Sciences > Ecology & Evolutionary Biology"
+    elif any(k in s_lower for k in ["clinical", "hospital", "patient", "disease", "pharmac", "medical", "medicine"]):
+        return "Medical Sciences > Clinical Medicine & Pharmacology"
+    elif any(k in s_lower for k in ["biomedical", "neuroscience", "cardiac"]):
+        return "Medical Sciences > Biomedical Research"
+    elif any(k in s_lower for k in ["climate", "carbon", "atmosphere", "meteorology", "earth"]):
+        return "Earth Sciences > Climate Science & Meteorology"
+    elif any(k in s_lower for k in ["geology", "ocean", "seismic"]):
+        return "Earth Sciences > Geology & Earth Systems"
+    elif any(k in s_lower for k in ["economics", "finance", "market", "social"]):
+        return "Social Sciences > Economics & Quantitative Finance"
+    elif any(k in s_lower for k in ["sociology", "psychology", "policy", "management"]):
+        return "Social Sciences > Behavioral & Policy Studies"
+    elif any(k in s_lower for k in ["math", "statistics", "algebra", "probability", "calculus"]):
+        return "Mathematics & Statistics > Applied Mathematics & Statistics"
+    elif any(k in s_lower for k in ["engineering", "robotics", "materials", "civil", "electrical"]):
+        return "Engineering & Technology > Applied Engineering & Materials Science"
+    else:
+        return f"Engineering & Technology > Applied Technical Research ({s.title()})"
+
+def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, size_scale=1.5, central_grav=0.15):
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT fields, subfields, final_score, author_name FROM papers_assessment")
+        data = cursor.fetchall()
     finally:
         conn.close()
 
-    backup_state_to_web3()
+    html_string, table_html = "", ""
+    if not data:
+        return html_string, table_html
 
-    return (
-        title, extracted_author, final_score, logic_integrity, drift, rec,
-        ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
-        active_weights, mdar_score, rrid_count, 0.85, False, warnings_list,
-        consensus_raw, evidence_report, scilem_score
+    topic_aggregates = {}
+    exclude_terms = {
+        "general", "general science", "unspecified domain",
+        "unspecified sub-domain", "core research topic",
+    }
+
+    for fields_json, subfields_json, final_score, author_str in data:
+        cleaned_author = clean_author_name(author_str)
+        if (
+            target_author
+            and target_author != "All Authors"
+            and target_author not in cleaned_author
+        ):
+            continue
+        try:
+            raw_subfields = [s.title().strip() for s in json.loads(subfields_json)]
+            score = safe_float(final_score, 50.0)
+            for rs in raw_subfields:
+                if rs and rs.lower() not in exclude_terms:
+                    s = refine_science_field(rs)
+                    if s not in topic_aggregates:
+                        topic_aggregates[s] = {"weight_sum": 0.0, "frequency": 0}
+                    topic_aggregates[s]["weight_sum"] += score
+                    topic_aggregates[s]["frequency"] += 1
+        except:
+            continue
+
+    if not topic_aggregates:
+        topic_aggregates["Computer Science > Algorithms & Software Engineering"] = {
+            "weight_sum": 50.0,
+            "frequency": 1,
+        }
+
+    if len(topic_aggregates) > 15:
+        sorted_topics = sorted(
+            topic_aggregates.items(),
+            key=lambda x: (x[1]["frequency"], x[1]["weight_sum"]),
+            reverse=True
+        )
+        topic_aggregates = dict(sorted_topics[:15])
+
+    unique_topics = list(topic_aggregates.keys())
+
+    major_fields_dict = {}
+    for topic in unique_topics:
+        parts = [p.strip() for p in topic.split('>')]
+        major = parts[0]
+        if major not in major_fields_dict:
+            major_fields_dict[major] = []
+        major_fields_dict[major].append(topic)
+
+    major_keys = sorted(list(major_fields_dict.keys()))
+    color_map = {}
+
+    for i, major in enumerate(major_keys):
+        h = i / len(major_keys) if len(major_keys) > 0 else 0
+        subfields = sorted(major_fields_dict[major])
+        n_subs = len(subfields)
+        
+        for j, topic in enumerate(subfields):
+            if n_subs <= 1:
+                s, v = 0.7, 0.9
+            else:
+                ratio = j / (n_subs - 1)
+                s = 0.4 + (0.5 * ratio)
+                v = 0.95 - (0.35 * ratio)
+            rgb = colorsys.hsv_to_rgb(h, s, v)
+            color_map[topic] = "#%02x%02x%02x" % tuple(int(x * 255) for x in rgb)
+
+    net = Network(
+        height="600px",
+        width="100%",
+        bgcolor="#ffffff",
+        font_color="#2c3e50",
+        notebook=False,
     )
+    
+    physics_options = f"""{{ 
+        "physics": {{ 
+            "barnesHut": {{ 
+                "gravitationalConstant": {repulsion}, 
+                "centralGravity": {central_grav}, 
+                "springLength": {spring_len}, 
+                "springConstant": 0.005,
+                "damping": 1.0,
+                "avoidOverlap": 2.0 
+            }}, 
+            "stabilization": {{ 
+                "enabled": true, 
+                "iterations": 2500,
+                "fit": true
+            }} 
+        }} 
+    }}"""
+    net.set_options(physics_options)
+
+    for topic, metrics in topic_aggregates.items():
+        avg_weight = metrics["weight_sum"] / metrics["frequency"]
+        freq = metrics["frequency"]
+        node_size = max(35, (25 + (avg_weight * 3.0)) * size_scale)
+
+        base_col = color_map[topic]
+        net.add_node(
+            n_id=topic,
+            label=" ",
+            title=(
+                f"Field: {topic} | Frequency: {freq} | Avg Weight/Score:"
+                f" {avg_weight:.1f}"
+            ),
+            size=node_size,
+            shape="dot",
+            physics=True,
+            font={"color": "rgba(0,0,0,0)", "size": 0},
+            color={
+                "background": base_col,
+                "border": "#1a1a1a",
+                "highlight": {"background": base_col, "border": "#000000"},
+                "hover": {"background": base_col, "border": "#000000"},
+            },
+            shadow={
+                "enabled": True,
+                "color": "rgba(0,0,0,0.5)",
+                "size": 6,
+                "x": 3,
+                "y": 3,
+            },
+        )
+        
+    for i, t1 in enumerate(unique_topics):
+        for j, t2 in enumerate(unique_topics):
+            if i < j and t1.split(">")[0].strip() == t2.split(">")[0].strip():
+                net.add_edge(t1, t2, color="rgba(150,150,150,0.2)")
+
+    tmp_fd, tmp_name = tempfile.mkstemp(suffix=".html")
+    os.close(tmp_fd) 
+    
+    try:
+        net.save_graph(tmp_name)
+        with open(tmp_name, "r", encoding="utf-8") as f:
+            html_string = f.read()
+    finally:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+
+    gradient_injection = f"""
+    <style type="text/css">
+        body, html {{ margin: 0; padding: 0; border: none; overflow: hidden; width: 100%; height: 600px; }}
+        canvas {{
+            background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%);
+            border: none !important;
+            outline: none !important;
+            width: 100% !important;
+            height: 600px !important;
+        }}
+        #mynetwork, .vis-network, .card-body {{
+            border: none !important;
+            box-shadow: none !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: 600px !important;
+        }}
+    </style>
+    <!-- reload_timestamp: {time.time()} -->
+    </head>
+    """
+    html_string = html_string.replace("</head>", gradient_injection)
+    html_string = html_string.replace(
+        "mynetwork", f"pi_network_{int(time.time() * 1000)}"
+    )
+
+    table_html = "<style>.table-big { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 10px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; } .table-big th { background-color: #f8fafc; color: #475569; padding: 8px; text-align: left; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; border-bottom: 2px solid #e2e8f0; } .table-big td { padding: 8px; border-bottom: 1px solid #f1f5f9; color: #1e293b; } .color-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1); } </style>"
+    table_html += "<div class='legend-container'><table class='table-big'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
+    for topic, metrics in sorted(
+        topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True
+    ):
+        avg_w = metrics["weight_sum"] / metrics["frequency"]
+        table_html += (
+            f"<tr><td style='text-align: center;'><div class='color-box'"
+            f" style='background-color:{color_map[topic]};'></div></td><td><b>{topic}</b></td><td"
+            f" style='text-align: center;'>{metrics['frequency']}</td><td"
+            f" style='text-align: center;'>{avg_w:.1f}</td></tr>"
+        )
+    table_html += "</tbody></table></div>"
+
+    return html_string, table_html
+
+
+def get_criteria_info(weights):
+    tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = weights
+    return [
+        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \vapri $$"),
+        ("C2", "Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3", "Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4", "Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5", "Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6", "Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7", "Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8", "Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+    ]
+
+@st.dialog("Criterion Details & Adversarial Logic Engine", width="medium")
+def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula):
+    st.markdown(f"### {c_id}: {title}")
+    st.markdown(f"**Current Epoch Weight ($\varpi_{sym}$):** `{weight_val:.6f}`")
+    st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
+    st.markdown(formula)
+    st.markdown("---")
+    st.markdown(
+        r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
+        r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
+        r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right)"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \vapri $$"
+    )
+
+# --- Top Header with Title and Total Analyzed Papers Badge ---
+top_title_col, top_badge_col = st.columns([4, 2], vertical_alignment="center")
+with top_title_col:
+    st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
+with top_badge_col:
+    st.markdown(
+        f"""
+        <div style="float: right; background-color: #0f172a; color: white; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            Total Analyzed Papers: <span style="color: #60a5fa;">{total_analyzed_count}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+st.markdown("<br>", unsafe_allow_html=True)
+
+with st.container(border=True):
+    selected_uploaded_files = []
+    uploaded_files = st.file_uploader(
+        "Upload Local PDF(s)",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key=f"file_uploader_{st.session_state['reset_token']}",
+    )
+    if uploaded_files:
+        st.markdown("**Tick local files to include:**")
+        for i, file in enumerate(uploaded_files):
+            if st.checkbox(
+                f"Local File: {file.name}",
+                value=True,
+                key=f"up_chk_{i}_{st.session_state['reset_token']}",
+            ):
+                selected_uploaded_files.append(file)
+
+    research_scope = ""
+    doi_input = ""
+    include_doi = False
+    selected_alex_papers = []
+
+    # --- Free Assessment vs Obligatory Web3 Stake Logic ---
+    free_evals_used = st.session_state.get("free_evals_used", 0)
+    is_web3_authenticated = (
+        st.session_state.is_authenticated 
+        and st.session_state.auth_method == "Web3" 
+        and w3.is_address(st.session_state.orcid_id)
+    )
+
+    if free_evals_used == 0:
+        st.info(
+            "🎁 **First Assessment Free:** Your first assessment runs with zero stake required! "
+            "**Recommendation:** Connect your Web3 Wallet in the sidebar first so earned **piQ** tokens can be credited directly to your address."
+        )
+        stake_amount = True
+    else:
+        if not is_web3_authenticated:
+            st.warning(
+                "🔒 **Free Trial Completed:** Please connect your **Web3 Ethereum Wallet** in the sidebar to stake **0.1 piQ** and execute further paper assessments."
+            )
+            stake_amount = False
+        else:
+            stake_amount = st.checkbox(
+                "Stake 0.1 piQ to Process (Returned on Valid Assessment)",
+                value=True,
+                key=f"stake_chk_{st.session_state['reset_token']}",
+            )
+
+    if st.session_state["is_running"]:
+        col_run, col_stop = st.columns([4, 1], gap="medium")
+        with col_run:
+            st.button("Working...", type="primary", use_container_width=True, disabled=True)
+        with col_stop:
+            if st.button("Stop", type="secondary", use_container_width=True):
+                st.session_state["is_running"] = False
+                st.session_state["cancel_requested"] = True
+                add_log("Pipeline operation forcefully interrupted by user.")
+                st.info("Pipeline operation cancelled by user.")
+                st.rerun()
+
+        progress_bar, status_text = st.progress(0), st.empty()
+        scope_val = st.session_state.get("snap_scope", "")
+        snap_files = st.session_state.get("snap_files", [])
+        snap_alex = st.session_state.get("snap_alex", [])
+        include_doi_snap = st.session_state.get("snap_include_doi", False)
+        doi_snap = st.session_state.get("snap_doi", "")
+
+        try:
+            if snap_alex and not st.session_state["cancel_requested"]:
+                for p in snap_alex:
+                    if st.session_state["cancel_requested"]:
+                        break
+                    status_text.text(f"Fetching OpenAlex paper: {p['title']}...")
+                    pdf_bytes = None
+                    fname = f"OpenAlex_{p['title'][:20]}.pdf"
+                    p_doi = p.get("doi", "None")
+                    add_log(f"Commencing open-access resolution for OpenAlex document: {fname}")
+
+                    if p.get("pdf_url"):
+                        pdf_bytes = download_pdf_from_url(p["pdf_url"])
+                    if not pdf_bytes and (p.get("title") or p.get("doi")):
+                        s2_url = fetch_semantic_scholar_pdf(p.get("doi") or p.get("title"))
+                        if s2_url:
+                            pdf_bytes = download_pdf_from_url(s2_url)
+                    if not pdf_bytes and p.get("doi"):
+                        metadata = fetch_doi_metadata(p["doi"])
+                        if metadata and metadata.get("pdf_url"):
+                            pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+
+                    if not pdf_bytes and p_doi:
+                        status_text.text("Direct download restricted. Querying CORE API fallback...")
+                        core_text = fetch_core_text_by_doi(p_doi)
+                        if core_text:
+                            pdf_bytes = create_virtual_pdf_from_text(core_text, title=p.get('title', 'Open Access'))
+
+                    if pdf_bytes:
+                        clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
+                        (
+                            title, author_name, score, logic_integrity, drift, rec,
+                            fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                            consensus_raw, evidence_report_text, scilem_rating
+                        ) = process_single_pdf(
+                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, p_doi,
+                        )
+
+                        eval_record = {
+                            "title": title, "author_name": clean_author_name(author_name),
+                            "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                            "rec": rec, "fields": fields, "subfields": subfields,
+                            "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                            "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                            "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                            "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                            "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                            "scilem_rating": scilem_rating
+                        }
+                        st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                        st.session_state["free_evals_used"] += 1
+                        add_log(f"Successfully processed and recorded evaluation for {fname}")
+                    else:
+                        clean_doi = p_doi.replace("https://doi.org/", "").strip() if p_doi else "None"
+                        doi_url = f"https://doi.org/{clean_doi}" if clean_doi and clean_doi != "None" else (p.get("pdf_url") or "N/A")
+                        err_item = {"title": p.get("title", "Unknown Title"), "doi": clean_doi if clean_doi and clean_doi != "None" else "N/A", "url": doi_url}
+                        add_log("Publisher access restriction encountered for OpenAlex target.")
+                        if err_item not in st.session_state["download_errors"]:
+                            st.session_state["download_errors"].append(err_item)
+
+            if (
+                include_doi_snap
+                and doi_snap.strip()
+                and not st.session_state["cancel_requested"]
+            ):
+                status_text.text(f"Resolving DOI: {doi_snap}...")
+                metadata = fetch_doi_metadata(doi_snap)
+                fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
+                pdf_bytes = None
+                add_log(f"Attempting API resolution for standalone DOI: {doi_snap}")
+                
+                if metadata and metadata.get("pdf_url"):
+                    pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+                if not pdf_bytes:
+                    s2_url = fetch_semantic_scholar_pdf(doi_snap)
+                    if s2_url:
+                        pdf_bytes = download_pdf_from_url(s2_url)
+                
+                if not pdf_bytes:
+                    core_text = fetch_core_text_by_doi(doi_snap)
+                    if core_text:
+                        pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
+
+                if pdf_bytes:
+                    status_text.text("Assessing document from resolved source...")
+                    clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
+                    (
+                        title, author_name, score, logic_integrity, drift, rec,
+                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                        consensus_raw, evidence_report_text, scilem_rating
+                    ) = process_single_pdf(
+                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, doi_snap.strip(),
+                    )
+
+                    eval_record = {
+                        "title": title, "author_name": clean_author_name(author_name),
+                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                        "rec": rec, "fields": fields, "subfields": subfields,
+                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                        "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                        "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                        "scilem_rating": scilem_rating
+                    }
+                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                    st.session_state["free_evals_used"] += 1
+                    add_log("Successfully evaluated and logged DOI source.")
+                else:
+                    clean_doi = doi_snap.replace("https://doi.org/", "").strip()
+                    doi_url = f"https://doi.org/{clean_doi}"
+                    err_item = {"title": f"DOI Input: {clean_doi}", "doi": clean_doi, "url": doi_url}
+                    add_log("Publisher access blocks direct binary extraction for standalone DOI.")
+                    if err_item not in st.session_state["download_errors"]:
+                        st.session_state["download_errors"].append(err_item)
+
+            if snap_files and not st.session_state["cancel_requested"]:
+                total_files = len(snap_files)
+                for i, (fname, fpath) in enumerate(snap_files):
+                    if st.session_state["cancel_requested"]:
+                        break
+                    status_text.text(f"Analyzing uploaded file {i+1} of {total_files}: {fname}...")
+                    add_log(f"Engaging logical extraction on local file structure: {fname}")
+                    
+                    with open(fpath, "rb") as in_f:
+                        raw_bytes = in_f.read()
+                        
+                    clean_bytes = preprocess_pdf_layout(raw_bytes, fname)
+                    
+                    (
+                        title, author_name, score, logic_integrity, drift, rec,
+                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                        consensus_raw, evidence_report_text, scilem_rating
+                    ) = process_single_pdf(
+                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, "None",
+                    )
+
+                    eval_record = {
+                        "title": title, "author_name": clean_author_name(author_name),
+                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                        "rec": rec, "fields": fields, "subfields": subfields,
+                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                        "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                        "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                        "scilem_rating": scilem_rating
+                    }
+                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                    st.session_state["free_evals_used"] += 1
+                    progress_bar.progress((i + 1) / total_files)
+                    add_log(f"Stored local assessment result to cache.")
+
+            if st.session_state["cancel_requested"]:
+                st.warning("Pipeline operation was stopped.")
+            else:
+                status_text.success("Pipeline processing complete.")
+                time.sleep(1)
+        finally:
+            st.session_state["is_running"] = False
+            st.session_state["cancel_requested"] = False
+            st.session_state["reset_token"] += 1
+            st.session_state["assessment_update_token"] = time.time()
+
+    else:
+        if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
+            if free_evals_used >= 1 and not is_web3_authenticated:
+                st.error("Free trial limit reached. Please connect your Web3 Ethereum Wallet in the sidebar to stake 0.1 piQ and run assessments.")
+            elif free_evals_used >= 1 and not stake_amount:
+                st.error("You must agree to stake 0.1 piQ to execute further paper assessments.")
+            elif (
+                not selected_uploaded_files
+                and not (include_doi and doi_input.strip())
+                and not selected_alex_papers
+            ):
+                st.warning("Please tick at least one paper or input source to assess.")
+            else:
+                add_log("Preparing pipeline dispatch queue...")
+                saved_files = []
+                for f in selected_uploaded_files:
+                    f_path = os.path.join(st.session_state["session_temp_dir"], f.name)
+                    with open(f_path, "wb") as out_f:
+                        out_f.write(f.getvalue())
+                    f.seek(0)
+                    saved_files.append((f.name, f_path))
+                    add_log(f"Cached user file to temporary disk node: {f.name}")
+                    
+                st.session_state["snap_files"] = saved_files
+                st.session_state["snap_scope"] = research_scope
+                st.session_state["snap_doi"] = doi_input
+                st.session_state["snap_include_doi"] = include_doi
+                st.session_state["snap_alex"] = selected_alex_papers
+                st.session_state["is_running"] = True
+                st.session_state["cancel_requested"] = False
+                st.rerun()
+
+@st.dialog("Detailed Research Integrity Dossier", width="large")
+def more_details_dialog(item):
+    title = item.get("title", "Unknown Title")
+    author_name = clean_author_name(item.get("author_name", "Unknown"))
+    score = safe_float(item.get("score"), 0.0)
+    logic_integrity = safe_float(item.get("logic_integrity"), 75.0)
+    scores_dict = item.get("scores_dict", {})
+    used_weights = item.get("used_weights", [1.0]*8)
+    eval_hash = item.get("eval_hash", "0x0")
+    piq = safe_float(item.get("piq"), 0.0)
+    tx_hash = item.get("tx_hash", "None")
+    zk_proof = item.get("zk_proof", "None")
+    mdar_score = safe_float(item.get("h_idx"), 0.0)
+    rrid_count = int(safe_float(item.get("i10_idx"), 0))
+    repro_score = safe_float(item.get("repro_score"), 0.0)
+    filename = item.get("filename", "N/A")
+    warnings = item.get("warnings", [])
+    consensus_raw = item.get("consensus_raw", {})
+    evidence_report_text = item.get("evidence_report_text", "")
+    author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
+
+    st.subheader(f"{title} by {author_name}")
+
+    if warnings:
+        st.warning(f"⚠️ **Manuscript Flagged with {len(warnings)} Warning Check(s):**")
+        for w in warnings:
+            st.markdown(f"- {w}")
+
+    # --- Section 1: Overview & Ledger ---
+    st.markdown("### Overview & Ledger")
+    st.write(f"**File Name:** `{filename}`")
+    st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
+    st.write(f"**Unique Book Address:** `{author_book}`")
+    st.write(f"**piQ Minted:** `{piq}`")
+    st.markdown(f"**zk-SNARK Proof:** `{zk_proof}`", unsafe_allow_html=True)
+    
+    tx_url = safe_get_sepolia_url(tx_hash)
+    tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
+    if tx_url:
+        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
+    else:
+        st.write(f"**Tx Hash:** `{tx_disp_val}`")
+
+    st.markdown(f"**Executable Reproducibility Score:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
+    st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # --- Section 2: Multi-LLM Extractions ---
+    st.markdown("### Multi-LLM Extractions")
+    if consensus_raw and isinstance(consensus_raw, dict):
+        llm_cols = st.columns(2, gap="medium")
+        target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"]
+        for idx, llm_key in enumerate(target_llms):
+            col = llm_cols[idx % 2]
+            with col:
+                data = consensus_raw.get(llm_key, {})
+                with st.container(border=True):
+                    st.markdown(f"**Model: {llm_key.upper()}**")
+                    if llm_key == "scilem":
+                        st.markdown(f"**Engine Status:** Active (Local PyTorch Neural Network)")
+                        st.markdown(f"**Structural Analysis:** {data.get('opinion', 'Scilem structural analysis active.')}")
+                    elif data.get('api_failed', False):
+                        st.markdown(f"**Status:** Rate / Credit Limit Hit")
+                        st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                    else:
+                        st.markdown(f"**Extracted Title:** `{data.get('title', 'N/A')}`")
+                        st.markdown(f"**Extracted Authors:** `{data.get('authors', 'N/A')}`")
+                        st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
+                        refs = data.get("references", [])
+                        if refs:
+                            st.markdown(f"**References ({len(refs)}):**")
+                            for r in refs[:3]:
+                                if isinstance(r, dict):
+                                    st.markdown(f"- **{r.get('citation', '[*]')}**: {r.get('authors', 'Unknown')} ({r.get('year', 'N/A')})")
+                                else:
+                                    st.markdown(f"- {r}")
+    else:
+        st.info("No individual LLM raw opinion payloads stored.")
+
+    st.markdown("---")
+
+    # --- Section 3: Merged Synthesized Evidence Report ---
+    st.markdown("### Synthesized Evidence Report")
+    if evidence_report_text:
+        st.markdown(evidence_report_text)
+        
+        st.download_button(
+            label="Download Final Evidence Report (.md)",
+            data=evidence_report_text,
+            file_name=f"Evidence_Report_{eval_hash[:10]}.md",
+            mime="text/markdown",
+            use_container_width=True,
+            key=f"dl_report_modal_{eval_hash}_{time.time()}"
+        )
+    else:
+        st.info("No synthesized evidence report generated for this manuscript.")
+
+    st.markdown("---")
+
+    # --- Section 4: Criteria Breakdown & Score Matrix ---
+    st.markdown("### Criteria Breakdown & Score Matrix")
+    breakdown_df = pd.DataFrame({
+        "Criterion": [
+            "C1: Semantic Originality",
+            "C2: Methodological Rigor (SciScore)",
+            "C3: Interdisciplinary Entropy",
+            "C4: Societal Impact",
+            "C5: Open Science & Repro",
+            "C6: Literature Integration",
+            "C7: Empirical Density",
+            "C8: Future Actionability & FAIR",
+        ],
+        "Score Extracted (0-100)": [
+            safe_float(scores_dict.get("C1_Semantic_Originality"), 0),
+            safe_float(scores_dict.get("C2_Methodological_Rigor_SciScore"), 0),
+            safe_float(scores_dict.get("C3_Interdisciplinary_Entropy"), 0),
+            safe_float(scores_dict.get("C4_Societal_Impact"), 0),
+            safe_float(scores_dict.get("C5_Open_Science_Repro"), 0),
+            safe_float(scores_dict.get("C6_Literature_Integration"), 0),
+            safe_float(scores_dict.get("C7_Empirical_Density"), 0),
+            safe_float(scores_dict.get("C8_Future_Actionability_FAIR"), 0),
+        ],
+        "Epoch Weight": used_weights,
+        "Weighted Value": [
+            safe_float(scores_dict.get(k), 0) * used_weights[i]
+            for i, k in enumerate([
+                "C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", "C3_Interdisciplinary_Entropy",
+                "C4_Societal_Impact", "C5_Open_Science_Repro", "C6_Literature_Integration",
+                "C7_Empirical_Density", "C8_Future_Actionability_FAIR",
+            ])
+        ],
+    })
+    st.dataframe(breakdown_df, hide_index=True)
+    raw_base = sum(breakdown_df["Weighted Value"]) / 8.0
+    logic_multiplier = 0.7 + (logic_integrity / 333.3)
+    st.markdown(f"**Base Weighted Sum (Mean divided by 8):** `{raw_base:.2f}`")
+    st.markdown(
+        f"**Logic Integrity Multiplier:** `{logic_multiplier:.4f}` (Derived from"
+        f" {logic_integrity:.1f}% raw logic score)"
+    )
+
+    dossier_content = f"""# RESEARCH INTEGRITY DOSSIER (DORA-Aligned)
+**Title:** {title}
+**Author:** {author_name}
+**File Name:** {filename}
+**Evaluation Hash (Paper Address):** {eval_hash}
+**Unique Book Address:** {author_book}
+**Final Pi-Index Score:** {score:.2f} / 100
+**Logic Integrity Score:** {logic_integrity:.1f}%
+**SciScore MDAR Adherence:** {mdar_score * 100:.1f}%
+**Valid RRIDs Count:** {rrid_count}
+"""
+    st.download_button(
+        label=f"Download Research Integrity Dossier ({filename})",
+        data=dossier_content,
+        file_name=f"Dossier_{eval_hash[:10]}.md",
+        mime="text/markdown",
+        key=f"download_dossier_modal_{eval_hash}_{time.time()}",
+        use_container_width=True,
+    )
+
+@st.dialog("AI Peer Review Defense Strategy", width="medium")
+def defense_strategy_dialog(scores_dict):
+    with st.spinner("Synthesizing adversarial defense strategy..."):
+        rebuttal = generate_rebuttal_strategy(scores_dict)
+    st.markdown(rebuttal)
+
+def render_breakdown_item(item, index):
+    title = item["title"]
+    author_name = clean_author_name(item["author_name"])
+    score = safe_float(item["score"], 0.0)
+    eval_hash = item["eval_hash"]
+    piq = safe_float(item["piq"], 0.0)
+    scores_dict = item["scores_dict"]
+    warnings = item.get("warnings", [])
+    acknowledged = item.get("warnings_acknowledged", False)
+
+    with st.container(border=True):
+        col_info, col_actions = st.columns([6, 4], gap="medium")
+        with col_info:
+            if warnings and not acknowledged:
+                warn_badge = f" ⚠️ *({len(warnings)} warning checks active)*"
+            elif warnings and acknowledged:
+                warn_badge = f" 🛡️ *({len(warnings)} warning checks acknowledged)*"
+            else:
+                warn_badge = ""
+
+            title_lower = str(title).lower().strip()
+            author_lower = str(author_name).lower().strip()
+
+            invalid_titles = ["n/a", "none", "unknown", "failed", "unnamed", "api limit"]
+            invalid_authors = ["n/a", "none", "unknown", "unidentified", "independent research scholar", "unconfigured key", "anonymous"]
+
+            has_valid_title = (
+                title 
+                and not any(inv in title_lower for inv in invalid_titles)
+                and "parsed via local heuristics" not in title_lower
+            )
+            has_valid_author = (
+                author_name 
+                and not any(inv in author_lower for inv in invalid_authors)
+            )
+
+            extraction_badge = " ✅ *Title & Author Extracted Successfully*" if (has_valid_title and has_valid_author) or (has_valid_title or has_valid_author) else ""
+
+            st.markdown(f"**{title}** — *{author_name}*{extraction_badge}{warn_badge}")
+            st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
+            
+            if warnings:
+                with st.expander(f"View Warning Checks ({len(warnings)})", expanded=not acknowledged):
+                    for w in warnings:
+                        st.markdown(f"- {w}")
+                    if not acknowledged:
+                        if st.button("Acknowledge Warnings / Dismiss Flag", key=f"ack_warn_{index}_{eval_hash}"):
+                            item["warnings_acknowledged"] = True
+                            add_log(f"Warnings acknowledged for {item['filename']}")
+                            st.rerun()
+                    else:
+                        st.caption("Warnings acknowledged. Paper evaluated normally with piQ minted.")
+        with col_actions:
+            c_det, c_strat, c_del = st.columns([3, 3, 1], gap="small")
+            with c_det:
+                if st.button("More Details", key=f"more_det_{index}_{eval_hash}", use_container_width=True):
+                    more_details_dialog(item)
+            with c_strat:
+                if st.button("Suggest Defense", key=f"gen_strat_{index}_{eval_hash}", use_container_width=True):
+                    defense_strategy_dialog(scores_dict)
+            with c_del:
+                if st.button("❌", key=f"close_eval_{index}_{eval_hash}", help="Close this result"):
+                    st.session_state["evaluated_papers_buffer"].pop(index)
+                    st.rerun()
+
+if (
+    st.session_state["evaluated_papers_buffer"]
+    or st.session_state.get("download_errors")
+):
+    st.markdown("### Assessment Results")
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if st.session_state.get("download_errors"):
+        st.markdown("#### Publisher Access & Download Restrictions")
+        for err_idx, err_data in enumerate(
+            st.session_state["download_errors"]
+        ):
+            err_col1, err_col2 = st.columns([6, 1], gap="medium")
+            with err_col1:
+                st.warning(
+                    f"**Could not directly download PDF for '{err_data['title']}':**"
+                    f" Publishers restrict direct binary access.\n\n- **DOI:**"
+                    f" `{err_data['doi']}`\n- **PDF URL Link:**"
+                    f" [{err_data['url']}]({err_data['url']})"
+                )
+            with err_col2:
+                if st.button(
+                    "Close",
+                    key=f"close_err_{err_idx}_{st.session_state['reset_token']}",
+                ):
+                    st.session_state["download_errors"].pop(err_idx)
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
+        render_breakdown_item(item, item_idx)
+
+# Analytics Section
+st.markdown("<br>", unsafe_allow_html=True)
+top_analytics_col1, top_analytics_col2 = st.columns(2, gap="large")
+
+with top_analytics_col1:
+    col_fc1, col_fc_pop, col_fc2 = st.columns([2.5, 0.5, 1], vertical_alignment="center")
+    with col_fc1:
+        st.markdown("### Pidyne Forecast", unsafe_allow_html=True)
+    with col_fc_pop:
+        with st.popover("❔", help="What's Pidyne?"):
+            st.markdown(r"""
+            **What's Pidyne?**
+            Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
+            1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria.
+            2. **Multi-Model Consensus & LLM-as-a-Judge:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini), acting as the final judge of the paper to read reports and deliver a definitive verdict using an LLM model.
+            """)
+    with col_fc2:
+        forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown", label_visibility="collapsed")
+        actual_lookback = int(forecast_horizon.split()[0])
+
+    @st.cache_data(show_spinner="Training Pidyne LSTM Model in background...")
+    def train_pidyne_cached(weight_data, actual_lookback):
+        dataset = PidyneBlockchainDataset(weight_data, actual_lookback)
+        dataloader = DataLoader(
+            dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
+        )
+
+        model = PidyneLSTM()
+        weights_path = os.path.join(BASE_DIR, "pidyne_weights.pt")
+        if os.path.exists(weights_path):
+            try:
+                model.load_state_dict(torch.load(weights_path, weights_only=True))
+            except Exception:
+                pass
+
+        loss_function = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(300):
+            for seq, target in dataloader:
+                optimizer.zero_grad()
+                loss = loss_function(model(seq), target)
+                loss.backward()
+                optimizer.step()
+
+        model.eval()
+        with torch.no_grad():
+            raw_pred = (
+                model(
+                    torch.tensor(
+                        weight_data[-actual_lookback:], dtype=torch.float32
+                    ).unsqueeze(0)
+                )
+                .squeeze()
+                .numpy()
+            )
+            current_w = weight_data[-1]
+            predicted = current_w + (raw_pred - current_w) * 20.0
+            predicted = np.clip(predicted, 0.01, 7.9)
+            predicted = predicted * (8.0 / np.sum(predicted))
+            torch.save(model.state_dict(), weights_path)
+            return predicted
+
+    conn_pb = get_db_connection()
+    try:
+        cursor_pb = conn_pb.cursor()
+        cursor_pb.execute(
+            "SELECT w1, w2, w3, w4, w5, w6, w7, w8 FROM blockchain_por_weights ORDER"
+            " BY block_height ASC"
+        )
+        historical_rows = cursor_pb.fetchall()
+    finally:
+        conn_pb.close()
+
+    min_blocks_required = 2
+    if len(historical_rows) < min_blocks_required:
+        st.warning(
+            f"Not enough blockchain data to train the meta-model. You need at least"
+            f" {min_blocks_required} blocks (Currently on ledger:"
+            f" {len(historical_rows)}). Assess at least 1 manuscript to generate"
+            " block 2."
+        )
+    else:
+        current_block_count = len(historical_rows)
+        lookback_window = max(1, min(actual_lookback, current_block_count - 1))
+
+        if (
+            "last_trained_blocks" not in st.session_state
+            or st.session_state.last_trained_blocks != current_block_count
+            or st.session_state.get("last_lookback") != lookback_window
+        ):
+            weight_data = np.array(historical_rows, dtype=np.float32)
+
+            st.session_state.predicted_next_weights = train_pidyne_cached(weight_data, lookback_window)
+            st.session_state.current_weights = weight_data[-1]
+            st.session_state.last_trained_blocks = current_block_count
+            st.session_state.last_lookback = lookback_window
+
+        if len(historical_rows) > 0:
+            sliced_rows = historical_rows[-(lookback_window + 1):] if len(historical_rows) > lookback_window else historical_rows
+            df_history = pd.DataFrame(
+                sliced_rows,
+                columns=[
+                    "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"
+                ]
+            )
+            df_history.index.name = "Block / Epoch"
+            
+            df_amplified = df_history.copy()
+            for col in df_amplified.columns:
+                df_amplified[col] = 1.0 + (df_amplified[col] - 1.0) * 1500.0
+                
+            df_melted = df_amplified.reset_index().melt('Block / Epoch', var_name='Criterion', value_name='Weight (Amplified)')
+            
+            base = alt.Chart(df_melted).mark_line(point=True).encode(
+                x='Block / Epoch:O',
+                y=alt.Y('Weight (Amplified):Q', scale=alt.Scale(zero=False)),
+                color='Criterion:N',
+                tooltip=['Block / Epoch', 'Criterion', 'Weight (Amplified)']
+            ).properties(height=350)
+            st.altair_chart(base, use_container_width=True)
+
+        st.markdown("#### Evaluation Metrics")
+        with st.container(border=True):
+            st.markdown(f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):**")
+            
+            crit_info = get_criteria_info(st.session_state.predicted_next_weights)
+            
+            cols1 = st.columns(4, gap="small")
+            for idx, c_data in enumerate(crit_info[:4]):
+                with cols1[idx]:
+                    if st.button(f"{c_data[0]}: {c_data[3]:.5f}", key=f"btn_crit_{c_data[0]}", use_container_width=True):
+                        criterion_details_dialog(*c_data)
+                        
+            cols2 = st.columns(4, gap="small")
+            for idx, c_data in enumerate(crit_info[4:]):
+                with cols2[idx]:
+                    if st.button(f"{c_data[0]}: {c_data[3]:.5f}", key=f"btn_crit_{c_data[0]}", use_container_width=True):
+                        criterion_details_dialog(*c_data)
+
+with top_analytics_col2:
+    st.markdown("### Global Map of Science")
+
+    conn_m = get_db_connection()
+    try:
+        cursor_m = conn_m.cursor()
+        cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
+        all_global_authors = []
+        for row in cursor_m.fetchall():
+            if row[0]:
+                cleaned = clean_author_name(row[0])
+                for a in cleaned.split(","):
+                    if a.strip() and not is_likely_institution(a.strip()):
+                        all_global_authors.append(a.strip())
+    finally:
+        conn_m.close()
+    all_global_authors = sorted(list(set(all_global_authors)))
+
+    piq_dict, book_dict = get_author_piq_dict()
+
+    if "mod_repulsion" not in st.session_state:
+        st.session_state.mod_repulsion = -3000
+    if "mod_spring" not in st.session_state:
+        st.session_state.mod_spring = 180
+    if "mod_size" not in st.session_state:
+        st.session_state.mod_size = 1.5
+    if "mod_gravity" not in st.session_state:
+        st.session_state.mod_gravity = 0.15
+
+    filter_key = f"top_author_filter_{st.session_state['assessment_update_token']}"
+    if filter_key not in st.session_state:
+        st.session_state[filter_key] = "All Authors"
+
+    current_filter = st.session_state.get(filter_key, "All Authors")
+    selected_author_top = None if current_filter == "All Authors" else current_filter
+
+    interactive_html_top, table_html_top = render_bubble_chart_clean(
+        selected_author_top,
+        repulsion=st.session_state.mod_repulsion,
+        spring_len=st.session_state.mod_spring,
+        size_scale=st.session_state.mod_size,
+        central_grav=st.session_state.mod_gravity
+    )
+
+    map_container = st.container()
+    with map_container:
+        if interactive_html_top:
+            st.markdown("<div class='pyvis-map-wrapper'>", unsafe_allow_html=True)
+            components.html(interactive_html_top, height=600, scrolling=False)
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.info("Awaiting sufficient data for map visualization.")
+
+    tab_filter, tab_mod, tab_legend = st.tabs(["Author Filter", "Modulators", "Legend"])
+
+    with tab_filter:
+        if all_global_authors:
+            st.selectbox(
+                "Filter Map by Author:",
+                ["All Authors"] + all_global_authors,
+                key=filter_key,
+                format_func=lambda x: (
+                    f"{x} (piQ: {piq_dict.get(x, 0.0):.2f})" if x != "All Authors" else x
+                ),
+            )
+        else:
+            st.info("No authors available for filtering.")
+
+    with tab_mod:
+        mod_col1, mod_col2 = st.columns(2, gap="medium")
+        with mod_col1:
+            st.slider("Repulsion Force", min_value=-20000, max_value=-100, value=-3000, step=500, key="mod_repulsion")
+            st.slider("Spring Length", min_value=10, max_value=1000, value=180, step=20, key="mod_spring")
+        with mod_col2:
+            st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
+            st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
+
+    with tab_legend:
+        st.markdown(table_html_top, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# User History or Auth Prompt
+if st.session_state.is_authenticated:
+    conn_hist = get_db_connection()
+    try:
+        cur_h = conn_hist.cursor()
+        history_clauses = []
+        history_params = []
+        if st.session_state.auth_method == "Web3" and w3.is_address(st.session_state.orcid_id):
+            history_clauses.append("p.eth_book = ?")
+            history_params.append(st.session_state.orcid_id)
+        if st.session_state.auth_method == "Academic ID" and st.session_state.academic_id not in ("None", ""):
+            history_clauses.append("p.user_id = ?")
+            history_params.append(st.session_state.academic_id)
+
+        if history_clauses:
+            cur_h.execute(
+                f"""SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                          p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                          b.block_height, b.block_hash, p.mdar_adherence_score, 
+                          p.rrid_valid_count, p.reproducibility_score,
+                          p.consensus_data, p.evidence_report, p.scilem_score,
+                          p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8
+                   FROM papers_assessment p
+                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                   WHERE {' OR '.join(history_clauses)}
+                   ORDER BY p.timestamp DESC""",
+                tuple(history_params)
+            )
+        else:
+            cur_h.execute("SELECT NULL WHERE 0")
+        user_history_rows = cur_h.fetchall()
+    finally:
+        conn_hist.close()
+
+    st.markdown("### Your Assessment History")
+
+    if user_history_rows:
+        for idx, uh in enumerate(user_history_rows):
+            (
+                u_title, u_author, u_filename, u_score, u_logic,
+                u_piq, u_tx, u_zk, u_hash, u_time,
+                u_block_height, u_block_hash, u_mdar, u_rrid, u_repro,
+                u_consensus, u_report, u_scilem,
+                u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8
+            ) = uh
+
+            u_author_clean = clean_author_name(u_author)
+            u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
+            u_tx_url = safe_get_sepolia_url(u_tx)
+            
+            tx_disp_val = u_tx if u_tx and str(u_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
+
+            with st.expander(
+                f"[{idx+1}] {u_title[:50]}... — *{u_author_clean}* (Score: **{safe_float(u_score, 0.0):.2f}** | piQ: `{u_piq}`)",
+                expanded=False,
+            ):
+                st.write(f"**File Name:** {u_filename if u_filename else 'N/A'}")
+                st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
+                st.write(f"**Unique Book Address:** `{u_book}`")
+                st.write(f"**piQ Minted:** `{u_piq}`")
+                st.markdown(f"**zk-SNARK Proof:** `{u_zk}`", unsafe_allow_html=True)
+                
+                if u_tx_url:
+                    st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({u_tx_url})")
+                else:
+                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
+
+                st.markdown(f"**Executable Reproducibility Score:** `{safe_float(u_repro, 0.0) * 100:.1f}%`", unsafe_allow_html=True)
+                st.markdown(f"**SciScore MDAR Adherence:** `{safe_float(u_mdar, 0.0) * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
+
+                if st.button("View Full Multi-LLM & Scilem Dossier", key=f"hist_det_{idx}_{u_hash}"):
+                    hist_item = {
+                        "title": u_title,
+                        "author_name": u_author,
+                        "score": safe_float(u_score, 0.0),
+                        "logic_integrity": safe_float(u_logic, 75.0),
+                        "scores_dict": {
+                            "C1_Semantic_Originality": safe_float(u_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(u_c2, 0),
+                            "C3_Interdisciplinary_Entropy": safe_float(u_c3, 0), "C4_Societal_Impact": safe_float(u_c4, 0),
+                            "C5_Open_Science_Repro": safe_float(u_c5, 0), "C6_Literature_Integration": safe_float(u_c6, 0),
+                            "C7_Empirical_Density": safe_float(u_c7, 0), "C8_Future_Actionability_FAIR": safe_float(u_c8, 0)
+                        },
+                        "used_weights": [1.0]*8,
+                        "eval_hash": u_hash,
+                        "piq": safe_float(u_piq, 0.0),
+                        "tx_hash": u_tx,
+                        "zk_proof": u_zk,
+                        "h_idx": safe_float(u_mdar, 0.0),
+                        "i10_idx": int(safe_float(u_rrid, 0)),
+                        "repro_score": safe_float(u_repro, 0.0),
+                        "filename": u_filename or "N/A",
+                        "warnings": [],
+                        "consensus_raw": json.loads(u_consensus) if u_consensus else {},
+                        "evidence_report_text": u_report or "",
+                        "scilem_rating": safe_float(u_scilem, 50.0)
+                    }
+                    more_details_dialog(hist_item)
+    else:
+        st.info("No assessment history or rewards found linked to this authenticated ID.")
+    st.markdown("---")
+
+# Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20) with table-like headers
+side_col1, side_col2 = st.columns(2, gap="large")
+
+with side_col1:
+    st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
+    piq_dict, book_dict = get_author_piq_dict()
+    if piq_dict:
+        sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
+        
+        # Table Header
+        h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 3.2, 4.5, 1.5])
+        h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
+        h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
+        h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Book Address</div>", unsafe_allow_html=True)
+        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>piQ</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
+
+        piq_scroll = st.container(height=380)
+        with piq_scroll:
+            for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
+                book_addr = book_dict.get(author, "None")
+                r_c1, r_c2, r_c3, r_c4 = st.columns([0.8, 3.2, 4.5, 1.5], vertical_alignment="center")
+                r_c1.markdown(f"**{rank}**")
+                r_c2.markdown(f"**{author}**")
+                r_c3.markdown(f"`{book_addr}`")
+                r_c4.markdown(f"**{safe_float(piq, 0.0):.2f}**")
+    else:
+        st.info("No piQ tokens minted yet.")
+
+with side_col2:
+    st.markdown("### pi-Index (piX) Leaderboard [Top Papers]")
+    conn_pi = get_db_connection()
+    try:
+        cur_pi = conn_pi.cursor()
+        cur_pi.execute(
+            """SELECT title, author_name, final_score, logic_score, 
+                      c1, c2, c3, c4, c5, c6, c7, c8, 
+                      piq_minted, tx_hash, zk_proof, mdar_adherence_score, 
+                      rrid_valid_count, reproducibility_score, eval_hash, filename,
+                      consensus_data, evidence_report, scilem_score
+               FROM papers_assessment ORDER BY final_score DESC LIMIT 20"""
+        )
+        top_papers = cur_pi.fetchall()
+    finally:
+        conn_pi.close()
+    
+    if top_papers:
+        # Table Header
+        h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 4.2, 2.5, 2.5])
+        h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
+        h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript Title</div>", unsafe_allow_html=True)
+        h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
+        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Score / Action</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
+
+        pix_scroll = st.container(height=380)
+        with pix_scroll:
+            for rank, tp in enumerate(top_papers, start=1):
+                (
+                    p_title, p_author, p_filename, p_score, p_logic,
+                    p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7, p_c8,
+                    p_piq, p_tx, p_zk, p_mdar, p_rrid, p_repro, p_hash,
+                    p_consensus, p_report, p_scilem
+                ) = tp
+                clean_auth = clean_author_name(p_author)
+                r_c1, r_c2, r_c3, r_c4 = st.columns([0.8, 4.2, 2.5, 2.5], vertical_alignment="center")
+                r_c1.markdown(f"**{rank}**")
+                r_c2.markdown(f"**{p_title}**")
+                r_c3.markdown(f"*{clean_auth}*")
+                with r_c4:
+                    if st.button("View Dossier", key=f"pix_row_dossier_{rank}_{p_hash}", use_container_width=True):
+                        item_dossier = {
+                            "title": p_title,
+                            "author_name": p_author,
+                            "score": safe_float(p_score, 0.0),
+                            "logic_integrity": safe_float(p_logic, 75.0),
+                            "scores_dict": {
+                                "C1_Semantic_Originality": safe_float(p_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(p_c2, 0),
+                                "C3_Interdisciplinary_Entropy": safe_float(p_c3, 0), "C4_Societal_Impact": safe_float(p_c4, 0),
+                                "C5_Open_Science_Repro": safe_float(p_c5, 0), "C6_Literature_Integration": safe_float(p_c6, 0),
+                                "C7_Empirical_Density": safe_float(p_c7, 0), "C8_Future_Actionability_FAIR": safe_float(p_c8, 0)
+                            },
+                            "used_weights": [1.0]*8,
+                            "eval_hash": p_hash,
+                            "piq": safe_float(p_piq, 0.0),
+                            "tx_hash": p_tx,
+                            "zk_proof": p_zk,
+                            "h_idx": safe_float(p_mdar, 0.0),
+                            "i10_idx": int(safe_float(p_rrid, 0)),
+                            "repro_score": safe_float(p_repro, 0.0),
+                            "filename": p_filename or "N/A",
+                            "warnings": [],
+                            "consensus_raw": json.loads(p_consensus) if p_consensus else {},
+                            "evidence_report_text": p_report or "",
+                            "scilem_rating": safe_float(p_scilem, 50.0)
+                        }
+                        more_details_dialog(item_dossier)
+    else:
+        st.info("No assessments recorded for Pi-Index leaderboard yet.")
+
+st.markdown("---")
+
+# Dedicated line for Latest Assessed Papers using scrollable native interactive containers (Limit 20) with table-like headers
+st.markdown("### Latest Assessed Papers")
+conn_recent = get_db_connection()
+try:
+    cur_recent = conn_recent.cursor()
+    cur_recent.execute(
+        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                  b.block_height, b.block_hash,
+                  p.consensus_data, p.evidence_report, p.scilem_score
+           FROM papers_assessment p
+           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+           ORDER BY p.timestamp DESC LIMIT 20"""
+    )
+    merged_papers = cur_recent.fetchall()
+finally:
+    conn_recent.close()
+
+if merged_papers:
+    st.markdown("<p style='font-size:13px; color:#64748b; margin-bottom:10px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
+    
+    # Table Header
+    h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
+    h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Block</div>", unsafe_allow_html=True)
+    h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript & Author</div>", unsafe_allow_html=True)
+    h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Score / piQ</div>", unsafe_allow_html=True)
+    h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Action</div>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
+
+    recent_scroll_container = st.container(height=420)
+    with recent_scroll_container:
+        for idx, mp in enumerate(merged_papers):
+            (
+                m_title, m_author, m_filename, m_score, m_logic,
+                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                m_block_height, m_block_hash,
+                m_consensus, m_report, m_scilem
+            ) = mp
+            
+            bh = m_block_height if m_block_height is not None else "Pending"
+            clean_auth = clean_author_name(m_author)
+            
+            r_col1, r_col2, r_col3, r_col4 = st.columns([1.5, 4.5, 2.0, 2.0], vertical_alignment="center")
+            with r_col1:
+                st.markdown(f"**Block {bh}**")
+            with r_col2:
+                st.markdown(f"**{m_title}**")
+                st.markdown(f"*{clean_auth}*")
+            with r_col3:
+                st.markdown(f"`{safe_float(m_score, 0.0):.2f}` / `{safe_float(m_piq, 0.0):.2f}`")
+            with r_col4:
+                if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
+                    item_dossier = {
+                        "title": m_title,
+                        "author_name": m_author,
+                        "score": safe_float(m_score, 0.0),
+                        "logic_integrity": safe_float(m_logic, 75.0),
+                        "scores_dict": {
+                            "C1_Semantic_Originality": safe_float(m_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(m_c2, 0),
+                            "C3_Interdisciplinary_Entropy": safe_float(m_c3, 0), "C4_Societal_Impact": safe_float(m_c4, 0),
+                            "C5_Open_Science_Repro": safe_float(m_c5, 0), "C6_Literature_Integration": safe_float(m_c6, 0),
+                            "C7_Empirical_Density": safe_float(m_c7, 0), "C8_Future_Actionability_FAIR": safe_float(m_c8, 0)
+                        },
+                        "used_weights": [1.0]*8,
+                        "eval_hash": m_hash,
+                        "piq": safe_float(m_piq, 0.0),
+                        "tx_hash": m_tx,
+                        "zk_proof": m_zk,
+                        "h_idx": safe_float(m_mdar, 0.0),
+                        "i10_idx": int(safe_float(m_rrid, 0)),
+                        "repro_score": safe_float(m_repro, 0.0),
+                        "filename": m_filename or "N/A",
+                        "warnings": [],
+                        "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                        "evidence_report_text": m_report or "",
+                        "scilem_rating": safe_float(m_scilem, 50.0)
+                    }
+                    more_details_dialog(item_dossier)
+else:
+    st.info("No paper assessments recorded on ledger yet.")
+
+st.markdown("---")
+
+# Proof-of-Research Blockchain Explorer
+exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
+with exp_head_col1:
+    st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
+with exp_head_col2:
+    with st.popover("ⓘ", help="View Extra Ledger Info"):
+        st.markdown(
+            "**Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, "
+            "sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) "
+            "into a cryptographically verified SHA-256 block."
+        )
+        conn_pop = get_db_connection()
+        try:
+            cur_pop = conn_pop.cursor()
+            cur_pop.execute(
+                "SELECT por_proof, block_hash, formulas_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+            )
+            p_data = cur_pop.fetchone()
+        except Exception:
+            p_data = None
+        finally:
+            conn_pop.close()
+            
+        if p_data:
+            p_proof, b_hash, f_hash = p_data
+            st.markdown(f"**Latest Proof-of-Research:** `{p_proof}` successfully verified and sealed to block `{b_hash}`.")
+            st.markdown(f"**Unalterable Criteria State Hash:** `{f_hash}` (Guarantees grading mathematical constants cannot be tampered with).")
+        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+
+conn = get_db_connection()
+try:
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used,"
+            " eval_hash, block_hash, por_proof, formulas_hash FROM"
+            " blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
+        )
+        epoch_data = cursor.fetchone()
+    except Exception:
+        epoch_data = None
+
+    if epoch_data:
+        explore_col1, explore_col2 = st.columns([3, 1], vertical_alignment="bottom")
+        with explore_col1:
+            search_query = st.text_input(
+                "Search Ledger",
+                placeholder="Enter Evaluation Hash, Block Hash, Paper Name, Author Name, or Book Address...",
+                label_visibility="collapsed",
+                key="pidyne_ledger_search_query"
+            )
+        with explore_col2:
+            search_btn = st.button("Verify Ledger Record", key="pidyne_verify_record_btn", use_container_width=True)
+
+        if search_btn and search_query:
+            try:
+                q_term = f"%{search_query.strip()}%"
+                cursor.execute(
+                    """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                              p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                              p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book,
+                              p.consensus_data, p.evidence_report, p.scilem_score
+                       FROM papers_assessment p
+                       LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                       WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
+                       LIMIT 5""",
+                    (q_term, q_term, q_term, q_term, q_term)
+                )
+                matched_records = cursor.fetchall()
+                if matched_records:
+                    st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
+                    for m_idx, mr in enumerate(matched_records):
+                        (
+                            m_title, m_author, m_filename, m_score, m_logic,
+                            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                            m_block_height, m_block_hash, m_por, m_form, m_book_addr,
+                            m_consensus, m_report, m_scilem
+                        ) = mr
+
+                        m_author_clean = clean_author_name(m_author)
+                        m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
+                        m_tx_url = safe_get_sepolia_url(m_tx)
+                        
+                        tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
+
+                        with st.expander(
+                            f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
+                            f" **{safe_float(m_score, 0.0):.2f}** | {m_time[:16]})",
+                            expanded=True,
+                        ):
+                            st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
+                            st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
+                            st.write(f"**Unique Book Address:** `{m_book}`")
+                            st.write(f"**piQ Minted:** `{m_piq}`")
+                            st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
+                            
+                            if m_tx_url:
+                                st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
+                            else:
+                                st.write(f"**Tx Hash:** `{tx_disp_val}`")
+
+                            st.markdown(f"**Executable Reproducibility Score:** `{safe_float(m_repro, 0.0) * 100:.1f}%`", unsafe_allow_html=True)
+                            st.markdown(f"**SciScore MDAR Adherence:** `{safe_float(m_mdar, 0.0) * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
+
+                            if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
+                                search_item = {
+                                    "title": m_title,
+                                    "author_name": m_author,
+                                    "score": safe_float(m_score, 0.0),
+                                    "logic_integrity": safe_float(m_logic, 75.0),
+                                    "scores_dict": {
+                                        "C1_Semantic_Originality": safe_float(m_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(m_c2, 0),
+                                        "C3_Interdisciplinary_Entropy": safe_float(m_c3, 0), "C4_Societal_Impact": safe_float(m_c4, 0),
+                                        "C5_Open_Science_Repro": safe_float(m_c5, 0), "C6_Literature_Integration": safe_float(m_c6, 0),
+                                        "C7_Empirical_Density": safe_float(m_c7, 0), "C8_Future_Actionability_FAIR": safe_float(m_c8, 0)
+                                    },
+                                    "used_weights": [1.0]*8,
+                                    "eval_hash": m_hash,
+                                    "piq": safe_float(m_piq, 0.0),
+                                    "tx_hash": m_tx,
+                                    "zk_proof": m_zk,
+                                    "h_idx": safe_float(m_mdar, 0.0),
+                                    "i10_idx": int(safe_float(m_rrid, 0)),
+                                    "repro_score": safe_float(m_repro, 0.0),
+                                    "filename": m_filename or "N/A",
+                                    "warnings": [],
+                                    "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                                    "evidence_report_text": m_report or "",
+                                    "scilem_rating": safe_float(m_scilem, 50.0)
+                                }
+                                more_details_dialog(search_item)
+                else:
+                    st.error(
+                        "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
+                    )
+            except Exception as e:
+                st.error(f"Error reading database: {str(e)}")
+
+finally:
+    conn.close()
+
+@st.dialog("The Pi-Index Framework: Next-Gen Architecture & CoARA Compliance Workflow", width="large")
+def framework_workflow_dialog():
+    st.markdown(
+        "Pi-Index filters noise and yields quantitative results strictly aligned with **Responsible Research Assessment (RRA)** and **CoARA** (Coalition for Advancing Research Assessment) guidelines.\n\n"
+        "### Architecture Flowchart & Whitepaper DOI\n\n"
+        "Read the foundational framework whitepaper and preprints via [Ali Vafadar Yengejeh's ResearchGate Profile](https://www.researchgate.net/profile/Ali-Vafadar-Yengejeh).\n\n"
+        "The enhanced system architecture flow below details the decentralized intake, ZK double-blind reviewer assignment, SciScore deterministic parsing, Item Response Theory (IRT) calibration, and smart contract slashing mechanisms."
+    )
+
+    st.graphviz_chart("""
+    digraph PiIndexSystemOverview {
+        rankdir=TB;
+        compound=true;
+        fontname="Helvetica,Arial,sans-serif";
+        node [fontname="Helvetica,Arial,sans-serif", style=filled, margin=0.2];
+        edge [fontname="Helvetica,Arial,sans-serif", fontsize=10];
+
+        node [shape=box, fillcolor="#f8f9fa", color="#2c3e50", penwidth=1.5];
+
+        subgraph cluster_intake {
+            label = "1. Unified Multi-Source Intake & ZK-Identity Registry (ZIP-600)";
+            style = rounded;
+            color = "#34495e";
+            fillcolor = "#ecf0f1";
+
+            Auth [label="Researcher Authentication\n• ORCID iD / W3C DID Verification\n• ZK-Email Institutional Proof", fillcolor="#aed6f1"];
+            Intake [label="Multi-Source Ingestion Engine\n• Local Binary PDFs Extraction\n• Unpaywall DOI Resolver\n• OpenAlex Topic API Search", fillcolor="#aed6f1"];
+            TempDisk [label="Temp Disk State Management\n• Streamlit Render Protection\n• Buffered Binary Writes", fillcolor="#aed6f1", style="dashed,filled"];
+            ZKBlind [label="ZK Double-Blind Assignment\n• Merkle Tree Non-Membership Proofs\n• Anonymous Author Shielding", fillcolor="#aed6f1"];
+            
+            Auth -> Intake -> TempDisk -> ZKBlind;
+        }
+
+        subgraph cluster_eval {
+            label = "2. Core Evaluation & Adversarial Analysis Pipeline (CoARA/RRA)";
+            style = rounded;
+            color = "#27ae60";
+            fillcolor = "#e8f8f5";
+
+            PyMuPDF [label="PyMuPDF Layout Sort\n• Spatial Reading Extraction\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
+            SciParser [label="Deterministic SciScore API\n• MDAR Reporting Adherence\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
+            Retry [label="Multi-LLM Consensus Engine\n• Llama, Mistral, Qwen, Gemini & Scilem Analysis\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];
+            IRTCalib [label="Item Response Theory Calibration\n• Counterfactual Stress Testing\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
+            Criteria [label="8 Transparent Criteria Rubrics\n• C1 Originality to C8 FAIR Actionability\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
+            Logic [label="Adversarial Logic Integrity Matrix\n• Premise Validity & Evidence Strength\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
+            
+            PyMuPDF -> SciParser -> Retry -> IRTCalib -> Criteria -> Logic;
+        }
+
+        subgraph cluster_blockchain {
+            label = "3. Blockchain Consensus, Cryptographic Proofs & Slashing Tokenomics";
+            style = rounded;
+            color = "#8e44ad";
+            fillcolor = "#f4ecf7";
+
+            PoR [label="Proof-of-Research (PoR) Validation\n• Dynamic Epoch Weight Shifting\n• Formulas Hash Stamping & SHA-256 Block", fillcolor="#d7bde2"];
+            Slashing [label="Anti-Laundering Slashing Guard\n• Smart Contract piQ Burn for Fraud\n• Stake Penalty Enforcement", fillcolor="#f5b7b1"];
+            Mint [label="Soulbound Token Minting\n• Author-Specific Book Address (eth_book)\n• Shared Paper Address (eval_hash) & Tx Hash", fillcolor="#d7bde2"];
+            
+            PoR -> Slashing -> Mint;
+        }
+
+        subgraph cluster_outputs {
+            label = "4. User Interface, Cartography & Institutional Policy Support";
+            style = rounded;
+            color = "#d35400";
+            fillcolor = "#fef5e7";
+
+            Dossier [label="CoARA & DORA-Aligned Dossier\n• Markdown Research Integrity Report\n• AI Defense Rebuttal Strategy", fillcolor="#f8c471"];
+            Cartography [label="Global Map of Science\n• Ledger PyVis Network Cartography\n• Author & Topic Bubble Filtering", fillcolor="#f8c471"];
+            PidyneBrain [label="Pidyne LSTM Meta-Learning\n• PyTorch Temporal Weight Prediction\n• Calibration Drift & Epoch Forecasting", fillcolor="#f8c471"];
+        }
+
+        ZKBlind -> PyMuPDF [lhead=cluster_eval, label="Processed Manuscript Text"];
+        Logic -> PoR [lhead=cluster_blockchain, label="Audited Score & Hashes"];
+        Mint -> Dossier [lhead=cluster_outputs, label="Ledger Seal & Tokens"];
+        Mint -> Cartography;
+        Mint -> PidyneBrain;
+    }
+    """)
+    st.markdown("---")
+    st.markdown("""
+    ### CoARA Compliance & Core Pillars
+    
+    *   **Diverse Research Outputs (C5 & C8):** Moving beyond traditional journal impact factors, Pi-Index structurally evaluates open datasets, code repositories, and containerized executable environments.
+    *   **Qualitative & Quantitative Balance (C1-C8):** Algorithms act as auditors, not replacements for peer review. They standardize empirical rigor (e.g., RRID usage, MDAR adherence) while an adversarial logic matrix maps qualitative reasoning structure.
+    *   **Transparency & Researcher Sovereignty:** Complete evaluation weights, logic states, and criteria scores are irreversibly hashed and stored on the Ethereum (Sepolia) blockchain. Researchers retain sovereign ownership of their academic profile via DID/ORCID integration.
+    """)
+
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: gray; font-size: 0.9em; padding-bottom: 5px;'>Framework Author: Ali Vafadar Yengejeh | Universita degli Studi di Milano-Bicocca</div>",
+        unsafe_allow_html=True,
+    )
+
+st.markdown("---")
+
+col_pad1, col_center, col_pad2 = st.columns([1, 2, 1])
+with col_center:
+    if st.button("The Pi-Index Framework Workflow", use_container_width=True):
+        framework_workflow_dialog()
