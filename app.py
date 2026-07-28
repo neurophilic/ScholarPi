@@ -1609,11 +1609,12 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
-# Side-by-side Section: Leaderboards (Left) vs. Latest Assessed Papers & Ledger Proofs (Right)
-side_col1, side_col2 = st.columns(2, vertical_alignment="top")
+# Three-Column Layout: Author Leaderboard (Col 1), Paper Leaderboard (Col 2), Latest Assessed Papers & Ledger Proofs (Col 3)
+side_col1, side_col2, side_col3 = st.columns(3, vertical_alignment="top")
 
 with side_col1:
     st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
+    piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
         rows_html = ""
@@ -1621,9 +1622,9 @@ with side_col1:
             book_addr = book_dict.get(author, "None")
             rows_html += f"""
                 <tr>
-                    <td style="text-align: center; font-weight: bold; width: 8%;"><b>{rank}</b></td>
-                    <td style="font-weight: bold; word-break: break-word; width: 25%;">{author}</td>
-                    <td style="width: 52%;"><code style="font-size: 10px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
+                    <td style="text-align: center; font-weight: bold; width: 10%;"><b>{rank}</b></td>
+                    <td style="font-weight: bold; word-break: break-word; width: 35%;">{author}</td>
+                    <td style="width: 40%;"><code style="font-size: 9px; word-break: break-all; display: block; line-height: 1.2;">{book_addr}</code></td>
                     <td style="text-align: right; font-weight: bold; width: 15%;">{piq:.2f}</td>
                 </tr>
             """
@@ -1635,7 +1636,7 @@ with side_col1:
         <style>
             body { margin: 0; padding: 0; font-family: sans-serif; }
             .table-container {
-                max-height: 190px;
+                max-height: 200px;
                 overflow-y: auto;
                 overflow-x: hidden;
                 border: 1px solid #e2e8f0;
@@ -1644,14 +1645,14 @@ with side_col1:
             }
             .leaderboard-table {
                 width: 100%;
-                font-size: 13px;
+                font-size: 12px;
                 border-collapse: collapse;
                 table-layout: fixed;
             }
             .leaderboard-table th {
                 background-color: #2c3e50;
                 color: white;
-                padding: 8px 10px;
+                padding: 6px 8px;
                 text-align: left;
                 font-weight: 600;
                 position: sticky;
@@ -1659,7 +1660,7 @@ with side_col1:
                 z-index: 1;
             }
             .leaderboard-table td {
-                padding: 8px 10px;
+                padding: 6px 8px;
                 border-bottom: 1px solid #ecf0f1;
                 color: #2c3e50;
                 vertical-align: middle;
@@ -1674,9 +1675,9 @@ with side_col1:
             <table class="leaderboard-table">
                 <thead>
                     <tr>
-                        <th style="text-align: center; width: 8%;">#</th>
-                        <th style="width: 25%;">Contributing Author</th>
-                        <th style="width: 52%;">Book Address</th>
+                        <th style="text-align: center; width: 10%;">#</th>
+                        <th style="width: 35%;">Author</th>
+                        <th style="width: 40%;">Book Address</th>
                         <th style="text-align: right; width: 15%;">piQ</th>
                     </tr>
                 </thead>
@@ -1689,13 +1690,12 @@ with side_col1:
         </html>
         """
         leaderboard_full_html = leaderboard_template.replace("__ROWS_PLACEHOLDER__", rows_html)
-        components.html(leaderboard_full_html, height=200, scrolling=False)
+        components.html(leaderboard_full_html, height=210, scrolling=False)
     else:
         st.info("No piQ tokens minted yet.")
 
-    st.markdown("")
+with side_col2:
     st.markdown("### pi-Index (piX) Leaderboard [Top Papers]")
-    
     conn_pi = get_db_connection()
     try:
         cur_pi = conn_pi.cursor()
@@ -1710,9 +1710,9 @@ with side_col1:
             clean_auth = clean_author_name(p_author)
             pi_rows_html += f"""
                 <tr>
-                    <td style="text-align: center; font-weight: bold; width: 8%;"><b>{rank}</b></td>
-                    <td style="font-weight: bold; word-break: break-word; width: 57%;">{p_title[:45]}...</td>
-                    <td style="width: 20%; font-size: 11px;">{clean_auth[:15]}</td>
+                    <td style="text-align: center; font-weight: bold; width: 10%;"><b>{rank}</b></td>
+                    <td style="font-weight: bold; word-break: break-word; width: 50%;">{p_title[:35]}...</td>
+                    <td style="width: 25%; font-size: 11px;">{clean_auth[:12]}</td>
                     <td style="text-align: right; font-weight: bold; width: 15%;">{p_score:.2f}</td>
                 </tr>
             """
@@ -1723,7 +1723,7 @@ with side_col1:
         <style>
             body { margin: 0; padding: 0; font-family: sans-serif; }
             .table-container {
-                max-height: 190px;
+                max-height: 200px;
                 overflow-y: auto;
                 overflow-x: hidden;
                 border: 1px solid #e2e8f0;
@@ -1732,7 +1732,7 @@ with side_col1:
             }
             .leaderboard-table {
                 width: 100%;
-                font-size: 13px;
+                font-size: 12px;
                 border-collapse: collapse;
                 table-layout: fixed;
             }
@@ -1762,9 +1762,9 @@ with side_col1:
             <table class="leaderboard-table">
                 <thead>
                     <tr>
-                        <th style="text-align: center; width: 8%;">#</th>
-                        <th style="width: 57%;">Manuscript Title</th>
-                        <th style="width: 20%;">Author</th>
+                        <th style="text-align: center; width: 10%;">#</th>
+                        <th style="width: 50%;">Manuscript Title</th>
+                        <th style="width: 25%;">Author</th>
                         <th style="text-align: right; width: 15%;">Score</th>
                     </tr>
                 </thead>
@@ -1777,11 +1777,11 @@ with side_col1:
         </html>
         """
         pi_leaderboard_html = pi_leaderboard_template.replace("__ROWS_PLACEHOLDER__", pi_rows_html)
-        components.html(pi_leaderboard_html, height=200, scrolling=False)
+        components.html(pi_leaderboard_html, height=210, scrolling=False)
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
 
-with side_col2:
+with side_col3:
     st.markdown("### Latest Assessed Papers & Ledger Proofs")
     conn_recent = get_db_connection()
     try:
@@ -1820,12 +1820,12 @@ with side_col2:
             tx_url = safe_get_sepolia_url(m_tx)
             tx_short = m_tx[:8] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
             tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
-            title_short = (m_title[:32] + "...") if len(m_title) > 32 else m_title
+            title_short = (m_title[:28] + "...") if len(m_title) > 28 else m_title
             
             rows_html += f"""
                 <tr>
                     <td style="text-align: center; width: 10%;"><b>{bh}</b></td>
-                    <td style="width: 42%; font-weight: bold;" title="{m_title} by {clean_auth}">{title_short}<br><span style="font-size:10px; color:#64748b; font-weight:normal;">{clean_auth[:25]}</span></td>
+                    <td style="width: 42%; font-weight: bold;" title="{m_title} by {clean_auth}">{title_short}<br><span style="font-size:10px; color:#64748b; font-weight:normal;">{clean_auth[:20]}</span></td>
                     <td style="text-align: center; width: 13%;"><b>{m_score:.2f}</b></td>
                     <td style="text-align: right; width: 12%;"><b>{piq_val}</b></td>
                     <td style="width: 23%; font-size:11px;"><code>{eh_short}</code><br>{tx_link}</td>
@@ -1839,7 +1839,7 @@ with side_col2:
         <style>
             body { margin: 0; padding: 0; font-family: sans-serif; }
             .table-container {
-                max-height: 200px;
+                max-height: 150px;
                 overflow-y: auto;
                 overflow-x: hidden;
                 border: 1px solid #e2e8f0;
@@ -1893,9 +1893,9 @@ with side_col2:
         </body>
         </html>
         """
-        components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=205, scrolling=False)
+        components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=160, scrolling=False)
         
-        st.markdown("<p style='font-size:12px; color:#64748b; margin-top:5px; margin-bottom:5px;'>Click any manuscript to view its complete Detailed Research Integrity Dossier:</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size:11px; color:#64748b; margin-top:4px; margin-bottom:4px;'>Click any manuscript to view its complete Detailed Research Integrity Dossier:</p>", unsafe_allow_html=True)
         for idx, mp in enumerate(merged_papers):
             (
                 m_title, m_author, m_filename, m_score, m_logic,
@@ -1906,7 +1906,7 @@ with side_col2:
             ) = mp
             
             m_author_clean = clean_author_name(m_author)
-            btn_txt = f"[{idx+1}] {m_title[:42]}... — {m_author_clean[:18]} (Score: {m_score:.2f})"
+            btn_txt = f"[{idx+1}] {m_title[:32]}... — {m_author_clean[:12]} ({m_score:.1f})"
             if st.button(btn_txt, key=f"btn_row_dossier_{idx}_{m_hash}", use_container_width=True):
                 item_dossier = {
                     "title": m_title,
