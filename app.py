@@ -1329,7 +1329,6 @@ with top_analytics_col1:
             Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
             1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria.
             2. **Multi-Model Consensus & LLM-as-a-Judge:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini), acting as the final judge of the paper to read reports and deliver a definitive verdict using an LLM model.
-            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block (e.g., `PoR_b144463fa623_Score:75.55` successfully verified and sealed to block `c3992f28e95f2eaa5ac125e4c41ceb097d7f6ef564b0609f125083467822c11d`).
             """)
     with col_fc2:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown", label_visibility="collapsed")
@@ -1833,6 +1832,11 @@ with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
 with exp_head_col2:
     with st.popover("ℹ️", help="View Extra Ledger Info"):
+        st.markdown(
+            "**Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, "
+            "sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) "
+            "into a cryptographically verified SHA-256 block."
+        )
         conn_pop = get_db_connection()
         try:
             cur_pop = conn_pop.cursor()
