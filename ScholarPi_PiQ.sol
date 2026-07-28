@@ -28,23 +28,25 @@ contract ScholarPi_PiQ_Token {
 
     /**
      * @dev Mints piQ to researcher. Reverts if evalHash was already assessed.
+     * @param amountWei The mint amount already scaled to full 18-decimal
+     * token precision (i.e. piQ_amount * 10**18), computed off-chain.
      */
     function verifyProofAndMint(
         address researcher, 
-        uint256 amount, 
+        uint256 amountWei, 
         string memory evalHash, 
         bytes memory zkProof
     ) public onlyAdmin {
         require(!hasBeenAssessed[evalHash], "Fraud Detected: This manuscript hash has already claimed piQ.");
         require(zkProof.length > 0, "Invalid Zero-Knowledge Proof payload.");
+        require(amountWei > 0, "Mint amount must be greater than zero.");
 
         hasBeenAssessed[evalHash] = true;
-        
-        uint256 mintedAmount = amount * (10 ** uint256(decimals));
-        balanceOf[researcher] += mintedAmount;
-        totalSupply += mintedAmount;
 
-        emit Mint(researcher, mintedAmount, evalHash);
+        balanceOf[researcher] += amountWei;
+        totalSupply += amountWei;
+
+        emit Mint(researcher, amountWei, evalHash);
     }
 
     /**
