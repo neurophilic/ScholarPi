@@ -281,11 +281,16 @@ components.html(custom_ui_code, height=0, width=0)
 
 st.sidebar.title("System Access & Sync")
 
-st.sidebar.info(
-    "**Dual-Auth Synchronization Guide:**\n"
-    "• **Link Both First:** Connect both your MetaMask wallet and your ORCID account below before running assessments.\n"
-    "• **Seamless Rewards:** When both are active, your evaluation history and rewards merge automatically."
-)
+has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
+has_orcid = bool(st.session_state.orcid_profile)
+
+# Conditionally show the synchronization guide only if NOT both are connected
+if not (has_web3 and has_orcid):
+    st.sidebar.info(
+        "**Dual-Auth Synchronization Guide:**\n"
+        "• **Link Both First:** Connect both your MetaMask wallet and your ORCID account below before running assessments.\n"
+        "• **Seamless Rewards:** When both are active, your evaluation history and rewards merge automatically."
+    )
 
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
@@ -361,9 +366,6 @@ if "scilem_messages" not in st.session_state:
 
 # Sidebar Dual Identity Sync Dashboard
 st.sidebar.markdown("### Unified Identity & Sync")
-
-has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
-has_orcid = bool(st.session_state.orcid_profile)
 
 # 1. MetaMask Wallet Button on Top
 if not has_web3:
@@ -513,10 +515,12 @@ if has_web3 or has_orcid:
     finally:
         conn_hist.close()
 
-    status_str = "Active Sync" if (has_web3 and has_orcid) else ("MetaMask Connected Only" if has_web3 else "ORCID Connected Only")
+    # Synced Status: Active Sync appears ONLY if both auth methods are connected
+    status_line = "**Synced Status:** Active Sync\n\n" if (has_web3 and has_orcid) else ""
+
     st.sidebar.markdown(
         f"**Researcher:** {st.session_state.researcher_name}\n\n"
-        f"**Synced Status:** {status_str}\n\n"
+        f"{status_line}"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
 
