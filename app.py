@@ -150,10 +150,11 @@ if "siwe_address" in st.query_params:
 # Handle ORCID OAuth Callback Query Params
 if "orcid_id" in st.query_params or "code" in st.query_params:
     raw_orcid = st.query_params.get("orcid_id") or "0000-0002-1825-0097"
-    raw_name = st.query_params.get("orcid_name") or f"Dr. Academic Scholar ({raw_orcid[-4:]})"
+    raw_name = st.query_params.get("orcid_name") or f"Verified ORCID Scholar ({raw_orcid[-4:]})"
     st.session_state.orcid_profile = raw_orcid.strip()
     st.session_state.researcher_name = raw_name.strip()
     add_log(f"ORCID Profile Linked: {raw_orcid} ({raw_name})")
+    st.toast(f"ORCID Linked: {raw_name.strip()}", icon="🪪")
     st.query_params.clear()
     st.rerun()
 
@@ -314,7 +315,7 @@ def validate_orcid_did(identifier: str) -> bool:
     is_did = re.match(r"^did:[a-z0-9]+:[a-zA-Z0-9.\-_:]+$", clean_id)
     return bool(is_orcid or is_did)
 
-# Sidebar Identity Sync Dashboard
+# Sidebar Dual Identity Sync Dashboard
 st.sidebar.markdown("### Unified Identity & Sync")
 
 has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
@@ -396,7 +397,9 @@ if not has_web3:
                 targetUrl.searchParams.set("siwe_signature", signature);
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
-            window.open(targetUrl.href, '_blank');
+            
+            // Redirect top window in SAME TAB to preserve active session state!
+            window.top.location.href = targetUrl.href;
         } catch (err) {
             statusDiv.innerText = err.message || "Rejected.";
         }
@@ -414,7 +417,7 @@ if not has_orcid:
     
     st.sidebar.markdown(
         f"""
-        <a href="{orcid_auth_url}" target="_blank" style="
+        <a href="{orcid_auth_url}" target="_self" style="
             width: 100%;
             background: #A6CE39;
             color: #ffffff;
@@ -435,8 +438,8 @@ if not has_orcid:
         unsafe_allow_html=True
     )
     
-    manual_id = st.sidebar.text_input("Or Enter ORCID iD Manually", placeholder="0000-0000-0000-0000", label_visibility="collapsed")
-    manual_name = st.sidebar.text_input("Researcher Name (Optional)", placeholder="Dr. Jane Doe", label_visibility="collapsed")
+    manual_id = st.sidebar.text_input("Or Enter ORCID iD Manually", placeholder="0000-0000-0000-0000", key="manual_orcid_id_input")
+    manual_name = st.sidebar.text_input("Researcher Name (Optional)", placeholder="Dr. Jane Doe", key="manual_orcid_name_input")
     if st.sidebar.button("Link Academic ID", use_container_width=True):
         if validate_orcid_did(manual_id):
             st.session_state.orcid_profile = manual_id.strip()
@@ -465,16 +468,16 @@ if has_web3 or has_orcid:
             params.append(st.session_state.orcid_profile)
         
         if clauses:
-            cur_h.execute(f"SELECT piq_minted FROM papers_assessment WHERE {' OR '.join(clauses)}", tuple(params))
+            cur_h.execute(f"SELECT DISTINCT eval_hash, piq_minted FROM papers_assessment WHERE {' OR '.join(clauses)}", tuple(params))
             piq_rows = cur_h.fetchall()
-            total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
+            total_user_piq = sum(safe_float(r[1], 0.0) for r in piq_rows if r[1])
     finally:
         conn_hist.close()
 
-    researcher_display = st.session_state.researcher_name if has_orcid else "Anonymous Researcher"
+    researcher_display = st.session_state.researcher_name if has_orcid else ("Verified Web3 Validator" if has_web3 else "Anonymous Researcher")
     st.sidebar.markdown(
         f"**Researcher:** {researcher_display}\n\n"
-        f"**Synced Status:** Active\n\n"
+        f"**Synced Status:** Active Sync\n\n"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
 
@@ -1644,8 +1647,8 @@ if has_web3 or has_orcid:
 
         if history_clauses:
             cur_h.execute(
-                f"""SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                          p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                f"""SELECT DISTINCT p.eval_hash, p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                          p.piq_minted, p.tx_hash, p.zk_proof, p.timestamp,
                           b.block_height, b.block_hash, p.mdar_adherence_score, 
                           p.rrid_valid_count, p.reproducibility_score,
                           p.consensus_data, p.evidence_report, p.scilem_score,
@@ -1667,8 +1670,8 @@ if has_web3 or has_orcid:
     if user_history_rows:
         for idx, uh in enumerate(user_history_rows):
             (
-                u_title, u_author, u_filename, u_score, u_logic,
-                u_piq, u_tx, u_zk, u_hash, u_time,
+                u_hash, u_title, u_author, u_filename, u_score, u_logic,
+                u_piq, u_tx, u_zk, u_time,
                 u_block_height, u_block_hash, u_mdar, u_rrid, u_repro,
                 u_consensus, u_report, u_scilem,
                 u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8
