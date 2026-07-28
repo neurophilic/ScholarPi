@@ -1467,7 +1467,10 @@ with top_analytics_col1:
             or st.session_state.last_trained_blocks != current_block_count
             or st.session_state.get("last_lookback") != lookback_window
         ):
-            weight_data = np.array(historical_rows, dtype=torch.float32)
+            cleaned_historical_data = [
+                [safe_float(val, 1.0) for val in row] for row in historical_rows
+            ]
+            weight_data = np.array(cleaned_historical_data, dtype=np.float32)
 
             st.session_state.predicted_next_weights = train_pidyne_cached(weight_data, lookback_window)
             st.session_state.current_weights = weight_data[-1]
