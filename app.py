@@ -496,7 +496,7 @@ else:
         if st.session_state.auth_method == "Web3":
             cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
         else:
-            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.academic_id,))
+            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE user_id = ?", (st.session_state.academic_id,))
         piq_rows = cur_h.fetchall()
         total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
     finally:
@@ -819,11 +819,10 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
 
     return html_string, table_html
 
-
 def get_criteria_info(weights):
     tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = weights
     return [
-        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \vapri $$"),
+        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \mathbf{v}_{\text{apri}} $$"),
         ("C2", "Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
         ("C3", "Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
         ("C4", "Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
@@ -848,10 +847,9 @@ def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula)
         r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
         r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
         r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right)"
-        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \vapri $$"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \mathbf{v}_{\text{apri}} $$"
     )
 
-# --- Top Header with Title and Total Analyzed Papers Badge ---
 top_title_col, top_badge_col = st.columns([4, 2], vertical_alignment="center")
 with top_title_col:
     st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
@@ -889,7 +887,6 @@ with st.container(border=True):
     include_doi = False
     selected_alex_papers = []
 
-    # --- Free Assessment vs Obligatory Web3 Stake Logic ---
     free_evals_used = st.session_state.get("free_evals_used", 0)
     is_web3_authenticated = (
         st.session_state.is_authenticated 
@@ -1165,7 +1162,6 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
-    # --- Section 1: Overview & Ledger ---
     st.markdown("### Overview & Ledger")
     st.write(f"**File Name:** `{filename}`")
     st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
@@ -1185,7 +1181,6 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
-    # --- Section 2: Multi-LLM Extractions ---
     st.markdown("### Multi-LLM Extractions")
     if consensus_raw and isinstance(consensus_raw, dict):
         llm_cols = st.columns(2, gap="medium")
@@ -1219,7 +1214,6 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
-    # --- Section 3: Merged Synthesized Evidence Report ---
     st.markdown("### Synthesized Evidence Report")
     if evidence_report_text:
         st.markdown(evidence_report_text)
@@ -1237,7 +1231,6 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
-    # --- Section 4: Criteria Breakdown & Score Matrix ---
     st.markdown("### Criteria Breakdown & Score Matrix")
     breakdown_df = pd.DataFrame({
         "Criterion": [
@@ -1625,7 +1618,6 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-# User History or Auth Prompt
 if st.session_state.is_authenticated:
     conn_hist = get_db_connection()
     try:
@@ -1726,7 +1718,6 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
-# Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20) with table-like headers
 side_col1, side_col2 = st.columns(2, gap="large")
 
 with side_col1:
@@ -1735,7 +1726,6 @@ with side_col1:
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
         
-        # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 3.2, 4.5, 1.5])
         h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
         h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
@@ -1773,7 +1763,6 @@ with side_col2:
         conn_pi.close()
     
     if top_papers:
-        # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 4.2, 2.5, 2.5])
         h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
         h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript Title</div>", unsafe_allow_html=True)
@@ -1828,7 +1817,6 @@ with side_col2:
 
 st.markdown("---")
 
-# Dedicated line for Latest Assessed Papers using scrollable native interactive containers (Limit 20) with table-like headers
 st.markdown("### Latest Assessed Papers")
 conn_recent = get_db_connection()
 try:
@@ -1851,7 +1839,6 @@ finally:
 if merged_papers:
     st.markdown("<p style='font-size:13px; color:#64748b; margin-bottom:10px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
     
-    # Table Header
     h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
     h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Block</div>", unsafe_allow_html=True)
     h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript & Author</div>", unsafe_allow_html=True)
@@ -1914,7 +1901,6 @@ else:
 
 st.markdown("---")
 
-# Proof-of-Research Blockchain Explorer
 exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
 with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
