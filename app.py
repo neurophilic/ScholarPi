@@ -85,7 +85,7 @@ def get_author_piq_dict():
         alist = [a.strip() for a in clean_authors.split(",") if a.strip()]
         if not alist:
             continue
-        share = piq / len(alist)
+        share = (float(piq) if piq else 0.0) / len(alist)
         for a in alist:
             author_piq[a] = author_piq.get(a, 0.0) + share
             author_book[a] = eth_book if eth_book and w3.is_address(eth_book) else "Unbound / Escrow"
@@ -764,7 +764,19 @@ def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula)
         r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \vapri $$"
     )
 
-st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
+# --- Top Header with Title and Total Analyzed Papers Badge ---
+top_title_col, top_badge_col = st.columns([4, 2], vertical_alignment="center")
+with top_title_col:
+    st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
+with top_badge_col:
+    st.markdown(
+        f"""
+        <div style="float: right; background-color: #2c3e50; color: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Total Analyzed Papers: {total_analyzed_count}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 st.markdown("")
 
 with st.container(border=True):
@@ -1042,17 +1054,17 @@ with st.container(border=True):
 def more_details_dialog(item):
     title = item.get("title", "Unknown Title")
     author_name = clean_author_name(item.get("author_name", "Unknown"))
-    score = item.get("score") or 0.0
-    logic_integrity = item.get("logic_integrity") if item.get("logic_integrity") is not None else 75.0
+    score = float(item.get("score") or 0.0)
+    logic_integrity = float(item.get("logic_integrity") if item.get("logic_integrity") is not None else 75.0)
     scores_dict = item.get("scores_dict", {})
     used_weights = item.get("used_weights", [1.0]*8)
     eval_hash = item.get("eval_hash", "0x0")
-    piq = item.get("piq") or 0.0
+    piq = float(item.get("piq") or 0.0)
     tx_hash = item.get("tx_hash", "None")
     zk_proof = item.get("zk_proof", "None")
-    mdar_score = item.get("h_idx") if item.get("h_idx") is not None else 0.0
-    rrid_count = item.get("i10_idx") if item.get("i10_idx") is not None else 0
-    repro_score = item.get("repro_score") if item.get("repro_score") is not None else 0.0
+    mdar_score = float(item.get("h_idx") if item.get("h_idx") is not None else 0.0)
+    rrid_count = int(item.get("i10_idx") if item.get("i10_idx") is not None else 0)
+    repro_score = float(item.get("repro_score") if item.get("repro_score") is not None else 0.0)
     filename = item.get("filename", "N/A")
     warnings = item.get("warnings", [])
     consensus_raw = item.get("consensus_raw", {})
@@ -1445,18 +1457,7 @@ with top_analytics_col1:
                         criterion_details_dialog(*c_data)
 
 with top_analytics_col2:
-    map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
-    with map_title_col:
-        st.markdown("### Global Map of Science", unsafe_allow_html=True)
-    with map_badge_col:
-        st.markdown(
-            f"""
-            <div style="background-color: #2c3e50; color: white; padding: 4px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                Total Analyzed Papers: {total_analyzed_count}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    st.markdown("### Global Map of Science")
 
     conn_m = get_db_connection()
     try:
