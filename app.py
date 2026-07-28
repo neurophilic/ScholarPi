@@ -8,6 +8,7 @@ import shutil
 import colorsys
 import logging
 import urllib.parse
+import requests
 from datetime import datetime
 from collections import deque
 
@@ -42,6 +43,9 @@ from brain import (
 w3 = Web3()
 
 OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"
+ORCID_CLIENT_ID = "APP-4C9H89YFZQ7JGC6Z"
+ORCID_CLIENT_SECRET = "e900b780-b4bd-447d-84b5-2c035333e6e3"
+ORCID_REDIRECT_URI = "https://scholarpi.streamlit.app"
 
 st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
@@ -120,18 +124,18 @@ if "orcid_profile" not in st.session_state:
 if "researcher_name" not in st.session_state:
     st.session_state.researcher_name = "Anonymous Researcher"
 
-# Handle Web3 SIWE Query Params
+# 1. State Preservation (Restoring ORCID if returning via a Web3 popup tab)
+if "restore_orcid" in st.query_params:
+    st.session_state.orcid_profile = st.query_params.get("restore_orcid")
+    r_name = st.query_params.get("restore_orcid_name")
+    if r_name:
+        st.session_state.researcher_name = r_name
+
+# 2. Handle Web3 SIWE Callback
 if "siwe_address" in st.query_params:
     raw_address = st.query_params.get("siwe_address")
     raw_signature = st.query_params.get("siwe_signature")
     raw_message = st.query_params.get("siwe_message")
-    
-    # State Preservation: Restore ORCID if passing through Web3 auth
-    restored_orcid = st.query_params.get("restore_orcid")
-    restored_name = st.query_params.get("restore_orcid_name")
-    if restored_orcid:
-        st.session_state.orcid_profile = restored_orcid
-        st.session_state.researcher_name = restored_name if restored_name else f"Academic Scholar ({restored_orcid[-4:]})"
     
     if raw_address and w3.is_address(raw_address):
         clean_wallet = w3.to_checksum_address(raw_address)
@@ -154,20 +158,49 @@ if "siwe_address" in st.query_params:
     st.query_params.clear()
     st.rerun()
 
-# Handle ORCID OAuth Callback Query Params
-if "orcid_id" in st.query_params or "code" in st.query_params:
-    raw_orcid = st.query_params.get("orcid_id") or "0000-0002-1825-0097"
-    raw_name = st.query_params.get("orcid_name") or f"Verified ORCID Scholar ({raw_orcid[-4:]})"
-    
-    # State Preservation: Restore Web3 Wallet from OAuth 'state' parameter
+# 3. Handle Actual ORCID OAuth Token Exchange
+if "code" in st.query_params:
+    auth_code = st.query_params.get("code")
     returned_state = st.query_params.get("state")
+    
+    # Restore Web3 Wallet from OAuth 'state' parameter to keep dual-sync
     if returned_state and returned_state != "none" and w3.is_address(returned_state):
         st.session_state.web3_wallet = w3.to_checksum_address(returned_state)
 
-    st.session_state.orcid_profile = raw_orcid.strip()
-    st.session_state.researcher_name = raw_name.strip()
-    add_log(f"ORCID Profile Linked: {raw_orcid} ({raw_name})")
-    st.toast(f"ORCID Linked: {raw_name.strip()}", icon="🪪")
+    try:
+        # Perform backend exchange for the ORCID identifier and Name
+        token_url = "https://orcid.org/oauth/token"
+        headers = {"Accept": "application/json"}
+        payload = {
+            "client_id": ORCID_CLIENT_ID,
+            "client_secret": ORCID_CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": auth_code,
+            "redirect_uri": ORCID_REDIRECT_URI
+        }
+        
+        response = requests.post(token_url, data=payload, headers=headers)
+        
+        if response.status_code == 200:
+            orcid_data = response.json()
+            real_orcid = orcid_data.get("orcid")
+            real_name = orcid_data.get("name")
+            
+            if real_orcid:
+                st.session_state.orcid_profile = real_orcid
+                st.session_state.researcher_name = real_name if real_name else f"ORCID Scholar ({real_orcid[-4:]})"
+                st.toast(f"ORCID Linked: {st.session_state.researcher_name}", icon="🪪")
+                add_log(f"ORCID Profile Successfully Authenticated: {real_orcid}")
+            else:
+                st.error("Authentication failed: ORCID identifier not returned.")
+        else:
+            err_desc = response.json().get('error_description', 'Invalid Code')
+            st.error(f"ORCID Verification Error: {err_desc}")
+            add_log(f"ORCID Auth Error: {err_desc}")
+            
+    except Exception as e:
+        st.error(f"Failed to connect to ORCID API: {str(e)}")
+
     st.query_params.clear()
     st.rerun()
 
@@ -421,29 +454,27 @@ if not has_web3:
             if (currentOrcid) targetUrl.searchParams.set("restore_orcid", currentOrcid);
             if (currentOrcidName) targetUrl.searchParams.set("restore_orcid_name", currentOrcidName);
 
-            // Output explicit top-level anchor tag to respect browser Iframe sandbox policies
-            statusDiv.innerHTML = `<a href="${{targetUrl.href}}" target="_top" style="display:block; margin-top:8px; background:#10b981; color:white; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">✅ Click to Complete Sync</a>`;
+            // Output explicit new-tab window block to prevent iframe sandbox failure
+            window.open(targetUrl.href, '_blank');
+            statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">✅ Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
         }} catch (err) {{
             statusDiv.innerText = err.message || "Rejected.";
         }}
     }});
     </script>
     """
-    components.html(metamask_ui_html, height=100)
+    components.html(metamask_ui_html, height=120)
 else:
     st.sidebar.success(f"🦊 Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
 if not has_orcid:
-    orcid_client_id = "APP-4C9H89YFZQ7JGC6Z"
-    current_app_url = "https://scholarpi.streamlit.app"
-    
     # State Preservation: Pass Web3 wallet to ORCID 'state' parameter
     state_payload = st.session_state.web3_wallet if has_web3 else "none"
-    orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={orcid_client_id}&response_type=code&scope=/authenticate&redirect_uri={current_app_url}&state={state_payload}"
+    orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
     
     st.sidebar.markdown(
         f"""
-        <a href="{orcid_auth_url}" target="_top" style="
+        <a href="{orcid_auth_url}" target="_blank" style="
             width: 100%;
             background: #A6CE39;
             color: #ffffff;
@@ -460,6 +491,9 @@ if not has_orcid:
         ">
             🪪 Link ORCID Account (OAuth)
         </a>
+        <div style="font-size: 10px; color: gray; text-align: center; margin-bottom: 12px;">
+            Note: Opens in a new tab. Must match {ORCID_REDIRECT_URI}
+        </div>
         """,
         unsafe_allow_html=True
     )
