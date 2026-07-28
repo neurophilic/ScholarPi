@@ -7,6 +7,7 @@ import tempfile
 import shutil
 import colorsys
 import logging
+import urllib.parse
 from datetime import datetime
 from collections import deque
 
@@ -22,6 +23,7 @@ import altair as alt
 import streamlit as st
 import streamlit.components.v1 as components
 from web3 import Web3
+from eth_account.messages import encode_defunct
 
 from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS, HOT_TOPICS
 from database import get_db_connection
@@ -110,6 +112,34 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
+
+# --- EIP-1193 / EIP-4361 SIWE MetaMask Auth Handler ---
+if "siwe_address" in st.query_params and "siwe_signature" in st.query_params:
+    raw_address = st.query_params.get("siwe_address")
+    raw_signature = st.query_params.get("siwe_signature")
+    raw_message = st.query_params.get("siwe_message")
+    
+    if raw_address and raw_signature and raw_message:
+        try:
+            decoded_msg = urllib.parse.unquote(raw_message)
+            signable_msg = encode_defunct(text=decoded_msg)
+            recovered_address = w3.eth.account.recover_message(signable_msg, signature=raw_signature)
+            
+            if recovered_address.lower() == raw_address.lower() and w3.is_address(raw_address):
+                clean_wallet = w3.to_checksum_address(raw_address)
+                st.session_state.orcid_id = clean_wallet
+                st.session_state.orcid_name = "Verified Decentralized Identity (SIWE)"
+                st.session_state.is_authenticated = True
+                st.session_state.auth_method = "Web3"
+                add_log(f"Identity Cryptographically Authenticated via MetaMask SIWE: {clean_wallet}")
+                st.toast("MetaMask Connected & Cryptographically Verified!", icon="🦊")
+            else:
+                add_log("SIWE authentication error: Invalid signature recovery match.")
+        except Exception as e:
+            add_log(f"SIWE verification error: {str(e)}")
+            
+    st.query_params.clear()
+    st.rerun()
 
 custom_ui_code = """
 <style>
@@ -455,21 +485,105 @@ def validate_orcid_did(identifier: str) -> bool:
     return bool(is_orcid or is_did)
 
 if not st.session_state.is_authenticated:
-    st.sidebar.markdown("### 1. Authenticate Web3 Wallet")
-    user_wallet = st.sidebar.text_input("Ethereum Wallet Address (EIP-4361)", placeholder="0x...")
+    st.sidebar.markdown("### 1. Native Web3 Wallet (MetaMask)")
     
-    if st.sidebar.button("Connect Wallet"):
-        if w3.is_address(user_wallet):
-            with st.sidebar.status("Connecting to Identity Registry..."):
+    # Native EIP-1193 + EIP-4361 SIWE MetaMask Connector Widget
+    metamask_ui_html = """
+    <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <button id="connect-mm-btn" style="
+            width: 100%;
+            background: linear-gradient(135deg, #f6851b, #e2761b);
+            color: white;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        ">
+            <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M29.28 2.00003L18.44 10.02L20.4 4.88003L29.28 2.00003Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
+                <path d="M2.72 2.00003L13.46 10.12L11.6 4.88003L2.72 2.00003Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
+                <path d="M25.02 23.36L21.94 28.24L28.32 25.1L29.86 19.98L25.02 23.36Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
+                <path d="M2.14 19.98L3.68 25.1L10.06 28.24L6.98 23.36L2.14 19.98Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
+            </svg>
+            Connect MetaMask Wallet
+        </button>
+        <div id="mm-status" style="margin-top: 6px; font-size: 12px; color: #dc2626; font-weight: 500; text-align: center;"></div>
+    </div>
+
+    <script>
+    document.getElementById('connect-mm-btn').addEventListener('click', async () => {
+        const statusDiv = document.getElementById('mm-status');
+        statusDiv.innerText = '';
+        
+        const provider = window.ethereum || (window.parent && window.parent.ethereum);
+        
+        if (!provider) {
+            statusDiv.innerText = "MetaMask not detected. Please install extension.";
+            return;
+        }
+
+        try {
+            statusDiv.style.color = "#2563eb";
+            statusDiv.innerText = "Requesting account access...";
+            
+            const accounts = await provider.request({ method: 'eth_requestAccounts' });
+            if (!accounts || accounts.length === 0) {
+                statusDiv.style.color = "#dc2626";
+                statusDiv.innerText = "No accounts returned.";
+                return;
+            }
+            
+            const account = accounts[0];
+            statusDiv.innerText = "Sign verification message in MetaMask...";
+            
+            const domain = window.location.hostname || "scholarpi.org";
+            const nonce = Math.floor(Math.random() * 100000000);
+            const message = `${domain} wants you to sign in with your Ethereum account:\\n${account}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${nonce}\\nIssued At: ${new Date().toISOString()}`;
+            
+            const hexMessage = '0x' + Array.from(new TextEncoder().encode(message)).map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            const signature = await provider.request({
+                method: 'personal_sign',
+                params: [hexMessage, account]
+            });
+
+            const parentUrl = new URL(window.parent.location.href);
+            parentUrl.searchParams.set("siwe_address", account);
+            parentUrl.searchParams.set("siwe_signature", signature);
+            parentUrl.searchParams.set("siwe_message", encodeURIComponent(message));
+            window.parent.location.href = parentUrl.href;
+
+        } catch (err) {
+            console.error(err);
+            statusDiv.style.color = "#dc2626";
+            statusDiv.innerText = err.message || "Connection rejected.";
+        }
+    });
+    </script>
+    """
+    components.html(metamask_ui_html, height=75)
+
+    with st.sidebar.expander("Manual / Alternative Address Entry"):
+        user_wallet = st.text_input("Ethereum Wallet Address", placeholder="0x...", key="manual_wallet_fallback")
+        if st.button("Connect Manual Wallet"):
+            if w3.is_address(user_wallet):
                 clean_wallet = w3.to_checksum_address(user_wallet)
                 st.session_state.orcid_id = clean_wallet
                 st.session_state.orcid_name = "Verified Decentralized Identity"
                 st.session_state.is_authenticated = True
                 st.session_state.auth_method = "Web3"
-                add_log(f"Identity Authenticated via SIWE: {clean_wallet}")
+                add_log(f"Identity Authenticated via Manual Address: {clean_wallet}")
                 st.rerun()
-        else:
-            st.sidebar.error("Invalid Ethereum Address format.")
+            else:
+                st.error("Invalid Ethereum Address format.")
 
     st.sidebar.markdown("### 2. Authenticate Academic ID")
     manual_id = st.sidebar.text_input("Enter ORCID iD or W3C DID", placeholder="0000-0000-0000-0000")
@@ -496,7 +610,7 @@ else:
         if st.session_state.auth_method == "Web3":
             cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
         else:
-            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.academic_id,))
+            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE user_id = ?", (st.session_state.academic_id,))
         piq_rows = cur_h.fetchall()
         total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
     finally:
@@ -851,7 +965,6 @@ def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula)
         r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot v_{apri} $$"
     )
 
-# --- Top Header with Title and Total Analyzed Papers Badge ---
 top_title_col, top_badge_col = st.columns([4, 2], vertical_alignment="center")
 with top_title_col:
     st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
