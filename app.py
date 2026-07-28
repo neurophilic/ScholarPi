@@ -281,7 +281,6 @@ components.html(custom_ui_code, height=0, width=0)
 
 st.sidebar.title("System Access & Sync")
 
-# Simplified Dual-Auth Synchronization Guide in System Access sidebar section
 st.sidebar.info(
     "**Dual-Auth Synchronization Guide:**\n"
     "• **Link Both First:** Connect both your MetaMask wallet and your ORCID account below before running assessments.\n"
@@ -859,6 +858,29 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 with st.container(border=True):
     st.markdown("### Assess a Manuscript")
+    
+    free_evals_used = st.session_state.get("free_evals_used", 0)
+
+    if free_evals_used == 0:
+        if not has_web3:
+            st.info(
+                "**First Assessment Free:** Your first assessment runs with zero stake required! "
+                "**Recommendation:** Connect your Web3 Wallet in the sidebar first so earned **piQ** tokens can be credited directly to your address."
+            )
+        stake_amount = True
+    else:
+        if not has_web3:
+            st.warning(
+                "🔒 **Free Trial Completed:** Please connect your **Web3 Ethereum Wallet** in the sidebar to stake **0.1 piQ** and execute further paper assessments."
+            )
+            stake_amount = False
+        else:
+            stake_amount = st.checkbox(
+                "Stake 0.1 piQ to Process (Returned on Valid Assessment)",
+                value=True,
+                key=f"stake_chk_{st.session_state['reset_token']}",
+            )
+
     reset_tok = st.session_state["reset_token"]
 
     research_scope = st.text_input(
@@ -940,27 +962,6 @@ with st.container(border=True):
                     selected_alex_papers.append(ap)
         else:
             st.caption("No results yet — search a hot topic or custom query above.")
-
-    free_evals_used = st.session_state.get("free_evals_used", 0)
-
-    if free_evals_used == 0:
-        st.info(
-            "🎁 **First Assessment Free:** Your first assessment runs with zero stake required! "
-            "**Recommendation:** Connect your Web3 Wallet in the sidebar first so earned **piQ** tokens can be credited directly to your address."
-        )
-        stake_amount = True
-    else:
-        if not has_web3:
-            st.warning(
-                "🔒 **Free Trial Completed:** Please connect your **Web3 Ethereum Wallet** in the sidebar to stake **0.1 piQ** and execute further paper assessments."
-            )
-            stake_amount = False
-        else:
-            stake_amount = st.checkbox(
-                "Stake 0.1 piQ to Process (Returned on Valid Assessment)",
-                value=True,
-                key=f"stake_chk_{st.session_state['reset_token']}",
-            )
 
     if st.session_state["is_running"]:
         col_run, col_stop = st.columns([4, 1], gap="medium")
