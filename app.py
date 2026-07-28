@@ -23,7 +23,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from web3 import Web3
 
-from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS
+from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS, HOT_TOPICS
 from database import get_db_connection
 from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url
 from integrations import (
@@ -163,12 +163,12 @@ button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
 }
 
 /* --- Stop Button (Red Alert) --- */
-div.stButton > button:has(p:contains("Stop")) {
+.pi-stop-button, .pi-stop-button:focus {
     background-color: #dc2626 !important;
     border-color: #dc2626 !important;
     color: #ffffff !important;
 }
-div.stButton > button:has(p:contains("Stop")):hover {
+.pi-stop-button:hover {
     background-color: #b91c1c !important;
     border-color: #b91c1c !important;
     color: #ffffff !important;
@@ -200,7 +200,7 @@ button[kind="secondaryFormSubmit"], button[kind="primaryFormSubmit"] {
 }
 
 /* --- Scilem Assistant Floating Chat --- */
-[data-testid="stChatMessage"]:has(div:contains("👤")) {
+.pi-chat-user-msg {
     flex-direction: row-reverse !important;
     background-color: #f1f5f9 !important;
     border-radius: 10px 0 10px 10px !important;
@@ -302,7 +302,25 @@ parentDoc.addEventListener('click', function(e) {
     }
 }, true);
 
+function applyTextBasedStyling() {
+    // CSS has no standard :contains() pseudo-class (that is a jQuery-only
+    // extension) -- rules that tried to use it never matched anything in
+    // any real browser. Apply equivalent classes here based on text
+    // content instead, matched by real CSS above.
+    parentDoc.querySelectorAll('div.stButton > button').forEach(btn => {
+        if (btn.innerText && btn.innerText.trim() === 'Stop') {
+            btn.classList.add('pi-stop-button');
+        }
+    });
+    parentDoc.querySelectorAll('[data-testid="stChatMessage"]').forEach(msg => {
+        if (msg.innerText && msg.innerText.includes('👤') && !msg.classList.contains('pi-chat-user-msg')) {
+            msg.classList.add('pi-chat-user-msg');
+        }
+    });
+}
+
 function initUI() {
+    applyTextBasedStyling();
     const handle = parentDoc.getElementById('scilem-drag-handle');
     if (handle) {
         let block = handle.closest('[data-testid="stVerticalBlock"]');
@@ -496,7 +514,7 @@ else:
         if st.session_state.auth_method == "Web3":
             cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
         else:
-            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE user_id = ?", (st.session_state.academic_id,))
+            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.academic_id,))
         piq_rows = cur_h.fetchall()
         total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
     finally:
@@ -819,10 +837,11 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
 
     return html_string, table_html
 
+
 def get_criteria_info(weights):
     tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = weights
     return [
-        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \mathbf{v}_{\text{apri}} $$"),
+        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \vapri $$"),
         ("C2", "Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
         ("C3", "Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
         ("C4", "Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
@@ -835,7 +854,7 @@ def get_criteria_info(weights):
 @st.dialog("Criterion Details & Adversarial Logic Engine", width="medium")
 def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula):
     st.markdown(f"### {c_id}: {title}")
-    st.markdown(f"**Current Epoch Weight ($\varpi_{sym}$):** `{weight_val:.6f}`")
+    st.markdown(rf"**Current Epoch Weight ($\varpi_{sym}$):** `{weight_val:.6f}`")
     st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
     st.markdown(formula)
     st.markdown("---")
@@ -847,9 +866,10 @@ def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula)
         r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
         r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
         r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right)"
-        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \mathbf{v}_{\text{apri}} $$"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \vapri $$"
     )
 
+# --- Top Header with Title and Total Analyzed Papers Badge ---
 top_title_col, top_badge_col = st.columns([4, 2], vertical_alignment="center")
 with top_title_col:
     st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
@@ -865,28 +885,90 @@ with top_badge_col:
 st.markdown("<br>", unsafe_allow_html=True)
 
 with st.container(border=True):
-    selected_uploaded_files = []
-    uploaded_files = st.file_uploader(
-        "Upload Local PDF(s)",
-        type=["pdf"],
-        accept_multiple_files=True,
-        key=f"file_uploader_{st.session_state['reset_token']}",
-    )
-    if uploaded_files:
-        st.markdown("**Tick local files to include:**")
-        for i, file in enumerate(uploaded_files):
-            if st.checkbox(
-                f"Local File: {file.name}",
-                value=True,
-                key=f"up_chk_{i}_{st.session_state['reset_token']}",
-            ):
-                selected_uploaded_files.append(file)
+    st.markdown("### Assess a Manuscript")
+    reset_tok = st.session_state["reset_token"]
 
-    research_scope = ""
+    research_scope = st.text_input(
+        "Research Scope / Field Focus (optional)",
+        placeholder="e.g. Quantum Error Correction, Oncology, Perovskite Solar Cells...",
+        key=f"scope_input_{reset_tok}",
+    )
+
+    intake_tab_local, intake_tab_doi, intake_tab_alex = st.tabs(
+        ["📄 Local Upload", "🔗 DOI Lookup", "🔍 OpenAlex Topic Search"]
+    )
+
+    selected_uploaded_files = []
+    with intake_tab_local:
+        uploaded_files = st.file_uploader(
+            "Upload Local PDF(s)",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key=f"file_uploader_{reset_tok}",
+        )
+        if uploaded_files:
+            st.markdown("**Tick local files to include:**")
+            for i, file in enumerate(uploaded_files):
+                if st.checkbox(
+                    f"Local File: {file.name}",
+                    value=True,
+                    key=f"up_chk_{i}_{reset_tok}",
+                ):
+                    selected_uploaded_files.append(file)
+
     doi_input = ""
     include_doi = False
-    selected_alex_papers = []
+    with intake_tab_doi:
+        doi_input = st.text_input(
+            "Enter a DOI",
+            placeholder="10.1000/xyz123 or https://doi.org/10.1000/xyz123",
+            key=f"doi_text_{reset_tok}",
+        )
+        include_doi = st.checkbox(
+            "Include this DOI in the assessment pipeline",
+            value=False,
+            key=f"doi_chk_{reset_tok}",
+            disabled=not doi_input.strip(),
+        )
+        st.caption(
+            "Pi-Index resolves open-access PDFs automatically via Unpaywall → "
+            "Semantic Scholar → CORE, in that order."
+        )
 
+    selected_alex_papers = []
+    with intake_tab_alex:
+        alex_choice = st.selectbox(
+            "Hot Topic",
+            ["Custom Search..."] + HOT_TOPICS,
+            key=f"alex_topic_sel_{reset_tok}",
+        )
+        custom_query = ""
+        if alex_choice == "Custom Search...":
+            custom_query = st.text_input("Custom OpenAlex Search Query", key=f"alex_custom_{reset_tok}")
+        search_term = custom_query.strip() if alex_choice == "Custom Search..." else alex_choice
+
+        if st.button("Search OpenAlex", key=f"alex_search_btn_{reset_tok}"):
+            if search_term:
+                with st.spinner(f"Searching OpenAlex for '{search_term}'..."):
+                    st.session_state["alex_search_results"] = search_openalex_topics(search_term, limit=15)
+                    st.session_state["alex_search_query_used"] = search_term
+            else:
+                st.warning("Enter a custom search term or pick a hot topic first.")
+
+        alex_results = st.session_state.get("alex_search_results", [])
+        if alex_results:
+            st.markdown(
+                f"**{len(alex_results)} result(s) for '{st.session_state.get('alex_search_query_used', '')}':** "
+                "tick papers to include in the pipeline."
+            )
+            for ai, ap in enumerate(alex_results):
+                label = f"{ap.get('title', 'Untitled Paper')}  —  *{ap.get('authors', 'Unidentified')}*"
+                if st.checkbox(label, value=False, key=f"alex_chk_{ai}_{reset_tok}"):
+                    selected_alex_papers.append(ap)
+        else:
+            st.caption("No results yet — search a hot topic or custom query above.")
+
+    # --- Free Assessment vs Obligatory Web3 Stake Logic ---
     free_evals_used = st.session_state.get("free_evals_used", 0)
     is_web3_authenticated = (
         st.session_state.is_authenticated 
@@ -1162,6 +1244,7 @@ def more_details_dialog(item):
         for w in warnings:
             st.markdown(f"- {w}")
 
+    # --- Section 1: Overview & Ledger ---
     st.markdown("### Overview & Ledger")
     st.write(f"**File Name:** `{filename}`")
     st.write(f"**Evaluation Hash (Paper Address):** `{eval_hash}`")
@@ -1181,6 +1264,7 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
+    # --- Section 2: Multi-LLM Extractions ---
     st.markdown("### Multi-LLM Extractions")
     if consensus_raw and isinstance(consensus_raw, dict):
         llm_cols = st.columns(2, gap="medium")
@@ -1214,6 +1298,7 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
+    # --- Section 3: Merged Synthesized Evidence Report ---
     st.markdown("### Synthesized Evidence Report")
     if evidence_report_text:
         st.markdown(evidence_report_text)
@@ -1231,6 +1316,7 @@ def more_details_dialog(item):
 
     st.markdown("---")
 
+    # --- Section 4: Criteria Breakdown & Score Matrix ---
     st.markdown("### Criteria Breakdown & Score Matrix")
     breakdown_df = pd.DataFrame({
         "Criterion": [
@@ -1334,7 +1420,12 @@ def render_breakdown_item(item, index):
                 and not any(inv in author_lower for inv in invalid_authors)
             )
 
-            extraction_badge = " ✅ *Title & Author Extracted Successfully*" if (has_valid_title and has_valid_author) or (has_valid_title or has_valid_author) else ""
+            if has_valid_title and has_valid_author:
+                extraction_badge = " ✅ *Title & Author Extracted Successfully*"
+            elif has_valid_title or has_valid_author:
+                extraction_badge = " ⚠️ *Partial Extraction (Title or Author Only)*"
+            else:
+                extraction_badge = ""
 
             st.markdown(f"**{title}** — *{author_name}*{extraction_badge}{warn_badge}")
             st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
@@ -1618,6 +1709,7 @@ with top_analytics_col2:
 
 st.markdown("---")
 
+# User History or Auth Prompt
 if st.session_state.is_authenticated:
     conn_hist = get_db_connection()
     try:
@@ -1718,6 +1810,7 @@ if st.session_state.is_authenticated:
         st.info("No assessment history or rewards found linked to this authenticated ID.")
     st.markdown("---")
 
+# Two-Column Side-by-Side Leaderboards using scrollable native interactive containers (Limit 20) with table-like headers
 side_col1, side_col2 = st.columns(2, gap="large")
 
 with side_col1:
@@ -1726,6 +1819,7 @@ with side_col1:
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
         
+        # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 3.2, 4.5, 1.5])
         h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
         h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
@@ -1763,6 +1857,7 @@ with side_col2:
         conn_pi.close()
     
     if top_papers:
+        # Table Header
         h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 4.2, 2.5, 2.5])
         h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
         h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript Title</div>", unsafe_allow_html=True)
@@ -1817,6 +1912,7 @@ with side_col2:
 
 st.markdown("---")
 
+# Dedicated line for Latest Assessed Papers using scrollable native interactive containers (Limit 20) with table-like headers
 st.markdown("### Latest Assessed Papers")
 conn_recent = get_db_connection()
 try:
@@ -1839,6 +1935,7 @@ finally:
 if merged_papers:
     st.markdown("<p style='font-size:13px; color:#64748b; margin-bottom:10px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
     
+    # Table Header
     h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
     h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Block</div>", unsafe_allow_html=True)
     h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript & Author</div>", unsafe_allow_html=True)
@@ -1901,6 +1998,7 @@ else:
 
 st.markdown("---")
 
+# Proof-of-Research Blockchain Explorer
 exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
 with exp_head_col1:
     st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
