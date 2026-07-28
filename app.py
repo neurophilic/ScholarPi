@@ -63,6 +63,20 @@ def safe_get_sepolia_url(tx):
     except Exception:
         return None
 
+def safe_float(val, default=0.0):
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        return float(val)
+    except ValueError:
+        try:
+            nums = re.findall(r"[-+]?\d*\.\d+|\d+", str(val))
+            return float(nums[0]) if nums else default
+        except Exception:
+            return default
+
 def get_author_piq_dict():
     conn = get_db_connection()
     try:
@@ -85,7 +99,7 @@ def get_author_piq_dict():
         alist = [a.strip() for a in clean_authors.split(",") if a.strip()]
         if not alist:
             continue
-        share = (float(piq) if piq else 0.0) / len(alist)
+        share = safe_float(piq, 0.0) / len(alist)
         for a in alist:
             author_piq[a] = author_piq.get(a, 0.0) + share
             author_book[a] = eth_book if eth_book and w3.is_address(eth_book) else "Unbound / Escrow"
@@ -484,7 +498,7 @@ else:
         else:
             cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.academic_id,))
         piq_rows = cur_h.fetchall()
-        total_user_piq = sum(float(r[0]) for r in piq_rows if r[0])
+        total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
     finally:
         conn_hist.close()
         
@@ -635,7 +649,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
             continue
         try:
             raw_subfields = [s.title().strip() for s in json.loads(subfields_json)]
-            score = float(final_score) if final_score else 50.0
+            score = safe_float(final_score, 50.0)
             for rs in raw_subfields:
                 if rs and rs.lower() not in exclude_terms:
                     s = refine_science_field(rs)
@@ -1127,17 +1141,17 @@ with st.container(border=True):
 def more_details_dialog(item):
     title = item.get("title", "Unknown Title")
     author_name = clean_author_name(item.get("author_name", "Unknown"))
-    score = float(item.get("score") or 0.0)
-    logic_integrity = float(item.get("logic_integrity") if item.get("logic_integrity") is not None else 75.0)
+    score = safe_float(item.get("score"), 0.0)
+    logic_integrity = safe_float(item.get("logic_integrity"), 75.0)
     scores_dict = item.get("scores_dict", {})
     used_weights = item.get("used_weights", [1.0]*8)
     eval_hash = item.get("eval_hash", "0x0")
-    piq = float(item.get("piq") or 0.0)
+    piq = safe_float(item.get("piq"), 0.0)
     tx_hash = item.get("tx_hash", "None")
     zk_proof = item.get("zk_proof", "None")
-    mdar_score = float(item.get("h_idx") if item.get("h_idx") is not None else 0.0)
-    rrid_count = int(item.get("i10_idx") if item.get("i10_idx") is not None else 0)
-    repro_score = float(item.get("repro_score") if item.get("repro_score") is not None else 0.0)
+    mdar_score = safe_float(item.get("h_idx"), 0.0)
+    rrid_count = int(safe_float(item.get("i10_idx"), 0))
+    repro_score = safe_float(item.get("repro_score"), 0.0)
     filename = item.get("filename", "N/A")
     warnings = item.get("warnings", [])
     consensus_raw = item.get("consensus_raw", {})
@@ -1237,18 +1251,18 @@ def more_details_dialog(item):
             "C8: Future Actionability & FAIR",
         ],
         "Score Extracted (0-100)": [
-            scores_dict.get("C1_Semantic_Originality", 0),
-            scores_dict.get("C2_Methodological_Rigor_SciScore", 0),
-            scores_dict.get("C3_Interdisciplinary_Entropy", 0),
-            scores_dict.get("C4_Societal_Impact", 0),
-            scores_dict.get("C5_Open_Science_Repro", 0),
-            scores_dict.get("C6_Literature_Integration", 0),
-            scores_dict.get("C7_Empirical_Density", 0),
-            scores_dict.get("C8_Future_Actionability_FAIR", 0),
+            safe_float(scores_dict.get("C1_Semantic_Originality"), 0),
+            safe_float(scores_dict.get("C2_Methodological_Rigor_SciScore"), 0),
+            safe_float(scores_dict.get("C3_Interdisciplinary_Entropy"), 0),
+            safe_float(scores_dict.get("C4_Societal_Impact"), 0),
+            safe_float(scores_dict.get("C5_Open_Science_Repro"), 0),
+            safe_float(scores_dict.get("C6_Literature_Integration"), 0),
+            safe_float(scores_dict.get("C7_Empirical_Density"), 0),
+            safe_float(scores_dict.get("C8_Future_Actionability_FAIR"), 0),
         ],
         "Epoch Weight": used_weights,
         "Weighted Value": [
-            scores_dict.get(k, 0) * used_weights[i]
+            safe_float(scores_dict.get(k), 0) * used_weights[i]
             for i, k in enumerate([
                 "C1_Semantic_Originality", "C2_Methodological_Rigor_SciScore", "C3_Interdisciplinary_Entropy",
                 "C4_Societal_Impact", "C5_Open_Science_Repro", "C6_Literature_Integration",
@@ -1294,9 +1308,9 @@ def defense_strategy_dialog(scores_dict):
 def render_breakdown_item(item, index):
     title = item["title"]
     author_name = clean_author_name(item["author_name"])
-    score = item["score"]
+    score = safe_float(item["score"], 0.0)
     eval_hash = item["eval_hash"]
-    piq = item["piq"]
+    piq = safe_float(item["piq"], 0.0)
     scores_dict = item["scores_dict"]
     warnings = item.get("warnings", [])
     acknowledged = item.get("warnings_acknowledged", False)
@@ -1664,7 +1678,7 @@ if st.session_state.is_authenticated:
             tx_disp_val = u_tx if u_tx and str(u_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
             with st.expander(
-                f"[{idx+1}] {u_title[:50]}... — *{u_author_clean}* (Score: **{u_score:.2f}** | piQ: `{u_piq}`)",
+                f"[{idx+1}] {u_title[:50]}... — *{u_author_clean}* (Score: **{safe_float(u_score, 0.0):.2f}** | piQ: `{u_piq}`)",
                 expanded=False,
             ):
                 st.write(f"**File Name:** {u_filename if u_filename else 'N/A'}")
@@ -1678,34 +1692,34 @@ if st.session_state.is_authenticated:
                 else:
                     st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                st.markdown(f"**Executable Reproducibility Score:** `{u_repro * 100:.1f}%`", unsafe_allow_html=True)
-                st.markdown(f"**SciScore MDAR Adherence:** `{u_mdar * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
+                st.markdown(f"**Executable Reproducibility Score:** `{safe_float(u_repro, 0.0) * 100:.1f}%`", unsafe_allow_html=True)
+                st.markdown(f"**SciScore MDAR Adherence:** `{safe_float(u_mdar, 0.0) * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
 
                 if st.button("View Full Multi-LLM & Scilem Dossier", key=f"hist_det_{idx}_{u_hash}"):
                     hist_item = {
                         "title": u_title,
                         "author_name": u_author,
-                        "score": u_score,
-                        "logic_integrity": u_logic if u_logic is not None else 75.0,
+                        "score": safe_float(u_score, 0.0),
+                        "logic_integrity": safe_float(u_logic, 75.0),
                         "scores_dict": {
-                            "C1_Semantic_Originality": u_c1, "C2_Methodological_Rigor_SciScore": u_c2,
-                            "C3_Interdisciplinary_Entropy": u_c3, "C4_Societal_Impact": u_c4,
-                            "C5_Open_Science_Repro": u_c5, "C6_Literature_Integration": u_c6,
-                            "C7_Empirical_Density": u_c7, "C8_Future_Actionability_FAIR": u_c8
+                            "C1_Semantic_Originality": safe_float(u_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(u_c2, 0),
+                            "C3_Interdisciplinary_Entropy": safe_float(u_c3, 0), "C4_Societal_Impact": safe_float(u_c4, 0),
+                            "C5_Open_Science_Repro": safe_float(u_c5, 0), "C6_Literature_Integration": safe_float(u_c6, 0),
+                            "C7_Empirical_Density": safe_float(u_c7, 0), "C8_Future_Actionability_FAIR": safe_float(u_c8, 0)
                         },
                         "used_weights": [1.0]*8,
                         "eval_hash": u_hash,
-                        "piq": u_piq,
+                        "piq": safe_float(u_piq, 0.0),
                         "tx_hash": u_tx,
                         "zk_proof": u_zk,
-                        "h_idx": u_mdar,
-                        "i10_idx": u_rrid,
-                        "repro_score": u_repro,
+                        "h_idx": safe_float(u_mdar, 0.0),
+                        "i10_idx": int(safe_float(u_rrid, 0)),
+                        "repro_score": safe_float(u_repro, 0.0),
                         "filename": u_filename or "N/A",
                         "warnings": [],
                         "consensus_raw": json.loads(u_consensus) if u_consensus else {},
                         "evidence_report_text": u_report or "",
-                        "scilem_rating": u_scilem if u_scilem is not None else 50.0
+                        "scilem_rating": safe_float(u_scilem, 50.0)
                     }
                     more_details_dialog(hist_item)
     else:
@@ -1737,7 +1751,7 @@ with side_col1:
                 r_c1.markdown(f"**{rank}**")
                 r_c2.markdown(f"**{author}**")
                 r_c3.markdown(f"`{book_addr}`")
-                r_c4.markdown(f"**{piq:.2f}**")
+                r_c4.markdown(f"**{safe_float(piq, 0.0):.2f}**")
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1786,27 +1800,27 @@ with side_col2:
                         item_dossier = {
                             "title": p_title,
                             "author_name": p_author,
-                            "score": p_score,
-                            "logic_integrity": p_logic if p_logic is not None else 75.0,
+                            "score": safe_float(p_score, 0.0),
+                            "logic_integrity": safe_float(p_logic, 75.0),
                             "scores_dict": {
-                                "C1_Semantic_Originality": p_c1, "C2_Methodological_Rigor_SciScore": p_c2,
-                                "C3_Interdisciplinary_Entropy": p_c3, "C4_Societal_Impact": p_c4,
-                                "C5_Open_Science_Repro": p_c5, "C6_Literature_Integration": p_c6,
-                                "C7_Empirical_Density": p_c7, "C8_Future_Actionability_FAIR": p_c8
+                                "C1_Semantic_Originality": safe_float(p_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(p_c2, 0),
+                                "C3_Interdisciplinary_Entropy": safe_float(p_c3, 0), "C4_Societal_Impact": safe_float(p_c4, 0),
+                                "C5_Open_Science_Repro": safe_float(p_c5, 0), "C6_Literature_Integration": safe_float(p_c6, 0),
+                                "C7_Empirical_Density": safe_float(p_c7, 0), "C8_Future_Actionability_FAIR": safe_float(p_c8, 0)
                             },
                             "used_weights": [1.0]*8,
                             "eval_hash": p_hash,
-                            "piq": p_piq,
+                            "piq": safe_float(p_piq, 0.0),
                             "tx_hash": p_tx,
                             "zk_proof": p_zk,
-                            "h_idx": p_mdar,
-                            "i10_idx": p_rrid,
-                            "repro_score": p_repro,
+                            "h_idx": safe_float(p_mdar, 0.0),
+                            "i10_idx": int(safe_float(p_rrid, 0)),
+                            "repro_score": safe_float(p_repro, 0.0),
                             "filename": p_filename or "N/A",
                             "warnings": [],
                             "consensus_raw": json.loads(p_consensus) if p_consensus else {},
                             "evidence_report_text": p_report or "",
-                            "scilem_rating": p_scilem if p_scilem is not None else 50.0
+                            "scilem_rating": safe_float(p_scilem, 50.0)
                         }
                         more_details_dialog(item_dossier)
     else:
@@ -1866,33 +1880,33 @@ if merged_papers:
                 st.markdown(f"**{m_title}**")
                 st.markdown(f"*{clean_auth}*")
             with r_col3:
-                st.markdown(f"`{m_score:.2f}` / `{m_piq:.2f}`")
+                st.markdown(f"`{safe_float(m_score, 0.0):.2f}` / `{safe_float(m_piq, 0.0):.2f}`")
             with r_col4:
                 if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
                     item_dossier = {
                         "title": m_title,
                         "author_name": m_author,
-                        "score": m_score,
-                        "logic_integrity": m_logic if m_logic is not None else 75.0,
+                        "score": safe_float(m_score, 0.0),
+                        "logic_integrity": safe_float(m_logic, 75.0),
                         "scores_dict": {
-                            "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                            "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                            "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                            "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                            "C1_Semantic_Originality": safe_float(m_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(m_c2, 0),
+                            "C3_Interdisciplinary_Entropy": safe_float(m_c3, 0), "C4_Societal_Impact": safe_float(m_c4, 0),
+                            "C5_Open_Science_Repro": safe_float(m_c5, 0), "C6_Literature_Integration": safe_float(m_c6, 0),
+                            "C7_Empirical_Density": safe_float(m_c7, 0), "C8_Future_Actionability_FAIR": safe_float(m_c8, 0)
                         },
                         "used_weights": [1.0]*8,
                         "eval_hash": m_hash,
-                        "piq": m_piq,
+                        "piq": safe_float(m_piq, 0.0),
                         "tx_hash": m_tx,
                         "zk_proof": m_zk,
-                        "h_idx": m_mdar,
-                        "i10_idx": m_rrid,
-                        "repro_score": m_repro,
+                        "h_idx": safe_float(m_mdar, 0.0),
+                        "i10_idx": int(safe_float(m_rrid, 0)),
+                        "repro_score": safe_float(m_repro, 0.0),
                         "filename": m_filename or "N/A",
                         "warnings": [],
                         "consensus_raw": json.loads(m_consensus) if m_consensus else {},
                         "evidence_report_text": m_report or "",
-                        "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                        "scilem_rating": safe_float(m_scilem, 50.0)
                     }
                     more_details_dialog(item_dossier)
 else:
@@ -1992,7 +2006,7 @@ try:
 
                         with st.expander(
                             f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
-                            f" **{m_score:.2f}** | {m_time[:16]})",
+                            f" **{safe_float(m_score, 0.0):.2f}** | {m_time[:16]})",
                             expanded=True,
                         ):
                             st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
@@ -2006,34 +2020,34 @@ try:
                             else:
                                 st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                            st.markdown(f"**Executable Reproducibility Score:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
-                            st.markdown(f"**SciScore MDAR Adherence:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
+                            st.markdown(f"**Executable Reproducibility Score:** `{safe_float(m_repro, 0.0) * 100:.1f}%`", unsafe_allow_html=True)
+                            st.markdown(f"**SciScore MDAR Adherence:** `{safe_float(m_mdar, 0.0) * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
 
                             if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
                                 search_item = {
                                     "title": m_title,
                                     "author_name": m_author,
-                                    "score": m_score,
-                                    "logic_integrity": m_logic if m_logic is not None else 75.0,
+                                    "score": safe_float(m_score, 0.0),
+                                    "logic_integrity": safe_float(m_logic, 75.0),
                                     "scores_dict": {
-                                        "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                                        "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                                        "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                                        "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                                        "C1_Semantic_Originality": safe_float(m_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(m_c2, 0),
+                                        "C3_Interdisciplinary_Entropy": safe_float(m_c3, 0), "C4_Societal_Impact": safe_float(m_c4, 0),
+                                        "C5_Open_Science_Repro": safe_float(m_c5, 0), "C6_Literature_Integration": safe_float(m_c6, 0),
+                                        "C7_Empirical_Density": safe_float(m_c7, 0), "C8_Future_Actionability_FAIR": safe_float(m_c8, 0)
                                     },
                                     "used_weights": [1.0]*8,
                                     "eval_hash": m_hash,
-                                    "piq": m_piq,
+                                    "piq": safe_float(m_piq, 0.0),
                                     "tx_hash": m_tx,
                                     "zk_proof": m_zk,
-                                    "h_idx": m_mdar,
-                                    "i10_idx": m_rrid,
-                                    "repro_score": m_repro,
+                                    "h_idx": safe_float(m_mdar, 0.0),
+                                    "i10_idx": int(safe_float(m_rrid, 0)),
+                                    "repro_score": safe_float(m_repro, 0.0),
                                     "filename": m_filename or "N/A",
                                     "warnings": [],
                                     "consensus_raw": json.loads(m_consensus) if m_consensus else {},
                                     "evidence_report_text": m_report or "",
-                                    "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                                    "scilem_rating": safe_float(m_scilem, 50.0)
                                 }
                                 more_details_dialog(search_item)
                 else:
