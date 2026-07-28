@@ -1783,7 +1783,7 @@ with side_col2:
 
 st.markdown("---")
 
-# Dedicated line for Latest Assessed Papers & Ledger Proofs
+# Dedicated line for Latest Assessed Papers & Ledger Proofs using native interactive cards
 st.markdown("### Latest Assessed Papers & Ledger Proofs")
 conn_recent = get_db_connection()
 try:
@@ -1804,100 +1804,7 @@ finally:
     conn_recent.close()
 
 if merged_papers:
-    rows_html = ""
-    for mp in merged_papers:
-        (
-            m_title, m_author, m_filename, m_score, m_logic,
-            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-            m_block_height, m_block_hash,
-            m_consensus, m_report, m_scilem
-        ) = mp
-        
-        bh = m_block_height if m_block_height is not None else "Pending"
-        eh_short = m_hash[:8] + "..." if m_hash else "N/A"
-        piq_val = f"{m_piq:.2f}"
-        clean_auth = clean_author_name(m_author)
-        
-        tx_url = safe_get_sepolia_url(m_tx)
-        tx_short = m_tx[:8] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
-        tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
-        title_short = (m_title[:45] + "...") if len(m_title) > 45 else m_title
-        
-        rows_html += f"""
-            <tr>
-                <td style="text-align: center; width: 8%;"><b>{bh}</b></td>
-                <td style="width: 45%; font-weight: bold;" title="{m_title} by {clean_auth}">{title_short}<br><span style="font-size:10px; color:#64748b; font-weight:normal;">{clean_auth[:35]}</span></td>
-                <td style="text-align: center; width: 12%;"><b>{m_score:.2f}</b></td>
-                <td style="text-align: right; width: 12%;"><b>{piq_val}</b></td>
-                <td style="width: 23%; font-size:11px;"><code>{eh_short}</code><br>{tx_link}</td>
-            </tr>
-        """
-        
-    merged_table_template = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
-        .table-container {
-            max-height: 200px;
-            overflow-y: auto;
-            overflow-x: hidden;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            background-color: #ffffff;
-        }
-        .leaderboard-table {
-            width: 100%;
-            font-size: 13px;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-        .leaderboard-table th {
-            background-color: #2c3e50;
-            color: white;
-            padding: 8px 10px;
-            text-align: left;
-            font-weight: 600;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-        }
-        .leaderboard-table td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #ecf0f1;
-            color: #2c3e50;
-            vertical-align: middle;
-        }
-        .leaderboard-table tr:hover {
-            background-color: #f8fafc;
-        }
-    </style>
-    </head>
-    <body>
-    <div class="table-container">
-        <table class="leaderboard-table">
-            <thead>
-                <tr>
-                    <th style="text-align: center; width: 8%;">Block</th>
-                    <th style="width: 45%;">Manuscript & Author</th>
-                    <th style="text-align: center; width: 12%;">Score</th>
-                    <th style="text-align: right; width: 12%;">piQ</th>
-                    <th style="width: 23%;">Eval / Tx Hash</th>
-                </tr>
-            </thead>
-            <tbody>
-                __ROWS_PLACEHOLDER__
-            </tbody>
-        </table>
-    </div>
-    </body>
-    </html>
-    """
-    components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=210, scrolling=False)
-    
-    st.markdown("<p style='font-size:12px; color:#64748b; margin-top:6px; margin-bottom:6px;'>Click any manuscript to view its complete Detailed Research Integrity Dossier:</p>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size:12px; color:#64748b; margin-bottom:8px;'>Click <b>View Dossier</b> on any manuscript card below to open its complete research integrity record:</p>", unsafe_allow_html=True)
     for idx, mp in enumerate(merged_papers):
         (
             m_title, m_author, m_filename, m_score, m_logic,
@@ -1907,35 +1814,45 @@ if merged_papers:
             m_consensus, m_report, m_scilem
         ) = mp
         
-        m_author_clean = clean_author_name(m_author)
-        btn_txt = f"[{idx+1}] {m_title} — {m_author_clean} (Score: {m_score:.2f} | Block: {m_block_height if m_block_height is not None else 'Pending'})"
-        if st.button(btn_txt, key=f"btn_row_dossier_{idx}_{m_hash}", use_container_width=True):
-            item_dossier = {
-                "title": m_title,
-                "author_name": m_author,
-                "score": m_score,
-                "logic_integrity": m_logic if m_logic is not None else 75.0,
-                "scores_dict": {
-                    "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                    "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                    "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                    "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
-                },
-                "used_weights": [1.0]*8,
-                "eval_hash": m_hash,
-                "piq": m_piq,
-                "tx_hash": m_tx,
-                "zk_proof": m_zk,
-                "h_idx": m_mdar,
-                "i10_idx": m_rrid,
-                "repro_score": m_repro,
-                "filename": m_filename or "N/A",
-                "warnings": [],
-                "consensus_raw": json.loads(m_consensus) if m_consensus else {},
-                "evidence_report_text": m_report or "",
-                "scilem_rating": m_scilem if m_scilem is not None else 50.0
-            }
-            more_details_dialog(item_dossier)
+        bh = m_block_height if m_block_height is not None else "Pending"
+        clean_auth = clean_author_name(m_author)
+        
+        with st.container(border=True):
+            r_col1, r_col2, r_col3 = st.columns([1.5, 5, 2.5], vertical_alignment="center")
+            with r_col1:
+                st.markdown(f"**Block {bh}**")
+                st.markdown(f"Score: `{m_score:.2f}`")
+            with r_col2:
+                st.markdown(f"**{m_title}**")
+                st.markdown(f"*{clean_auth}* | piQ: `{m_piq:.2f}`")
+            with r_col3:
+                if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
+                    item_dossier = {
+                        "title": m_title,
+                        "author_name": m_author,
+                        "score": m_score,
+                        "logic_integrity": m_logic if m_logic is not None else 75.0,
+                        "scores_dict": {
+                            "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                            "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                            "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                            "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                        },
+                        "used_weights": [1.0]*8,
+                        "eval_hash": m_hash,
+                        "piq": m_piq,
+                        "tx_hash": m_tx,
+                        "zk_proof": m_zk,
+                        "h_idx": m_mdar,
+                        "i10_idx": m_rrid,
+                        "repro_score": m_repro,
+                        "filename": m_filename or "N/A",
+                        "warnings": [],
+                        "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                        "evidence_report_text": m_report or "",
+                        "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                    }
+                    more_details_dialog(item_dossier)
 else:
     st.info("No paper assessments recorded on ledger yet.")
 
