@@ -399,7 +399,7 @@ if not st.session_state.is_authenticated:
             }
 
             statusDiv.style.color = "#10b981";
-            statusDiv.innerText = "Authentication ready! Click below to finish:";
+            statusDiv.innerText = "Authentication ready! Open authenticated window:";
 
             const targetUrl = new URL(window.top.location.href);
             targetUrl.searchParams.set("siwe_address", account);
@@ -408,8 +408,8 @@ if not st.session_state.is_authenticated:
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
 
-            // Provide a direct, user-clickable confirmation button to bypass iframe sandbox restrictions cleanly
-            statusDiv.innerHTML = `<a href="${targetUrl.href}" target="_top" style="display:block; margin-top:8px; background:#0f172a; color:white; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">Click here to complete sign-in</a>`;
+            // Open authenticated app cleanly in a new full-size tab (bypasses iframe sandbox restrictions)
+            statusDiv.innerHTML = `<a href="${targetUrl.href}" target="_blank" style="display:block; margin-top:8px; background:#0f172a; color:white; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">Open Authenticated App in New Tab</a>`;
 
         } catch (err) {
             console.error("MetaMask Connection Error:", err);
