@@ -587,7 +587,11 @@ if not st.session_state.is_authenticated:
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
 
-            targetWindow.location.search = targetUrl.search;
+            try {
+                targetWindow.location.href = targetUrl.href;
+            } catch (navErr) {
+                window.location.href = targetUrl.href;
+            }
 
         } catch (err) {
             console.error("MetaMask Connection Error:", err);
