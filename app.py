@@ -729,25 +729,27 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
 
     return html_string, table_html
 
-@st.dialog("Evaluation Metrics, SciScore Reproducibility & Adversarial Logic Engine", width="large")
-def evaluation_metrics_dialog():
-    conn_top_ep = get_db_connection()
-    try:
-        cur_te = conn_top_ep.cursor()
-        cur_te.execute(
-            "SELECT block_height, w1, w2, w3, w4, w5, w6, w7, w8, model_used FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1"
-        )
-        top_epoch_data = cur_te.fetchone()
-    except Exception:
-        top_epoch_data = None
-    finally:
-        conn_top_ep.close()
 
-    if top_epoch_data:
-        _, tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8, _ = top_epoch_data
-    else:
-        tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = 1.001328, 1.000038, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+def get_criteria_info(weights):
+    tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = weights
+    return [
+        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \vapri $$"),
+        ("C2", "Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
+        ("C3", "Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
+        ("C4", "Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
+        ("C5", "Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
+        ("C6", "Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
+        ("C7", "Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
+        ("C8", "Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
+    ]
 
+@st.dialog("Criterion Details & Adversarial Logic Engine", width="medium")
+def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula):
+    st.markdown(f"### {c_id}: {title}")
+    st.markdown(f"**Current Epoch Weight ($\varpi_{sym}$):** `{weight_val:.6f}`")
+    st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
+    st.markdown(formula)
+    st.markdown("---")
     st.markdown(
         r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence or counterfactual stress failures.",
         unsafe_allow_html=True
@@ -758,22 +760,6 @@ def evaluation_metrics_dialog():
         r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right)"
         r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \vapri $$"
     )
-
-    criteria_list = [
-        ("C1: Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \vapri $$"),
-        ("C2: Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
-        ("C3: Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
-        ("C4: Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
-        ("C5: Open Science", "c5: open science", tw5, "5", "Evaluates open data, open code, and containerized reproducibility.", r"$$ C_5 = \varpi_5 \cdot (\beta_1 \cdot \mathcal{V}_{data} + \beta_2 \cdot \mathcal{V}_{code} + \beta_3 \cdot \mathcal{Z}_{container}) $$"),
-        ("C6: Literature Integration", "c6: literature integration", tw6, "6", "Evaluates citation polarity and integration with existing foundational literature.", r"$$ C_6 = \varpi_6 \cdot \frac{1}{\mathcal{N}} \sum_{i=1}^{\mathcal{N}} \text{Polarity}(x_i) \cdot \text{PR}(x_i) $$"),
-        ("C7: Empirical Density", "c7: empirical density", tw7, "7", "Assesses empirical sample strength and baseline variance.", r"$$ C_7 = \varpi_7 \cdot \tanh \left( \frac{n_{\text{valid}} \cdot \text{Cohort Strength}}{\text{Baseline Variance}} \right) $$"),
-        ("C8: Future Actionability", "c8: future actionability", tw8, "8", "Evaluates future research actionability and adherence to FAIR principles.", r"$$ C_8 = \varpi_8 \cdot \frac{1}{\mathcal{Z}} \int_{\mathcal{X}} \text{FAIR\_Score}(\mathbf{x}) \, d\mu(\mathbf{x}) $$"),
-    ]
-
-    for title, q_key, weight_val, sym, desc, formula in criteria_list:
-        with st.expander(f"{title} ( varpi_{sym} = `{weight_val:.6f}` ):", expanded=(title.startswith("C1"))):
-            st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
-            st.markdown(formula)
 
 st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
 st.markdown("")
@@ -1403,17 +1389,22 @@ with top_analytics_col1:
             st.altair_chart(base, use_container_width=True)
 
         with st.expander("Evaluation Metrics & High-Precision Ledger Forecast", expanded=False):
-            st.markdown(
-                f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):**\n"
-                f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
-                f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
-                f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
-                f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
-                f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
-                f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
-                f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
-                f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
-            )
+            st.markdown(f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** Click a criterion below for logic formulas.")
+            
+            crit_info = get_criteria_info(st.session_state.predicted_next_weights)
+            
+            cols1 = st.columns(4)
+            for idx, c_data in enumerate(crit_info[:4]):
+                with cols1[idx]:
+                    if st.button(f"{c_data[0]}: {c_data[3]:.5f}", key=f"btn_crit_{c_data[0]}", use_container_width=True):
+                        criterion_details_dialog(*c_data)
+                        
+            cols2 = st.columns(4)
+            for idx, c_data in enumerate(crit_info[4:]):
+                with cols2[idx]:
+                    if st.button(f"{c_data[0]}: {c_data[3]:.5f}", key=f"btn_crit_{c_data[0]}", use_container_width=True):
+                        criterion_details_dialog(*c_data)
+                        
             st.markdown("---")
             st.markdown(r"""
             **What's Pidyne?**
@@ -1422,9 +1413,6 @@ with top_analytics_col1:
             2. **Proof-of-Research (PoR) Validation**: Combines block index, criteria weights, and hashes into an unalterable SHA-256 block hash.
             3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in evaluation standards.
             """)
-            st.markdown("---")
-            if st.button("View Evaluation Metrics, SciScore & Logic Engine", use_container_width=True, key="eval_metrics_merged"):
-                evaluation_metrics_dialog()
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
