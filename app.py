@@ -235,21 +235,27 @@ hr {
     padding: 0.5rem !important;
 }
 
+/* Navy Blue for Run Assessment Pipeline (Primary) */
 button[kind="primary"], [data-testid="baseButton-primary"] {
-    background-color: #1e3a8a !important;
-    border-color: #1e3a8a !important;
+    background-color: #000080 !important;
+    border-color: #000080 !important;
     color: #ffffff !important;
 }
 button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
-    background-color: #1e40af !important;
-    border-color: #1e40af !important;
+    background-color: #00005b !important;
+    border-color: #00005b !important;
     color: #ffffff !important;
 }
 
-.pi-stop-button, .pi-stop-button:focus {
+/* Red for Stop (Secondary) */
+.pi-stop-button, .pi-stop-button:focus, button[kind="secondary"], [data-testid="baseButton-secondary"] {
     background-color: #dc2626 !important;
     border-color: #dc2626 !important;
     color: #ffffff !important;
+}
+button[kind="secondary"]:hover, [data-testid="baseButton-secondary"]:hover {
+    background-color: #b91c1c !important;
+    border-color: #b91c1c !important;
 }
 
 .stButton>button {
@@ -284,89 +290,7 @@ st.sidebar.title("System Access & Sync")
 has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
 has_orcid = bool(st.session_state.orcid_profile)
 
-# Make sure Dual-Auth Synchronization Guide disappears if both auth methods are connected
-if not (has_web3 and has_orcid):
-    st.sidebar.info(
-        "**Dual-Auth Synchronization Guide:**\n"
-        "• **Link Both First:** Connect both your MetaMask wallet and your ORCID account below before running assessments.\n"
-        "• **Seamless Rewards:** When both are active, your evaluation history and rewards merge automatically."
-    )
-
-if "initialized" not in st.session_state:
-    st.session_state["initialized"] = True
-
-if "free_evals_used" not in st.session_state:
-    st.session_state["free_evals_used"] = 0
-
-client_ip = "127.0.0.1"
-try:
-    headers = st.context.headers
-    client_ip = (
-        headers.get("X-Forwarded-For")
-        or headers.get("X-Real-Ip")
-        or "127.0.0.1"
-    )
-    if "," in client_ip:
-        client_ip = client_ip.split(",")[0].strip()
-except Exception:
-    pass
-
-conn_ip = get_db_connection()
-try:
-    cur_ip = conn_ip.cursor()
-    cur_ip.execute(
-        "SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,)
-    )
-    ip_exists = cur_ip.fetchone()
-    if not ip_exists:
-        cur_ip.execute(
-            "INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)",
-            (client_ip, datetime.now().isoformat()),
-        )
-        conn_ip.commit()
-finally:
-    conn_ip.close()
-
-conn_cnt = get_db_connection()
-try:
-    cur_cnt = conn_cnt.cursor()
-    cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
-    total_analyzed_count = cur_cnt.fetchone()[0]
-finally:
-    conn_cnt.close()
-
-if "state_restored" not in st.session_state:
-    restore_state_from_web3()
-    st.session_state["state_restored"] = True
-    add_log("Synchronized state with Sepolia Ethereum Ledger.")
-
-if "assessment_update_token" not in st.session_state:
-    st.session_state["assessment_update_token"] = time.time()
-if "reset_token" not in st.session_state:
-    st.session_state["reset_token"] = 0
-if "evaluated_papers_buffer" not in st.session_state:
-    st.session_state["evaluated_papers_buffer"] = []
-if "download_errors" not in st.session_state:
-    st.session_state["download_errors"] = []
-if "is_running" not in st.session_state:
-    st.session_state["is_running"] = False
-if "cancel_requested" not in st.session_state:
-    st.session_state["cancel_requested"] = False
-if "session_temp_dir" not in st.session_state:
-    st.session_state["session_temp_dir"] = tempfile.mkdtemp()
-    add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
-
-if "scilem_messages" not in st.session_state:
-    st.session_state.scilem_messages = [
-        {
-            "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."
-        }
-    ]
-
 # Sidebar Dual Identity Sync Dashboard
-st.sidebar.markdown("### Unified Identity & Sync")
-
 # 1. MetaMask Wallet Button on Top of ORCID Button with exact user label "Conncet MetaMask"
 if not has_web3:
     current_orcid_js = st.session_state.orcid_profile if st.session_state.orcid_profile else ""
@@ -461,7 +385,7 @@ if not has_web3:
     }});
     </script>
     """
-    components.html(metamask_ui_html, height=120)
+    st.sidebar.components.html(metamask_ui_html, height=120)
 else:
     st.sidebar.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
@@ -494,6 +418,86 @@ if not has_orcid:
     )
 else:
     st.sidebar.success(f"ORCID Linked: `{st.session_state.orcid_profile}`")
+
+# Make sure Dual-Auth Synchronization Guide disappears if both auth methods are connected
+if not (has_web3 and has_orcid):
+    st.sidebar.info(
+        "**Dual-Auth Synchronization Guide:**\n"
+        "• **Link Both First:** Connect both your MetaMask wallet and your ORCID account below before running assessments.\n"
+        "• **Seamless Rewards:** When both are active, your evaluation history and rewards merge automatically."
+    )
+
+if "initialized" not in st.session_state:
+    st.session_state["initialized"] = True
+
+if "free_evals_used" not in st.session_state:
+    st.session_state["free_evals_used"] = 0
+
+client_ip = "127.0.0.1"
+try:
+    headers = st.context.headers
+    client_ip = (
+        headers.get("X-Forwarded-For")
+        or headers.get("X-Real-Ip")
+        or "127.0.0.1"
+    )
+    if "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+except Exception:
+    pass
+
+conn_ip = get_db_connection()
+try:
+    cur_ip = conn_ip.cursor()
+    cur_ip.execute(
+        "SELECT ip_address FROM auto_ip_tracking WHERE ip_address=?", (client_ip,)
+    )
+    ip_exists = cur_ip.fetchone()
+    if not ip_exists:
+        cur_ip.execute(
+            "INSERT INTO auto_ip_tracking (ip_address, first_seen) VALUES (?, ?)",
+            (client_ip, datetime.now().isoformat()),
+        )
+        conn_ip.commit()
+finally:
+    conn_ip.close()
+
+conn_cnt = get_db_connection()
+try:
+    cur_cnt = conn_cnt.cursor()
+    cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
+    total_analyzed_count = cur_cnt.fetchone()[0]
+finally:
+    conn_cnt.close()
+
+if "state_restored" not in st.session_state:
+    restore_state_from_web3()
+    st.session_state["state_restored"] = True
+    add_log("Synchronized state with Sepolia Ethereum Ledger.")
+
+if "assessment_update_token" not in st.session_state:
+    st.session_state["assessment_update_token"] = time.time()
+if "reset_token" not in st.session_state:
+    st.session_state["reset_token"] = 0
+if "evaluated_papers_buffer" not in st.session_state:
+    st.session_state["evaluated_papers_buffer"] = []
+if "download_errors" not in st.session_state:
+    st.session_state["download_errors"] = []
+if "is_running" not in st.session_state:
+    st.session_state["is_running"] = False
+if "cancel_requested" not in st.session_state:
+    st.session_state["cancel_requested"] = False
+if "session_temp_dir" not in st.session_state:
+    st.session_state["session_temp_dir"] = tempfile.mkdtemp()
+    add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
+
+if "scilem_messages" not in st.session_state:
+    st.session_state.scilem_messages = [
+        {
+            "role": "assistant", 
+            "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."
+        }
+    ]
 
 if has_web3 or has_orcid:
     conn_hist = get_db_connection()
@@ -1827,6 +1831,7 @@ with side_col1:
                 r_c2.markdown(f"**{author}**")
                 r_c3.markdown(f"`{book_addr}`")
                 r_c4.markdown(f"**{safe_float(piq, 0.0):.2f}**")
+                st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1897,6 +1902,7 @@ with side_col2:
                             "scilem_rating": safe_float(p_scilem, 50.0)
                         }
                         more_details_dialog(item_dossier)
+                st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
 
@@ -2032,7 +2038,6 @@ try:
         epoch_data = None
 
     if epoch_data:
-        # Added Proof-of-Research Guide message under blockchain explorer field in the requested format
         st.info(
             "**Proof-of-Research Verification Guide:**\n"
             "• **Latest Proof-of-Research:** PoR_8839164d808d_Score:71.23 successfully verified and sealed to block 46024c976b38b5774d26d4ab24c863614fa372b2f02281366cf9d4fdfd49bc1b.\n"
