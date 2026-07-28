@@ -15,9 +15,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
-from groq import Groq
 from openai import OpenAI
-from openrouter import OpenRouter
 
 from config import (
     GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY,
@@ -32,8 +30,6 @@ from integrations import (
     clean_author_name, is_likely_institution, fetch_author_coara_metrics, 
     calculate_citation_topology
 )
-
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ---------------------------------------------------------
 # Neural Networks: Scilem Network & Pidyne LSTM
@@ -68,7 +64,6 @@ def evaluate_scilem_analysis_report(raw_text):
 
     scilem_model.eval()
     words = raw_text.lower().split()[:512]
-    # Deterministic tokenization via MD5 to keep neural manifold stable across restarts
     tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
     if not tokens:
         tokens = [0]
@@ -86,10 +81,7 @@ def evaluate_scilem_analysis_report(raw_text):
     return analysis_summary
 
 def extract_with_scilem(paper_text):
-    """
-    Treats Scilem as a peer LLM in consensus extraction.
-    Generates structured qualitative extractions using the PyTorch Scilem model.
-    """
+    """Treats Scilem as a peer LLM in consensus extraction."""
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -107,10 +99,8 @@ def extract_with_scilem(paper_text):
     with torch.no_grad():
         feat_val = scilem_model(paper_tensor).item()
 
-    # Scilem's own numeric rating, distinct from the Pidyne consensus rating.
     scilem_numeric_score = 50.0 + (feat_val * 40.0)
 
-    # Dynamic heuristics parsing for front-matter title/authors
     lines = [l.strip() for l in paper_text.split("\n") if l.strip()]
     cand_title = lines[0] if lines else "Scilem Neural Extraction"
     cand_author = "Independent Research Scholar"
@@ -241,36 +231,16 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
             "api_failed": True
         }
     try:
-        # OpenRouter SDK Integration
-        if "openrouter" in base_url.lower():
-            with OpenRouter(api_key=api_key.strip()) as client:
-                response = client.chat.send(
-                    model=model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                
-                content = response.choices[0].message.content
-                if content.startswith("```json"):
-                    content = content.split("```json")[1].split("```")[0].strip()
-                elif content.startswith("```"):
-                    content = content.split("```")[1].split("```")[0].strip()
-                    
-                data = json.loads(content)
-                data["api_failed"] = False
-                return provider_name, data
-        
-        # Standard OpenAI-compatible SDK fallback
-        else:
-            client = OpenAI(api_key=api_key.strip(), base_url=base_url)
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                temperature=0.1
-            )
-            data = json.loads(response.choices[0].message.content)
-            data["api_failed"] = False
-            return provider_name, data
+        client = OpenAI(api_key=api_key.strip(), base_url=base_url)
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.1
+        )
+        data = json.loads(response.choices[0].message.content)
+        data["api_failed"] = False
+        return provider_name, data
             
     except Exception as e:
         err_str = str(e)
@@ -347,9 +317,6 @@ def extract_with_gemini(paper_text):
     return "gemini", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
 
 def run_multi_llm_consensus(paper_text):
-    """
-    Runs multi-LLM extraction including Scilem as an equal peer model.
-    """
     results = {}
     llm_funcs = {
         "llama": extract_with_llama,
@@ -400,7 +367,6 @@ Respond strictly in JSON with keys:
     api_key = GROQ_API_KEY or OR_API_KEY or GEMINI_API_KEY
     base_url = "https://api.groq.com/openai/v1" if GROQ_API_KEY else ("https://openrouter.ai/api/v1" if OR_API_KEY else "https://generativelanguage.googleapis.com/v1beta/openai/")
     
-    # Explicitly determine and label the judge LLM provider/model
     if GROQ_API_KEY:
         model_name = PRIMARY_MODEL
         judge_provider = f"Groq Cloud (Model: {PRIMARY_MODEL})"
@@ -420,7 +386,6 @@ Respond strictly in JSON with keys:
         if data.get("api_failed", True):
             data = None
 
-    # Embed the exact judge LLM into the consensus results and evidence report header
     consensus_results["_judge_metadata"] = {
         "judge_provider": judge_provider,
         "model_name": model_name,
@@ -432,7 +397,8 @@ Respond strictly in JSON with keys:
     if not data:
         fallback_rep = generate_merged_evidence_report(consensus_results)
         evidence_report = header_prefix + f"**Note:** External API judge limit reached; generated via unified fallback consensus.\n\n" + fallback_rep
-        rating = 75.0
+        scilem_score = consensus_results.get("scilem", {}).get("scilem_score", 75.0)
+        rating = float(scilem_score)
     else:
         raw_rep = data.get("evidence_report", "Synthesized Evidence Report generated successfully.")
         if "Synthesized Evidence Report" in raw_rep[:50] or raw_rep.startswith("###"):
@@ -447,7 +413,7 @@ Respond strictly in JSON with keys:
     return evidence_report, rating
 
 # ---------------------------------------------------------
-# Utilities & Scoring logic
+# Utilities & Scoring Logic
 # ---------------------------------------------------------
 def generate_scilem_fallback_report(text):
     scilem_rep = evaluate_scilem_analysis_report(text)
@@ -513,19 +479,10 @@ def get_formulas_hash():
     return hashlib.sha256(b"Pi-Index-Formula-State-v2.0").hexdigest()
 
 def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0, vapri=0.0):
-    # C1: Incorporate vapri (matching the UI formula: semantic distance + vapri)
     c1 = (ai_rating * 0.9) + (vapri * 10)
-    
-    # C4: Societal utility approximated via topological spread
     c4 = ai_rating * 0.95 + (topological_entropy * 5)
-    
-    # C6: Literature Integration weighted by SciScore adherence
     c6 = ai_rating * 0.88 + (sciscore_adherence * 12)
-    
-    # C7: Empirical Density using tanh (matching UI formula math)
     c7 = math.tanh((ai_rating / 100.0) * 1.5) * 100.0 
-    
-    # C8: FAIR Actionability integrating reproducibility limits
     c8 = (ai_rating * 0.8) + (reproducibility_score * 20.0)
 
     return {
@@ -630,7 +587,6 @@ def process_single_pdf(
         consensus_raw = raw_data.get("_consensus_raw", {})
         evidence_report = raw_data.get("_evidence_report", "")
 
-        # 1. Calculate vapri (simulating semantic/report state)
         vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0 if evidence_report else 0.5
 
         external_active = any(
@@ -642,7 +598,6 @@ def process_single_pdf(
         title = raw_data.get("Extracted_Title", filename.replace(".pdf", "").replace("_", " ").title())
         extracted_author = raw_data.get("Extracted_Author", pdf_meta_author if pdf_meta_author else "Independent Research Scholar")
         
-        # 2. Update criteria computation call to include vapri
         scores_dict = compute_formulaic_criteria(
             reproducibility_score=0.85,
             sciscore_adherence=mdar_score,
@@ -653,19 +608,22 @@ def process_single_pdf(
         
         final_score = sum(scores_dict.values()) / 8.0
         
-        # 3. Dynamic piQ Minting based on final score (e.g., Max 10 piQ per paper)
-        piq_minted = round((final_score / 100.0) * 10.0, 2)
-        
-        # 4. Adversarial Logic Engine calculation
+        # LOGICAL MIN piQ THRESHOLD ENFORCEMENT:
+        # Minimum Score threshold = 50.0/100, Minimum Logic threshold = 50.0%
         premise_gap = 1.0 - (pidyne_ai_rating / 100.0)
         adversarial_penalty = math.exp(-(2 * max(0, topological_entropy - 0.5) + 1.5 * premise_gap))
         logic_integrity = (pidyne_ai_rating * adversarial_penalty) + (vapri * 5.0)
         logic_integrity = min(100.0, max(0.0, logic_integrity))
 
-        # Use the computed logic_integrity inside the SNARK generation
+        if final_score >= 50.0 and logic_integrity >= 50.0:
+            piq_minted = round((final_score / 100.0) * 10.0, 2)
+        else:
+            piq_minted = 0.00
+            warnings_list.append("⚠️ **MINIMUM piQ THRESHOLD UNMET:** Manuscript score or logic integrity fell below 50.0%. piQ reward set to 0.00.")
+
         zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, logic_integrity, "None")
         
-        if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000":
+        if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000" and piq_minted > 0:
             tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
         else:
             tx_hash = "Simulated_Ledger_Record"
@@ -673,7 +631,6 @@ def process_single_pdf(
         if not external_active:
             warnings_list.append("⚠️ **NOTICE:** Assessment completed using local Scilem neural model & heuristics due to external API limits.")
 
-        # Save assessment record
         cursor.execute(
             """INSERT OR REPLACE INTO papers_assessment (
                 eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, 
@@ -693,7 +650,6 @@ def process_single_pdf(
             ),
         )
 
-        # MINT BLOCKCHAIN POR WEIGHTS BLOCK
         cursor.execute("SELECT COUNT(*), block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
         row = cursor.fetchone()
         block_count = row[0] if row else 1
