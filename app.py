@@ -236,13 +236,13 @@ hr {
 }
 
 button[kind="primary"], [data-testid="baseButton-primary"] {
-    background-color: #0f172a !important;
-    border-color: #0f172a !important;
+    background-color: #1e3a8a !important;
+    border-color: #1e3a8a !important;
     color: #ffffff !important;
 }
 button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
-    background-color: #1e293b !important;
-    border-color: #1e293b !important;
+    background-color: #1e40af !important;
+    border-color: #1e40af !important;
     color: #ffffff !important;
 }
 
