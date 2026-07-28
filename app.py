@@ -287,7 +287,7 @@ const parentDoc = window.parent.document;
 parentDoc.addEventListener('click', function(e) {
     let handle = e.target.closest('#scilem-drag-handle');
     if (handle) {
-        let block = handle.closest('[data-draggable="true"]');
+        let block = handle.closest('#scilem-wrapper');
         if (block && !window._wasDragging) {
             let isMin = block.getAttribute('data-minimized') === 'true';
             block.setAttribute('data-minimized', isMin ? 'false' : 'true');
@@ -311,7 +311,7 @@ parentDoc.addEventListener('click', function(e) {
     let query = trigger.getAttribute('data-query');
     if (!query) return;
 
-    let chatBlock = parentDoc.querySelector('[data-draggable="true"]');
+    let chatBlock = parentDoc.querySelector('#scilem-wrapper');
     if (!chatBlock) return;
 
     let inputField = chatBlock.querySelector('input[type="text"]');
@@ -339,60 +339,58 @@ function initUI() {
     applyTextBasedStyling();
     const handle = parentDoc.getElementById('scilem-drag-handle');
     if (handle) {
-        let block = handle.closest('[data-testid="stVerticalBlock"]');
+        let block = handle.closest('#scilem-wrapper');
         if (block && block.getAttribute('data-draggable') !== 'true') {
-            if (!block.innerText.includes("Live System Monitor")) {
-                block.setAttribute('data-draggable', 'true');
-                block.setAttribute('data-minimized', 'true');
-                
-                let children = Array.from(block.children);
-                children.forEach(child => {
-                    if (child !== handle && !child.contains(handle)) {
-                        child.style.display = 'none';
-                    }
-                });
-                
-                let isDragging = false;
-                let startX, startY, initialX, initialY;
+            block.setAttribute('data-draggable', 'true');
+            block.setAttribute('data-minimized', 'true');
+            
+            let children = Array.from(block.children);
+            children.forEach(child => {
+                if (child !== handle && !child.contains(handle)) {
+                    child.style.display = 'none';
+                }
+            });
+            
+            let isDragging = false;
+            let startX, startY, initialX, initialY;
+            window._wasDragging = false;
+
+            handle.addEventListener('mousedown', function(e) {
+                isDragging = true;
                 window._wasDragging = false;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = block.getBoundingClientRect();
+                initialX = rect.left;
+                initialY = rect.top;
+                
+                block.style.position = 'fixed';
+                block.style.left = initialX + 'px';
+                block.style.top = initialY + 'px';
+                block.style.bottom = 'auto';
+                block.style.right = 'auto';
+                block.style.width = '380px';
+                block.style.backgroundColor = '#ffffff';
+                block.style.border = '1px solid #cbd5e1';
+                block.style.borderRadius = '12px';
+                block.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)';
+                block.style.zIndex = '999999';
+                block.style.padding = '1rem';
+                block.style.transition = 'none'; 
+            });
 
-                handle.addEventListener('mousedown', function(e) {
-                    isDragging = true;
-                    window._wasDragging = false;
-                    startX = e.clientX;
-                    startY = e.clientY;
-                    const rect = block.getBoundingClientRect();
-                    initialX = rect.left;
-                    initialY = rect.top;
-                    
-                    block.style.position = 'fixed';
-                    block.style.left = initialX + 'px';
-                    block.style.top = initialY + 'px';
-                    block.style.bottom = 'auto';
-                    block.style.right = 'auto';
-                    block.style.width = '380px';
-                    block.style.backgroundColor = '#ffffff';
-                    block.style.border = '1px solid #cbd5e1';
-                    block.style.borderRadius = '12px';
-                    block.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)';
-                    block.style.zIndex = '999999';
-                    block.style.padding = '1rem';
-                    block.style.transition = 'none'; 
-                });
+            parentDoc.addEventListener('mousemove', function(e) {
+                if (!isDragging) return;
+                let dx = e.clientX - startX;
+                let dy = e.clientY - startY;
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                    window._wasDragging = true;
+                }
+                block.style.left = (initialX + dx) + 'px';
+                block.style.top = (initialY + dy) + 'px';
+            });
 
-                parentDoc.addEventListener('mousemove', function(e) {
-                    if (!isDragging) return;
-                    let dx = e.clientX - startX;
-                    let dy = e.clientY - startY;
-                    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-                        window._wasDragging = true;
-                    }
-                    block.style.left = (initialX + dx) + 'px';
-                    block.style.top = (initialY + dy) + 'px';
-                });
-
-                parentDoc.addEventListener('mouseup', function() { isDragging = false; });
-            }
+            parentDoc.addEventListener('mouseup', function() { isDragging = false; });
         }
     }
 }
@@ -661,6 +659,8 @@ with st.sidebar.expander("Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
 
+# Isolated Scilem Container Wrapper to Prevent Overlap
+st.sidebar.markdown("<div id='scilem-wrapper'>", unsafe_allow_html=True)
 scilem_container = st.sidebar.container()
 with scilem_container:
     st.markdown("""
@@ -713,6 +713,7 @@ with scilem_container:
             st.success(msg)
             time.sleep(0.5)
             st.rerun()
+st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
 def refine_science_field(s):
     s_lower = s.lower()
