@@ -35,7 +35,12 @@ def safe_extract_zip(zip_path: str, extract_to: str):
             zip_ref.extract(member, extract_to)
 
 def restore_state_from_web3():
-    if not w3.is_connected() or not REGISTRY_CONTRACT_ADDRESS:
+    if not w3.is_connected() or not REGISTRY_CONTRACT_ADDRESS or not ETH_ADMIN_PRIVATE_KEY:
+        # Backups are always encrypted with ETH_ADMIN_PRIVATE_KEY (see
+        # backup_state_to_web3, which requires it). Without it here we'd
+        # previously fall through to a "fallback_key" that can never match a
+        # real backup, guaranteeing a decrypt failure -- so skip outright
+        # instead of doing pointless network/IO work.
         return
     try:
         abi = '[{"inputs":[],"name":"getCID","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
@@ -59,7 +64,7 @@ def restore_state_from_web3():
                 except requests.RequestException:
                     continue
             if res and res.status_code == 200:
-                fernet = Fernet(derive_encryption_key(ETH_ADMIN_PRIVATE_KEY or "fallback_key"))
+                fernet = Fernet(derive_encryption_key(ETH_ADMIN_PRIVATE_KEY))
                 decrypted_data = fernet.decrypt(res.content)
                 
                 zip_path = os.path.join(BASE_DIR, "_restore.zip")
@@ -68,6 +73,13 @@ def restore_state_from_web3():
                 safe_extract_zip(zip_path, BASE_DIR)
                 if os.path.exists(zip_path):
                     os.remove(zip_path)
+
+                # The DB file on disk may just have been overwritten by the
+                # restored snapshot -- force schema migrations to re-run on
+                # the next connection instead of trusting the in-process
+                # "already initialized" cache from before the restore.
+                from database import reset_schema_cache
+                reset_schema_cache()
     except Exception as e:
         logging.error(f"Restore warning: {e}")
 
