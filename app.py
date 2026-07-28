@@ -109,9 +109,6 @@ def get_author_piq_dict():
 def preprocess_pdf_layout(pdf_bytes, fname):
     return pdf_bytes
 
-def rbot(topic_key):
-    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
-
 if "siwe_address" in st.query_params:
     raw_address = st.query_params.get("siwe_address")
     raw_signature = st.query_params.get("siwe_signature")
@@ -177,9 +174,6 @@ hr {
     transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out !important;
     padding: 0.5rem !important;
 }
-[data-testid="stVerticalBlockBorderWrapper"]:hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04) !important;
-}
 
 button[kind="primary"], [data-testid="baseButton-primary"] {
     background-color: #0f172a !important;
@@ -197,81 +191,23 @@ button[kind="primary"]:hover, [data-testid="baseButton-primary"]:hover {
     border-color: #dc2626 !important;
     color: #ffffff !important;
 }
-.pi-stop-button:hover {
-    background-color: #b91c1c !important;
-    border-color: #b91c1c !important;
-    color: #ffffff !important;
-}
 
 .stButton>button {
     border-radius: 8px !important;
     font-weight: 600 !important;
     letter-spacing: 0.01em !important;
-    transition: all 0.2s ease !important;
-}
-.stButton>button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
 }
 
 [data-testid="stExpander"] {
     border-radius: 10px !important;
     border: 1px solid #e2e8f0 !important;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
     background-color: #ffffff !important;
-}
-
-.pi-chat-user-msg {
-    flex-direction: row-reverse !important;
-    background-color: #f1f5f9 !important;
-    border-radius: 10px 0 10px 10px !important;
-    text-align: right !important;
-    margin-left: 20px !important;
-    border: 1px solid #e2e8f0 !important;
-}
-
-.scilem-trigger {
-    font-size: 0.9em;
-    margin-left: 4px;
-    font-weight: bold;
-    color: #2563eb;
-    vertical-align: middle;
-    display: inline-block;
-    transition: transform 0.15s ease-in-out;
-}
-.scilem-trigger:hover {
-    transform: scale(1.2);
-}
-
-#scilem-drag-handle {
-    background: linear-gradient(135deg, #0f172a, #1e293b);
-    color: white;
-    padding: 12px 16px;
-    font-weight: 700;
-    font-size: 15px;
-    cursor: grab;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
-    margin: -1rem -1rem 0 -1rem;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    height: 48px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-#scilem-drag-handle:active {
-    cursor: grabbing;
 }
 
 iframe {
     border: none !important;
     border-radius: 8px !important;
     outline: none !important;
-    box-shadow: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
 }
 
 .pyvis-map-wrapper iframe {
@@ -280,122 +216,6 @@ iframe {
     display: block !important;
 }
 </style>
-
-<script>
-const parentDoc = window.parent.document;
-
-parentDoc.addEventListener('click', function(e) {
-    let handle = e.target.closest('#scilem-drag-handle');
-    if (handle) {
-        let block = handle.closest('#scilem-wrapper');
-        if (block && !window._wasDragging) {
-            let isMin = block.getAttribute('data-minimized') === 'true';
-            block.setAttribute('data-minimized', isMin ? 'false' : 'true');
-            let children = Array.from(block.children);
-            children.forEach(child => {
-                if (child !== handle && !child.contains(handle)) {
-                    child.style.display = isMin ? 'block' : 'none';
-                }
-            });
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-    }
-
-    let trigger = e.target.closest('.scilem-trigger');
-    if (!trigger) return; 
-    e.preventDefault();
-    e.stopPropagation();
-
-    let query = trigger.getAttribute('data-query');
-    if (!query) return;
-
-    let chatBlock = parentDoc.querySelector('#scilem-wrapper');
-    if (!chatBlock) return;
-
-    let inputField = chatBlock.querySelector('input[type="text"]');
-    if (inputField) {
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        nativeInputValueSetter.call(inputField, "Explain: " + query);
-        inputField.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-}, true);
-
-function applyTextBasedStyling() {
-    parentDoc.querySelectorAll('div.stButton > button').forEach(btn => {
-        if (btn.innerText && btn.innerText.trim() === 'Stop') {
-            btn.classList.add('pi-stop-button');
-        }
-    });
-    parentDoc.querySelectorAll('[data-testid="stChatMessage"]').forEach(msg => {
-        if (msg.innerText && msg.innerText.includes('👤') && !msg.classList.contains('pi-chat-user-msg')) {
-            msg.classList.add('pi-chat-user-msg');
-        }
-    });
-}
-
-function initUI() {
-    applyTextBasedStyling();
-    const handle = parentDoc.getElementById('scilem-drag-handle');
-    if (handle) {
-        let block = handle.closest('#scilem-wrapper');
-        if (block && block.getAttribute('data-draggable') !== 'true') {
-            block.setAttribute('data-draggable', 'true');
-            block.setAttribute('data-minimized', 'true');
-            
-            let children = Array.from(block.children);
-            children.forEach(child => {
-                if (child !== handle && !child.contains(handle)) {
-                    child.style.display = 'none';
-                }
-            });
-            
-            let isDragging = false;
-            let startX, startY, initialX, initialY;
-            window._wasDragging = false;
-
-            handle.addEventListener('mousedown', function(e) {
-                isDragging = true;
-                window._wasDragging = false;
-                startX = e.clientX;
-                startY = e.clientY;
-                const rect = block.getBoundingClientRect();
-                initialX = rect.left;
-                initialY = rect.top;
-                
-                block.style.position = 'fixed';
-                block.style.left = initialX + 'px';
-                block.style.top = initialY + 'px';
-                block.style.bottom = 'auto';
-                block.style.right = 'auto';
-                block.style.width = '380px';
-                block.style.backgroundColor = '#ffffff';
-                block.style.border = '1px solid #cbd5e1';
-                block.style.borderRadius = '12px';
-                block.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)';
-                block.style.zIndex = '999999';
-                block.style.padding = '1rem';
-                block.style.transition = 'none'; 
-            });
-
-            parentDoc.addEventListener('mousemove', function(e) {
-                if (!isDragging) return;
-                let dx = e.clientX - startX;
-                let dy = e.clientY - startY;
-                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-                    window._wasDragging = true;
-                }
-                block.style.left = (initialX + dx) + 'px';
-                block.style.top = (initialY + dy) + 'px';
-            });
-
-            parentDoc.addEventListener('mouseup', function() { isDragging = false; });
-        }
-    }
-}
-setInterval(initUI, 800);
-</script>
 """
 components.html(custom_ui_code, height=0, width=0)
 
@@ -469,7 +289,7 @@ if "scilem_messages" not in st.session_state:
     st.session_state.scilem_messages = [
         {
             "role": "assistant", 
-            "content": "**Welcome! I am Scilem.** Ask any research question or click indicators across criteria."
+            "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."
         }
     ]
 
@@ -490,7 +310,7 @@ if not st.session_state.is_authenticated:
     st.sidebar.markdown("### Web3 Authentication")
     
     metamask_ui_html = """
-    <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+    <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2px;">
         <button id="connect-mm-btn" type="button" style="
             width: 100%;
             background: linear-gradient(135deg, #f6851b, #e2761b);
@@ -518,7 +338,7 @@ if not st.session_state.is_authenticated:
             </svg>
             <span>Connect MetaMask</span>
         </button>
-        <div id="mm-status" style="margin-top: 8px; font-size: 12px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
+        <div id="mm-status" style="margin-top: 6px; font-size: 12px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
     </div>
 
     <script>
@@ -600,7 +420,7 @@ if not st.session_state.is_authenticated:
     </script>
     """
     with st.sidebar:
-        components.html(metamask_ui_html, height=80)
+        components.html(metamask_ui_html, height=110)
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Academic ID Alternative")
@@ -659,26 +479,16 @@ with st.sidebar.expander("Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
 
-# Isolated Scilem Container Wrapper to Prevent Overlap
-st.sidebar.markdown("<div id='scilem-wrapper'>", unsafe_allow_html=True)
-scilem_container = st.sidebar.container()
-with scilem_container:
-    st.markdown("""
-    <div id='scilem-drag-handle'>
-        <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
-            <span>Scilem Assistant</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    floating_chat_container = st.container(height=240)
+# Stable Sidebar Expander for Scilem Assistant (No risky DOM-stealing scripts)
+with st.sidebar.expander("🧠 Scilem Assistant", expanded=False):
+    floating_chat_container = st.container(height=220)
     with floating_chat_container:
         for idx, message in enumerate(st.session_state.scilem_messages):
             msg_avatar = "🧠" if message["role"] == "assistant" else "👤"
             with st.chat_message(message["role"], avatar=msg_avatar):
                 st.markdown(message["content"])
 
-    with st.form(key="scilem_floating_form", clear_on_submit=False):
+    with st.form(key="scilem_sidebar_form", clear_on_submit=False):
         f_cols = st.columns([3, 1])
         with f_cols[0]:
             floating_prompt = st.text_input("Ask Scilem...", value="", label_visibility="collapsed")
@@ -713,7 +523,6 @@ with scilem_container:
             st.success(msg)
             time.sleep(0.5)
             st.rerun()
-st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
 def refine_science_field(s):
     s_lower = s.lower()
