@@ -1,4 +1,3 @@
-
 import os
 import re
 import json
@@ -776,13 +775,7 @@ def evaluation_metrics_dialog():
             st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
             st.markdown(formula)
 
-col_t1, col_t2 = st.columns([4, 2], vertical_alignment="center")
-with col_t1:
-    st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
-with col_t2:
-    if st.button("Evaluation Metrics, SciScore & Logic Engine", use_container_width=True):
-        evaluation_metrics_dialog()
-
+st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
 st.markdown("")
 
 with st.container(border=True):
@@ -806,82 +799,7 @@ with st.container(border=True):
     research_scope = ""
     doi_input = ""
     include_doi = False
-
-    unified_query = st.text_input(
-        "Research Scope, DOI, or OpenAlex Topic",
-        placeholder="Enter research topic, DOI (e.g. 10.1038/...), or search keyword...",
-        key=f"unified_query_{st.session_state['reset_token']}",
-    )
-    
-    if unified_query.strip():
-        q_str = unified_query.strip()
-        if re.match(r"^10\.\d{4,9}/[-._;()/:A-Za-z0-9]+$", q_str) or q_str.startswith("10.") or "doi.org" in q_str:
-            doi_input = q_str
-            include_doi = True
-            research_scope = ""
-            st.caption("Detected as DOI. Will resolve via Unpaywall.")
-        else:
-            research_scope = q_str
-            if st.button("Search OpenAlex Papers for this Topic", key=f"unified_alex_btn_{st.session_state['reset_token']}"):
-                st.session_state.alex_visible_count = 10
-                with st.spinner("Querying OpenAlex..."):
-                    alex_results = search_openalex_topics(q_str, limit=50)
-                    if alex_results:
-                        st.session_state["alex_search_results"] = alex_results
-                        add_log(f"Harvested {len(alex_results)} Open Access records from OpenAlex.")
-                        st.success(f"Successfully harvested {len(alex_results)} papers from OpenAlex.")
-                    else:
-                        add_log("Failed to find relevant records via OpenAlex.")
-                        st.warning("No Open Access papers found matching criteria.")
-
     selected_alex_papers = []
-    if (
-        "alex_search_results" in st.session_state
-        and st.session_state["alex_search_results"]
-    ):
-        st.markdown("---")
-        col_res_header, col_close_btn = st.columns([5, 1])
-        with col_res_header:
-            st.markdown("#### OpenAlex Harvested Results")
-        with col_close_btn:
-            if st.button(
-                "Close", key=f"close_alex_{st.session_state['reset_token']}"
-            ):
-                del st.session_state["alex_search_results"]
-                st.rerun()
-
-        def toggle_all_alex():
-            is_all = st.session_state.get(
-                f"select_all_alex_{st.session_state['reset_token']}", False
-            )
-            for i in range(st.session_state.alex_visible_count):
-                st.session_state[f"alex_chk_{i}_{st.session_state['reset_token']}"] = (
-                    is_all
-                )
-
-        select_all_alex = st.checkbox(
-            "Select All Visible OpenAlex Results",
-            key=f"select_all_alex_{st.session_state['reset_token']}",
-            on_change=toggle_all_alex,
-        )
-
-        visible_results = st.session_state["alex_search_results"][
-            : st.session_state.alex_visible_count
-        ]
-        for idx, p in enumerate(visible_results):
-            is_selected = st.checkbox(
-                f"OpenAlex: {p['title']} — *{clean_author_name(p['authors'])}*",
-                key=f"alex_chk_{idx}_{st.session_state['reset_token']}",
-            )
-            if is_selected:
-                selected_alex_papers.append(p)
-
-        if st.session_state.alex_visible_count < len(
-            st.session_state["alex_search_results"]
-        ):
-            if st.button("Show More OpenAlex Results"):
-                st.session_state.alex_visible_count += 10
-                st.rerun()
 
     stake_amount = st.checkbox(
         "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
@@ -1484,30 +1402,29 @@ with top_analytics_col1:
             ).properties(height=350)
             st.altair_chart(base, use_container_width=True)
 
-        st.markdown(
-            f"**High-Precision Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):** "
-            f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
-            f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
-            f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
-            f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
-            f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
-            f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
-            f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
-            f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
-        )
-
-    with st.expander("What's Pidyne?", expanded=False):
-        st.markdown(r"""
-        Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
-        1. **Active Epoch & Block Height**: Tracks incremental block updates. When the threshold (`EPOCH_BLOCK_SIZE`) is reached, a new blockchain block is minted.
-        2. **Proof-of-Research (PoR) Validation (`validate_block_por`)**: Combines block index, criteria weights ($\varpi_1$ to $\varpi_8$), timestamp, previous block hash, validator node signature, model identifier, and formulas hash into an unalterable SHA-256 block hash.
-        3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in algorithmic evaluation standards.
-        """)
-
-    # Evaluation Metrics placed directly under Pidyne Forecast
-    st.markdown("### Evaluation Metrics")
-    if st.button("Open Evaluation Metrics, SciScore & Logic Engine", use_container_width=True, key="eval_metrics_under_pidyne"):
-        evaluation_metrics_dialog()
+        with st.expander("Evaluation Metrics & High-Precision Ledger Forecast", expanded=False):
+            st.markdown(
+                f"**Ledger Forecast (Raw Sum = {sum(st.session_state.predicted_next_weights):.6f}/8.0):**\n"
+                f"C1: `{st.session_state.predicted_next_weights[0]:.5f}` | "
+                f"C2: `{st.session_state.predicted_next_weights[1]:.5f}` | "
+                f"C3: `{st.session_state.predicted_next_weights[2]:.5f}` | "
+                f"C4: `{st.session_state.predicted_next_weights[3]:.5f}` | "
+                f"C5: `{st.session_state.predicted_next_weights[4]:.5f}` | "
+                f"C6: `{st.session_state.predicted_next_weights[5]:.5f}` | "
+                f"C7: `{st.session_state.predicted_next_weights[6]:.5f}` | "
+                f"C8: `{st.session_state.predicted_next_weights[7]:.5f}`"
+            )
+            st.markdown("---")
+            st.markdown(r"""
+            **What's Pidyne?**
+            Pidyne integrates the decentralized infrastructure layer of the Pi-Index Assessment Engine:
+            1. **Active Epoch & Block Height**: Tracks incremental block updates.
+            2. **Proof-of-Research (PoR) Validation**: Combines block index, criteria weights, and hashes into an unalterable SHA-256 block hash.
+            3. **LSTM Meta-Learning**: Uses PyTorch to train directly on historical block weights to predict future shifts in evaluation standards.
+            """)
+            st.markdown("---")
+            if st.button("View Evaluation Metrics, SciScore & Logic Engine", use_container_width=True, key="eval_metrics_merged"):
+                evaluation_metrics_dialog()
 
 with top_analytics_col2:
     map_title_col, map_badge_col = st.columns([3, 2], vertical_alignment="center")
@@ -1611,12 +1528,6 @@ with bottom_col1:
             cur_h = conn_hist.cursor()
             history_clauses = []
             history_params = []
-            # Only match on an identifier if it's an actual, non-default value
-            # for *this* auth method -- otherwise a Web3 user (whose
-            # academic_id stays "None") or an Academic-ID user (whose wallet
-            # stays the zero address) could match every record stored under
-            # that same shared default, leaking other users' / anonymous
-            # submissions into "your" history.
             if st.session_state.auth_method == "Web3" and w3.is_address(st.session_state.orcid_id):
                 history_clauses.append("p.eth_book = ?")
                 history_params.append(st.session_state.orcid_id)
@@ -1795,7 +1706,7 @@ with bottom_col1:
                         more_details_dialog(recent_item)
 
 with bottom_col2:
-    st.markdown("### Pi Quotient (piQ) Leaderboard")
+    st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
         rows_html = ""
@@ -1876,7 +1787,7 @@ with bottom_col2:
         st.info("No piQ tokens minted yet.")
 
     st.markdown("")
-    st.markdown("### Pi-Index Leaderboard (Top Papers)")
+    st.markdown("### pi-Index (piX) Leaderboard [Top Papers]")
     
     conn_pi = get_db_connection()
     try:
@@ -1919,7 +1830,7 @@ with bottom_col2:
                 table-layout: fixed;
             }
             .leaderboard-table th {
-                background-color: #1e293b;
+                background-color: #2c3e50;
                 color: white;
                 padding: 6px 8px;
                 text-align: left;
@@ -1988,7 +1899,6 @@ try:
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
 
-        # Side-by-side layout: Left column for Blockchain Explorer / Search, Right column for Recent Transactions Table
         exp_col_left, exp_col_right = st.columns(2, vertical_alignment="top")
 
         with exp_col_left:
