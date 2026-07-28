@@ -112,6 +112,13 @@ def preprocess_pdf_layout(pdf_bytes, fname):
 def rbot(topic_key):
     return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
 
+# Initialize Dual-Identity Session States
+if "web3_wallet" not in st.session_state:
+    st.session_state.web3_wallet = None
+if "orcid_profile" not in st.session_state:
+    st.session_state.orcid_profile = None
+
+# Handle Web3 SIWE Query Params
 if "siwe_address" in st.query_params:
     raw_address = st.query_params.get("siwe_address")
     raw_signature = st.query_params.get("siwe_signature")
@@ -128,30 +135,21 @@ if "siwe_address" in st.query_params:
                 recovered_address = w3.eth.account.recover_message(signable_msg, signature=raw_signature)
                 if recovered_address.lower() == clean_wallet.lower():
                     authenticated = True
-                    st.session_state.orcid_name = "ScholarPi-Node-Mainnet (Verified SIWE)"
                     add_log(f"MetaMask Identity Cryptographically Authenticated via SIWE: {clean_wallet}")
             except Exception as e:
                 add_log(f"SIWE signature verification fallback: {str(e)}")
         
-        if not authenticated:
-            st.session_state.orcid_name = "ScholarPi-Node-Mainnet (Connected)"
-            add_log(f"MetaMask Connected: {clean_wallet}")
-            
-        st.session_state.orcid_id = clean_wallet
-        st.session_state.is_authenticated = True
-        st.session_state.auth_method = "Web3"
-        st.toast(f"MetaMask Connected: {clean_wallet[:6]}...{clean_wallet[-4:]}", icon="🦊")
+        st.session_state.web3_wallet = clean_wallet
+        st.toast(f"MetaMask Linked: {clean_wallet[:6]}...{clean_wallet[-4:]}", icon="🦊")
 
     st.query_params.clear()
     st.rerun()
 
+# Handle ORCID OAuth Callback Query Params
 if "orcid_id" in st.query_params or "code" in st.query_params:
     raw_orcid = st.query_params.get("orcid_id") or "0000-0002-1825-0097"
-    st.session_state.academic_id = raw_orcid.strip()
-    st.session_state.orcid_name = "Verified ORCID Researcher"
-    st.session_state.is_authenticated = True
-    st.session_state.auth_method = "Academic ID"
-    add_log(f"Identity Authenticated via Standard ORCID Protocol: {raw_orcid}")
+    st.session_state.orcid_profile = raw_orcid.strip()
+    add_log(f"ORCID Profile Linked: {raw_orcid}")
     st.query_params.clear()
     st.rerun()
 
@@ -232,7 +230,7 @@ iframe {
 """
 components.html(custom_ui_code, height=0, width=0)
 
-st.sidebar.title("System Access")
+st.sidebar.title("System Access & Sync")
 
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
@@ -306,22 +304,19 @@ if "scilem_messages" not in st.session_state:
         }
     ]
 
-if "is_authenticated" not in st.session_state:
-    st.session_state.is_authenticated = False
-    st.session_state.auth_method = "Anonymous"
-    st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
-    st.session_state.academic_id = "None"
-    st.session_state.orcid_name = "Anonymous Researcher"
-
 def validate_orcid_did(identifier: str) -> bool:
     clean_id = identifier.strip()
     is_orcid = re.match(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$", clean_id)
     is_did = re.match(r"^did:[a-z0-9]+:[a-zA-Z0-9.\-_:]+$", clean_id)
     return bool(is_orcid or is_did)
 
-if not st.session_state.is_authenticated:
-    st.sidebar.markdown("### Web3 Authentication")
-    
+# Sidebar Identity Sync Dashboard
+st.sidebar.markdown("### Unified Identity & Sync")
+
+has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
+has_orcid = bool(st.session_state.orcid_profile)
+
+if not has_web3:
     metamask_ui_html = """
     <div id="mm-root" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 2px;">
         <button id="connect-mm-btn" type="button" style="
@@ -329,29 +324,21 @@ if not st.session_state.is_authenticated:
             background: linear-gradient(135deg, #f6851b, #e2761b);
             color: white;
             border: none;
-            padding: 12px 16px;
-            border-radius: 10px;
+            padding: 10px 14px;
+            border-radius: 8px;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 13px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
             transition: all 0.2s ease;
         ">
-            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M29.28 2.00003L18.44 10.02L20.4 4.88003L29.28 2.00003Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
-                <path d="M2.72 2.00003L13.46 10.12L11.6 4.88003L2.72 2.00003Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
-                <path d="M25.02 23.36L21.94 28.24L28.32 25.1L29.86 19.98L25.02 23.36Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
-                <path d="M2.14 19.98L3.68 25.1L10.06 28.24L6.98 23.36L2.14 19.98Z" fill="#E17726" stroke="#E17726" stroke-width="0.25"/>
-                <path d="M10.06 28.24L14.7 21.08L10.74 15.34L3.68 25.1L10.06 28.24Z" fill="#E27625" stroke="#E27625" stroke-width="0.25"/>
-                <path d="M21.94 28.24L28.32 25.1L21.26 15.34L17.3 21.08L21.94 28.24Z" fill="#E27625" stroke="#E27625" stroke-width="0.25"/>
-            </svg>
-            <span>Connect MetaMask</span>
+            <span>🦊 Connect MetaMask Wallet</span>
         </button>
-        <div id="mm-status" style="margin-top: 8px; font-size: 12px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
+        <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
     </div>
 
     <script>
@@ -372,26 +359,19 @@ if not st.session_state.is_authenticated:
     document.getElementById('connect-mm-btn').addEventListener('click', async () => {
         const statusDiv = document.getElementById('mm-status');
         statusDiv.style.color = "#2563eb";
-        statusDiv.innerText = "Connecting to MetaMask...";
+        statusDiv.innerText = "Connecting...";
 
         const provider = getEthereumProvider();
-
         if (!provider) {
-            statusDiv.style.color = "#dc2626";
-            statusDiv.innerText = "MetaMask not detected! Please install or unlock MetaMask.";
+            statusDiv.innerText = "MetaMask not detected!";
             return;
         }
 
         try {
             const accounts = await provider.request({ method: 'eth_requestAccounts' });
-            if (!accounts || accounts.length === 0) {
-                statusDiv.style.color = "#dc2626";
-                statusDiv.innerText = "No accounts selected in wallet.";
-                return;
-            }
-
+            if (!accounts || accounts.length === 0) return;
             const account = accounts[0];
-            statusDiv.innerText = "Verifying SIWE signature...";
+            statusDiv.innerText = "Signing SIWE...";
 
             const domain = "ScholarPi";
             const nonce = Math.floor(Math.random() * 100000000);
@@ -404,12 +384,7 @@ if not st.session_state.is_authenticated:
                     method: 'personal_sign',
                     params: [hexMessage, account]
                 });
-            } catch (signErr) {
-                console.warn("SIWE signing skipped or rejected by user:", signErr);
-            }
-
-            statusDiv.style.color = "#10b981";
-            statusDiv.innerText = "Authentication ready! Opening new tab...";
+            } catch (e) {}
 
             const targetUrl = new URL(window.top.location.href);
             targetUrl.searchParams.set("siwe_address", account);
@@ -417,25 +392,18 @@ if not st.session_state.is_authenticated:
                 targetUrl.searchParams.set("siwe_signature", signature);
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
-
             window.open(targetUrl.href, '_blank');
-
-            statusDiv.innerHTML = `<a href="${targetUrl.href}" target="_blank" style="display:block; margin-top:8px; background:#0f172a; color:white; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">Open Authenticated App in New Tab</a>`;
-
         } catch (err) {
-            console.error("MetaMask Connection Error:", err);
-            statusDiv.style.color = "#dc2626";
-            statusDiv.innerText = err.message || "Connection rejected by user.";
+            statusDiv.innerText = err.message || "Rejected.";
         }
     });
     </script>
     """
-    with st.sidebar:
-        components.html(metamask_ui_html, height=140)
+    components.html(metamask_ui_html, height=100)
+else:
+    st.sidebar.success(f"🦊 Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### Academic ID Alternative (ORCID)")
-    
+if not has_orcid:
     orcid_client_id = "APP-4C9H89YFZQ7JGC6Z"
     current_app_url = "https://scholarpi.streamlit.app"
     orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={orcid_client_id}&response_type=code&scope=/authenticate&redirect_uri={current_app_url}"
@@ -455,63 +423,58 @@ if not st.session_state.is_authenticated:
             text-decoration: none;
             display: block;
             box-shadow: 0 2px 6px rgba(166, 206, 57, 0.3);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         ">
-            🪪 Sign in with ORCID (OAuth)
+            🪪 Link ORCID Account (OAuth)
         </a>
         """,
         unsafe_allow_html=True
     )
-
+    
     manual_id = st.sidebar.text_input("Or Enter ORCID iD Manually", placeholder="0000-0000-0000-0000", label_visibility="collapsed")
-    if st.sidebar.button("Connect Academic ID", use_container_width=True):
+    if st.sidebar.button("Link Academic ID", use_container_width=True):
         if validate_orcid_did(manual_id):
-            st.session_state.academic_id = manual_id.strip()
-            st.session_state.orcid_name = "Verified Academic Researcher"
-            st.session_state.is_authenticated = True
-            st.session_state.auth_method = "Academic ID"
-            add_log(f"Identity Authenticated via Academic ID: {manual_id.strip()}")
+            st.session_state.orcid_profile = manual_id.strip()
+            add_log(f"Linked Academic ID Manually: {manual_id.strip()}")
             st.rerun()
         else:
             st.sidebar.error("Invalid ORCID or DID format.")
-
-    st.sidebar.info("Notice: Connect your Web3 Wallet or ORCID profile to stake piQ tokens and receive earned rewards directly.")
 else:
-    st.sidebar.success("Securely Connected")
-    
+    st.sidebar.success(f"🪪 ORCID Linked: `{st.session_state.orcid_profile}`")
+
+if has_web3 or has_orcid:
     conn_hist = get_db_connection()
     total_user_piq = 0.0
     try:
         cur_h = conn_hist.cursor()
-        if st.session_state.auth_method == "Web3":
-            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE eth_book = ?", (st.session_state.orcid_id,))
-        else:
-            cur_h.execute("SELECT piq_minted FROM papers_assessment WHERE user_id = ?", (st.session_state.academic_id,))
-        piq_rows = cur_h.fetchall()
-        total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
+        clauses, params = [], []
+        if has_web3:
+            clauses.append("eth_book = ?")
+            params.append(st.session_state.web3_wallet)
+        if has_orcid:
+            clauses.append("user_id = ?")
+            params.append(st.session_state.orcid_profile)
+        
+        if clauses:
+            cur_h.execute(f"SELECT piq_minted FROM papers_assessment WHERE {' OR '.join(clauses)}", tuple(params))
+            piq_rows = cur_h.fetchall()
+            total_user_piq = sum(safe_float(r[0], 0.0) for r in piq_rows if r[0])
     finally:
         conn_hist.close()
-        
-    auth_disp = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
-    
+
     st.sidebar.markdown(
-        f"**Researcher:** {st.session_state.orcid_name}\n\n"
-        f"**Connected ID:** `{auth_disp[:12]}...`\n\n"
+        f"**Synced Status:** Active\n\n"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
 
-    if st.sidebar.button("Disconnect Session", use_container_width=True):
-        add_log("Session Disconnected.")
-        st.session_state.is_authenticated = False
-        st.session_state.auth_method = "Anonymous"
-        st.session_state.orcid_name = ""
-        st.session_state.orcid_id = "0x0000000000000000000000000000000000000000"
-        st.session_state.academic_id = "None"
+    if st.sidebar.button("Unlink / Reset Session", use_container_width=True):
+        add_log("Synced session unlinked.")
+        st.session_state.web3_wallet = None
+        st.session_state.orcid_profile = None
         st.rerun()
 
-current_user = st.session_state.orcid_id if st.session_state.auth_method == "Web3" else st.session_state.academic_id
-current_email = "None"
-valid_book_address = current_user if (st.session_state.auth_method == "Web3" and w3.is_address(current_user)) else "0x0000000000000000000000000000000000000000"
+current_user = st.session_state.orcid_profile if has_orcid else (st.session_state.web3_wallet if has_web3 else "Anonymous")
+valid_book_address = st.session_state.web3_wallet if has_web3 else "0x0000000000000000000000000000000000000000"
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("Live System Monitor", expanded=True):
@@ -541,13 +504,7 @@ with st.sidebar.expander("🧠 Scilem Assistant", expanded=False):
                 })
                 st.rerun()
 
-    if (
-        st.session_state.is_authenticated 
-        and st.session_state.auth_method == "Web3" 
-        and w3.is_address(current_user) 
-        and w3.is_address(OWNER_ID) 
-        and current_user.lower() == OWNER_ID.lower()
-    ):
+    if has_web3 and w3.is_address(st.session_state.web3_wallet) and w3.is_address(OWNER_ID) and st.session_state.web3_wallet.lower() == OWNER_ID.lower():
         if st.button("Reset Scilem (Owner)", use_container_width=True):
             msg = reset_scilem()
             st.session_state.scilem_messages = [
@@ -931,11 +888,6 @@ with st.container(border=True):
             st.caption("No results yet — search a hot topic or custom query above.")
 
     free_evals_used = st.session_state.get("free_evals_used", 0)
-    is_web3_authenticated = (
-        st.session_state.is_authenticated 
-        and st.session_state.auth_method == "Web3" 
-        and w3.is_address(st.session_state.orcid_id)
-    )
 
     if free_evals_used == 0:
         st.info(
@@ -944,7 +896,7 @@ with st.container(border=True):
         )
         stake_amount = True
     else:
-        if not is_web3_authenticated:
+        if not has_web3:
             st.warning(
                 "🔒 **Free Trial Completed:** Please connect your **Web3 Ethereum Wallet** in the sidebar to stake **0.1 piQ** and execute further paper assessments."
             )
@@ -1011,7 +963,7 @@ with st.container(border=True):
                             zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                             consensus_raw, evidence_report_text, scilem_rating
                         ) = process_single_pdf(
-                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, p_doi,
+                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=p_doi,
                         )
 
                         eval_record = {
@@ -1069,7 +1021,7 @@ with st.container(border=True):
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                         consensus_raw, evidence_report_text, scilem_rating
                     ) = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, doi_snap.strip(),
+                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=doi_snap.strip(),
                     )
 
                     eval_record = {
@@ -1114,7 +1066,7 @@ with st.container(border=True):
                         zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
                         consensus_raw, evidence_report_text, scilem_rating
                     ) = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email, "None",
+                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val="None",
                     )
 
                     eval_record = {
@@ -1147,7 +1099,7 @@ with st.container(border=True):
 
     else:
         if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
-            if free_evals_used >= 1 and not is_web3_authenticated:
+            if free_evals_used >= 1 and not has_web3:
                 st.error("Free trial limit reached. Please connect your Web3 Ethereum Wallet in the sidebar to stake 0.1 piQ and run assessments.")
             elif free_evals_used >= 1 and not stake_amount:
                 st.error("You must agree to stake 0.1 piQ to execute further paper assessments.")
@@ -1665,18 +1617,18 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-if st.session_state.is_authenticated:
+if has_web3 or has_orcid:
     conn_hist = get_db_connection()
     try:
         cur_h = conn_hist.cursor()
         history_clauses = []
         history_params = []
-        if st.session_state.auth_method == "Web3" and w3.is_address(st.session_state.orcid_id):
+        if has_web3:
             history_clauses.append("p.eth_book = ?")
-            history_params.append(st.session_state.orcid_id)
-        if st.session_state.auth_method == "Academic ID" and st.session_state.academic_id not in ("None", ""):
+            history_params.append(st.session_state.web3_wallet)
+        if has_orcid:
             history_clauses.append("p.user_id = ?")
-            history_params.append(st.session_state.academic_id)
+            history_params.append(st.session_state.orcid_profile)
 
         if history_clauses:
             cur_h.execute(
@@ -1762,7 +1714,7 @@ if st.session_state.is_authenticated:
                     }
                     more_details_dialog(hist_item)
     else:
-        st.info("No assessment history or rewards found linked to this authenticated ID.")
+        st.info("No assessment history or rewards found linked to these connected IDs.")
     st.markdown("---")
 
 side_col1, side_col2 = st.columns(2, gap="large")
