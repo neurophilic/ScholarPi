@@ -1507,111 +1507,111 @@ with top_analytics_col2:
 
 st.markdown("---")
 
-bottom_col1, bottom_col2 = st.columns(2, vertical_alignment="top")
+# User History or Auth Prompt
+if st.session_state.is_authenticated:
+    conn_hist = get_db_connection()
+    try:
+        cur_h = conn_hist.cursor()
+        history_clauses = []
+        history_params = []
+        if st.session_state.auth_method == "Web3" and w3.is_address(st.session_state.orcid_id):
+            history_clauses.append("p.eth_book = ?")
+            history_params.append(st.session_state.orcid_id)
+        if st.session_state.auth_method == "Academic ID" and st.session_state.academic_id not in ("None", ""):
+            history_clauses.append("p.user_id = ?")
+            history_params.append(st.session_state.academic_id)
 
-with bottom_col1:
-    if st.session_state.is_authenticated:
-        conn_hist = get_db_connection()
-        try:
-            cur_h = conn_hist.cursor()
-            history_clauses = []
-            history_params = []
-            if st.session_state.auth_method == "Web3" and w3.is_address(st.session_state.orcid_id):
-                history_clauses.append("p.eth_book = ?")
-                history_params.append(st.session_state.orcid_id)
-            if st.session_state.auth_method == "Academic ID" and st.session_state.academic_id not in ("None", ""):
-                history_clauses.append("p.user_id = ?")
-                history_params.append(st.session_state.academic_id)
-
-            if history_clauses:
-                cur_h.execute(
-                    f"""SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                              p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
-                              b.block_height, b.block_hash, p.mdar_adherence_score, 
-                              p.rrid_valid_count, p.reproducibility_score,
-                              p.consensus_data, p.evidence_report, p.scilem_score,
-                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8
-                       FROM papers_assessment p
-                       LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                       WHERE {' OR '.join(history_clauses)}
-                       ORDER BY p.timestamp DESC""",
-                    tuple(history_params)
-                )
-            else:
-                cur_h.execute("SELECT NULL WHERE 0")
-            user_history_rows = cur_h.fetchall()
-        finally:
-            conn_hist.close()
-
-        st.markdown("### Your Assessment History & Rewards")
-
-        if user_history_rows:
-            for idx, uh in enumerate(user_history_rows):
-                (
-                    u_title, u_author, u_filename, u_score, u_logic,
-                    u_piq, u_tx, u_zk, u_hash, u_time,
-                    u_block_height, u_block_hash, u_mdar, u_rrid, u_repro,
-                    u_consensus, u_report, u_scilem,
-                    u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8
-                ) = uh
-
-                u_author_clean = clean_author_name(u_author)
-                u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
-                u_tx_url = safe_get_sepolia_url(u_tx)
-                
-                tx_disp_val = u_tx if u_tx and str(u_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
-
-                with st.expander(
-                    f"[{idx+1}] {u_title[:50]}... — *{u_author_clean}* (Score: **{u_score:.2f}** | piQ: `{u_piq}`)",
-                    expanded=False,
-                ):
-                    st.write(f"**File Name:** {u_filename if u_filename else 'N/A'}")
-                    st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
-                    st.write(f"**Unique Book Address:** `{u_book}`")
-                    st.write(f"**piQ Minted:** `{u_piq}`")
-                    st.markdown(f"**zk-SNARK Proof:** `{u_zk}`", unsafe_allow_html=True)
-                    
-                    if u_tx_url:
-                        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({u_tx_url})")
-                    else:
-                        st.write(f"**Tx Hash:** `{tx_disp_val}`")
-
-                    st.markdown(f"**Executable Reproducibility Score:** `{u_repro * 100:.1f}%`", unsafe_allow_html=True)
-                    st.markdown(f"**SciScore MDAR Adherence:** `{u_mdar * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
-
-                    if st.button("View Full Multi-LLM & Scilem Dossier", key=f"hist_det_{idx}_{u_hash}"):
-                        hist_item = {
-                            "title": u_title,
-                            "author_name": u_author,
-                            "score": u_score,
-                            "logic_integrity": u_logic if u_logic is not None else 75.0,
-                            "scores_dict": {
-                                "C1_Semantic_Originality": u_c1, "C2_Methodological_Rigor_SciScore": u_c2,
-                                "C3_Interdisciplinary_Entropy": u_c3, "C4_Societal_Impact": u_c4,
-                                "C5_Open_Science_Repro": u_c5, "C6_Literature_Integration": u_c6,
-                                "C7_Empirical_Density": u_c7, "C8_Future_Actionability_FAIR": u_c8
-                            },
-                            "used_weights": [1.0]*8,
-                            "eval_hash": u_hash,
-                            "piq": u_piq,
-                            "tx_hash": u_tx,
-                            "zk_proof": u_zk,
-                            "h_idx": u_mdar,
-                            "i10_idx": u_rrid,
-                            "repro_score": u_repro,
-                            "filename": u_filename or "N/A",
-                            "warnings": [],
-                            "consensus_raw": json.loads(u_consensus) if u_consensus else {},
-                            "evidence_report_text": u_report or "",
-                            "scilem_rating": u_scilem if u_scilem is not None else 50.0
-                        }
-                        more_details_dialog(hist_item)
+        if history_clauses:
+            cur_h.execute(
+                f"""SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                          p.piq_minted, p.tx_hash, p.zk_proof, p.eval_hash, p.timestamp,
+                          b.block_height, b.block_hash, p.mdar_adherence_score, 
+                          p.rrid_valid_count, p.reproducibility_score,
+                          p.consensus_data, p.evidence_report, p.scilem_score,
+                          p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8
+                   FROM papers_assessment p
+                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                   WHERE {' OR '.join(history_clauses)}
+                   ORDER BY p.timestamp DESC""",
+                tuple(history_params)
+            )
         else:
-            st.info("No assessment history or rewards found linked to this authenticated ID.")
-    else:
-        st.info("Connect your Web3 Wallet or Academic ID to view your personal assessment history.")
+            cur_h.execute("SELECT NULL WHERE 0")
+        user_history_rows = cur_h.fetchall()
+    finally:
+        conn_hist.close()
 
-with bottom_col2:
+    st.markdown("### Your Assessment History & Rewards")
+
+    if user_history_rows:
+        for idx, uh in enumerate(user_history_rows):
+            (
+                u_title, u_author, u_filename, u_score, u_logic,
+                u_piq, u_tx, u_zk, u_hash, u_time,
+                u_block_height, u_block_hash, u_mdar, u_rrid, u_repro,
+                u_consensus, u_report, u_scilem,
+                u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8
+            ) = uh
+
+            u_author_clean = clean_author_name(u_author)
+            u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
+            u_tx_url = safe_get_sepolia_url(u_tx)
+            
+            tx_disp_val = u_tx if u_tx and str(u_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
+
+            with st.expander(
+                f"[{idx+1}] {u_title[:50]}... — *{u_author_clean}* (Score: **{u_score:.2f}** | piQ: `{u_piq}`)",
+                expanded=False,
+            ):
+                st.write(f"**File Name:** {u_filename if u_filename else 'N/A'}")
+                st.write(f"**Evaluation Hash (Paper Address):** `{u_hash}`")
+                st.write(f"**Unique Book Address:** `{u_book}`")
+                st.write(f"**piQ Minted:** `{u_piq}`")
+                st.markdown(f"**zk-SNARK Proof:** `{u_zk}`", unsafe_allow_html=True)
+                
+                if u_tx_url:
+                    st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({u_tx_url})")
+                else:
+                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
+
+                st.markdown(f"**Executable Reproducibility Score:** `{u_repro * 100:.1f}%`", unsafe_allow_html=True)
+                st.markdown(f"**SciScore MDAR Adherence:** `{u_mdar * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
+
+                if st.button("View Full Multi-LLM & Scilem Dossier", key=f"hist_det_{idx}_{u_hash}"):
+                    hist_item = {
+                        "title": u_title,
+                        "author_name": u_author,
+                        "score": u_score,
+                        "logic_integrity": u_logic if u_logic is not None else 75.0,
+                        "scores_dict": {
+                            "C1_Semantic_Originality": u_c1, "C2_Methodological_Rigor_SciScore": u_c2,
+                            "C3_Interdisciplinary_Entropy": u_c3, "C4_Societal_Impact": u_c4,
+                            "C5_Open_Science_Repro": u_c5, "C6_Literature_Integration": u_c6,
+                            "C7_Empirical_Density": u_c7, "C8_Future_Actionability_FAIR": u_c8
+                        },
+                        "used_weights": [1.0]*8,
+                        "eval_hash": u_hash,
+                        "piq": u_piq,
+                        "tx_hash": u_tx,
+                        "zk_proof": u_zk,
+                        "h_idx": u_mdar,
+                        "i10_idx": u_rrid,
+                        "repro_score": u_repro,
+                        "filename": u_filename or "N/A",
+                        "warnings": [],
+                        "consensus_raw": json.loads(u_consensus) if u_consensus else {},
+                        "evidence_report_text": u_report or "",
+                        "scilem_rating": u_scilem if u_scilem is not None else 50.0
+                    }
+                    more_details_dialog(hist_item)
+    else:
+        st.info("No assessment history or rewards found linked to this authenticated ID.")
+    st.markdown("---")
+
+# Side-by-side Section: Leaderboards (Left) vs. Latest Assessed Papers & Ledger Proofs (Right)
+side_col1, side_col2 = st.columns(2, vertical_alignment="top")
+
+with side_col1:
     st.markdown("### pi-Quotient (piQ) Leaderboard [Top Authors]")
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)
@@ -1634,7 +1634,7 @@ with bottom_col2:
         <style>
             body { margin: 0; padding: 0; font-family: sans-serif; }
             .table-container {
-                max-height: 200px;
+                max-height: 190px;
                 overflow-y: auto;
                 overflow-x: hidden;
                 border: 1px solid #e2e8f0;
@@ -1688,7 +1688,7 @@ with bottom_col2:
         </html>
         """
         leaderboard_full_html = leaderboard_template.replace("__ROWS_PLACEHOLDER__", rows_html)
-        components.html(leaderboard_full_html, height=210, scrolling=False)
+        components.html(leaderboard_full_html, height=200, scrolling=False)
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1722,7 +1722,7 @@ with bottom_col2:
         <style>
             body { margin: 0; padding: 0; font-family: sans-serif; }
             .table-container {
-                max-height: 200px;
+                max-height: 190px;
                 overflow-y: auto;
                 overflow-x: hidden;
                 border: 1px solid #e2e8f0;
@@ -1776,9 +1776,182 @@ with bottom_col2:
         </html>
         """
         pi_leaderboard_html = pi_leaderboard_template.replace("__ROWS_PLACEHOLDER__", pi_rows_html)
-        components.html(pi_leaderboard_html, height=210, scrolling=False)
+        components.html(pi_leaderboard_html, height=200, scrolling=False)
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
+
+with side_col2:
+    st.markdown("### Latest Assessed Papers & Ledger Proofs")
+    conn_recent = get_db_connection()
+    try:
+        cur_recent = conn_recent.cursor()
+        cur_recent.execute(
+            """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                      p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                      p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                      p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                      b.block_height, b.block_hash,
+                      p.consensus_data, p.evidence_report, p.scilem_score
+               FROM papers_assessment p
+               LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+               ORDER BY p.timestamp DESC LIMIT 5"""
+        )
+        merged_papers = cur_recent.fetchall()
+    finally:
+        conn_recent.close()
+
+    if merged_papers:
+        rows_html = ""
+        for mp in merged_papers:
+            (
+                m_title, m_author, m_filename, m_score, m_logic,
+                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                m_block_height, m_block_hash,
+                m_consensus, m_report, m_scilem
+            ) = mp
+            
+            bh = m_block_height if m_block_height is not None else "Pending"
+            eh_short = m_hash[:8] + "..." if m_hash else "N/A"
+            piq_val = f"{m_piq:.2f}"
+            clean_auth = clean_author_name(m_author)
+            
+            tx_url = safe_get_sepolia_url(m_tx)
+            tx_short = m_tx[:8] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
+            tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
+            title_short = (m_title[:32] + "...") if len(m_title) > 32 else m_title
+            
+            rows_html += f"""
+                <tr>
+                    <td style="text-align: center; width: 10%;"><b>{bh}</b></td>
+                    <td style="width: 42%; font-weight: bold;" title="{m_title} by {clean_auth}">{title_short}<br><span style="font-size:10px; color:#64748b; font-weight:normal;">{clean_auth[:25]}</span></td>
+                    <td style="text-align: center; width: 13%;"><b>{m_score:.2f}</b></td>
+                    <td style="text-align: right; width: 12%;"><b>{piq_val}</b></td>
+                    <td style="width: 23%; font-size:11px;"><code>{eh_short}</code><br>{tx_link}</td>
+                </tr>
+            """
+            
+        merged_table_template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+            body { margin: 0; padding: 0; font-family: sans-serif; }
+            .table-container {
+                max-height: 200px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                background-color: #ffffff;
+            }
+            .leaderboard-table {
+                width: 100%;
+                font-size: 12px;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .leaderboard-table th {
+                background-color: #2c3e50;
+                color: white;
+                padding: 6px 8px;
+                text-align: left;
+                font-weight: 600;
+                position: sticky;
+                top: 0;
+                z-index: 1;
+            }
+            .leaderboard-table td {
+                padding: 6px 8px;
+                border-bottom: 1px solid #ecf0f1;
+                color: #2c3e50;
+                vertical-align: middle;
+            }
+            .leaderboard-table tr:hover {
+                background-color: #f8fafc;
+            }
+        </style>
+        </head>
+        <body>
+        <div class="table-container">
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: center; width: 10%;">Block</th>
+                        <th style="width: 42%;">Manuscript & Author</th>
+                        <th style="text-align: center; width: 13%;">Score</th>
+                        <th style="text-align: right; width: 12%;">piQ</th>
+                        <th style="width: 23%;">Eval / Tx Hash</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    __ROWS_PLACEHOLDER__
+                </tbody>
+            </table>
+        </div>
+        </body>
+        </html>
+        """
+        components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=205, scrolling=False)
+        
+        with st.expander("🔍 View Complete Proofs, zk-SNARKs & Multi-LLM Dossiers", expanded=False):
+            for idx, mp in enumerate(merged_papers):
+                (
+                    m_title, m_author, m_filename, m_score, m_logic,
+                    m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                    m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                    m_block_height, m_block_hash,
+                    m_consensus, m_report, m_scilem
+                ) = mp
+                
+                m_author_clean = clean_author_name(m_author)
+                m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
+                m_tx_url = safe_get_sepolia_url(m_tx)
+                tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
+
+                st.markdown(f"**[{idx+1}] {m_title}** — *{m_author_clean}*")
+                st.write(f"• **Score:** `{m_score:.2f}` | **piQ Minted:** `{m_piq}` | **Block Height:** `{m_block_height if m_block_height else 'Pending'}`")
+                st.write(f"• **File Name:** `{m_filename or 'N/A'}`")
+                st.write(f"• **Eval Hash:** `{m_hash}`")
+                st.write(f"• **Block Hash:** `{m_block_hash or 'Pending'}`")
+                st.write(f"• **Book Address:** `{m_book}`")
+                st.write(f"• **zk-SNARK:** `{m_zk}`")
+                if m_tx_url:
+                    st.markdown(f"• **Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
+                else:
+                    st.write(f"• **Tx Hash:** `{tx_disp_val}`")
+                st.markdown(f"• **Reproducibility:** `{m_repro * 100:.1f}%` | **SciScore MDAR:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`")
+
+                if st.button("View Full Multi-LLM & Scilem Dossier", key=f"merged_side_det_{idx}_{m_hash}"):
+                    recent_item = {
+                        "title": m_title,
+                        "author_name": m_author,
+                        "score": m_score,
+                        "logic_integrity": m_logic if m_logic is not None else 75.0,
+                        "scores_dict": {
+                            "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                            "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                            "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                            "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                        },
+                        "used_weights": [1.0]*8,
+                        "eval_hash": m_hash,
+                        "piq": m_piq,
+                        "tx_hash": m_tx,
+                        "zk_proof": m_zk,
+                        "h_idx": m_mdar,
+                        "i10_idx": m_rrid,
+                        "repro_score": m_repro,
+                        "filename": m_filename or "N/A",
+                        "warnings": [],
+                        "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                        "evidence_report_text": m_report or "",
+                        "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                    }
+                    more_details_dialog(recent_item)
+                st.markdown("---")
+    else:
+        st.info("No paper assessments recorded on ledger yet.")
 
 st.markdown("---")
 st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
@@ -1805,294 +1978,119 @@ try:
             epoch_data[10], epoch_data[11], epoch_data[12], epoch_data[13],
         )
 
-        exp_col_left, exp_col_right = st.columns(2, vertical_alignment="top")
+        st.markdown("#### Ledger Verification & Record Search")
+        explore_col1, explore_col2 = st.columns([3, 1])
+        with explore_col1:
+            search_query = st.text_input(
+                "Search Ledger",
+                placeholder="Enter Evaluation Hash, Block Hash, Paper Name, Author Name, or Book Address...",
+                label_visibility="collapsed",
+                key="pidyne_ledger_search_query"
+            )
+        with explore_col2:
+            st.write("")
+            st.write("")
+            search_btn = st.button("Verify Record", key="pidyne_verify_record_btn")
 
-        with exp_col_left:
-            st.markdown("#### Ledger Verification & Record Search")
-            explore_col1, explore_col2 = st.columns([3, 1])
-            with explore_col1:
-                search_query = st.text_input(
-                    "Search Ledger",
-                    placeholder="Enter Evaluation Hash, Block Hash, Paper Name, Author Name, or Book Address...",
-                    label_visibility="collapsed",
-                    key="pidyne_ledger_search_query"
+        if search_btn and search_query:
+            try:
+                q_term = f"%{search_query.strip()}%"
+                cursor.execute(
+                    """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
+                              p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
+                              p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
+                              p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
+                              b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book,
+                              p.consensus_data, p.evidence_report, p.scilem_score
+                       FROM papers_assessment p
+                       LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
+                       WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
+                       LIMIT 5""",
+                    (q_term, q_term, q_term, q_term, q_term)
                 )
-            with explore_col2:
-                st.write("")
-                st.write("")
-                search_btn = st.button("Verify Record", key="pidyne_verify_record_btn")
+                matched_records = cursor.fetchall()
+                if matched_records:
+                    st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
+                    for m_idx, mr in enumerate(matched_records):
+                        (
+                            m_title, m_author, m_filename, m_score, m_logic,
+                            m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
+                            m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
+                            m_block_height, m_block_hash, m_por, m_form, m_book_addr,
+                            m_consensus, m_report, m_scilem
+                        ) = mr
 
-            if search_btn and search_query:
-                try:
-                    q_term = f"%{search_query.strip()}%"
-                    cursor.execute(
-                        """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                                  p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                                  p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                                  p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                                  b.block_height, b.block_hash, b.por_proof, b.formulas_hash, p.eth_book,
-                                  p.consensus_data, p.evidence_report, p.scilem_score
-                           FROM papers_assessment p
-                           LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                           WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
-                           LIMIT 5""",
-                        (q_term, q_term, q_term, q_term, q_term)
-                    )
-                    matched_records = cursor.fetchall()
-                    if matched_records:
-                        st.success(f"Found {len(matched_records)} matching record(s) on ledger.")
-                        for m_idx, mr in enumerate(matched_records):
-                            (
-                                m_title, m_author, m_filename, m_score, m_logic,
-                                m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-                                m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                                m_block_height, m_block_hash, m_por, m_form, m_book_addr,
-                                m_consensus, m_report, m_scilem
-                            ) = mr
-
-                            m_author_clean = clean_author_name(m_author)
-                            m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
-                            m_tx_url = safe_get_sepolia_url(m_tx)
-                            
-                            tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
-
-                            with st.expander(
-                                f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
-                                f" **{m_score:.2f}** | {m_time[:16]})",
-                                expanded=True,
-                            ):
-                                st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
-                                st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
-                                st.write(f"**Unique Book Address:** `{m_book}`")
-                                st.write(f"**piQ Minted:** `{m_piq}`")
-                                st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
-                                
-                                if m_tx_url:
-                                    st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
-                                else:
-                                    st.write(f"**Tx Hash:** `{tx_disp_val}`")
-
-                                st.markdown(f"**Executable Reproducibility Score:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
-                                st.markdown(f"**SciScore MDAR Adherence:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
-
-                                if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
-                                    search_item = {
-                                        "title": m_title,
-                                        "author_name": m_author,
-                                        "score": m_score,
-                                        "logic_integrity": m_logic if m_logic is not None else 75.0,
-                                        "scores_dict": {
-                                            "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                                            "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                                            "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                                            "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
-                                        },
-                                        "used_weights": [1.0]*8,
-                                        "eval_hash": m_hash,
-                                        "piq": m_piq,
-                                        "tx_hash": m_tx,
-                                        "zk_proof": m_zk,
-                                        "h_idx": m_mdar,
-                                        "i10_idx": m_rrid,
-                                        "repro_score": m_repro,
-                                        "filename": m_filename or "N/A",
-                                        "warnings": [],
-                                        "consensus_raw": json.loads(m_consensus) if m_consensus else {},
-                                        "evidence_report_text": m_report or "",
-                                        "scilem_rating": m_scilem if m_scilem is not None else 50.0
-                                    }
-                                    more_details_dialog(search_item)
-                    else:
-                        st.error(
-                            "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
-                        )
-                except Exception as e:
-                    st.error(f"Error reading database: {str(e)}")
-
-            st.info(
-                f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
-                f" sealed to block `{block_hash}`."
-            )
-            st.caption(
-                f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
-                " grading mathematical constants cannot be tampered with)."
-            )
-
-            piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-            reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-            st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
-
-        with exp_col_right:
-            st.markdown("#### Latest Assessed Papers & Ledger Proofs")
-            cursor.execute(
-                """SELECT p.title, p.author_name, p.filename, p.final_score, p.logic_score, 
-                          p.c1, p.c2, p.c3, p.c4, p.c5, p.c6, p.c7, p.c8, 
-                          p.piq_minted, p.tx_hash, p.zk_proof, p.mdar_adherence_score, 
-                          p.rrid_valid_count, p.reproducibility_score, p.eval_hash, p.timestamp,
-                          b.block_height, b.block_hash,
-                          p.consensus_data, p.evidence_report, p.scilem_score
-                   FROM papers_assessment p
-                   LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-                   ORDER BY p.timestamp DESC LIMIT 5"""
-            )
-            merged_papers = cursor.fetchall()
-            
-            if merged_papers:
-                # 1. Build the uniform HTML overview table
-                rows_html = ""
-                for mp in merged_papers:
-                    (
-                        m_title, m_author, m_filename, m_score, m_logic,
-                        m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-                        m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                        m_block_height, m_block_hash,
-                        m_consensus, m_report, m_scilem
-                    ) = mp
-                    
-                    bh = m_block_height if m_block_height is not None else "Pending"
-                    eh_short = m_hash[:8] + "..."
-                    piq_val = f"{m_piq:.2f}"
-                    
-                    tx_url = safe_get_sepolia_url(m_tx)
-                    tx_short = m_tx[:10] + "..." if m_tx and m_tx != "Simulated_Ledger_Record" else "Simulated"
-                    tx_link = f"<a href='{tx_url}' target='_blank' style='color: #3498db; text-decoration: none;'>{tx_short}</a>" if tx_url else tx_short
-                    title_short = (m_title[:25] + "...") if len(m_title) > 25 else m_title
-                    
-                    rows_html += f"""
-                        <tr>
-                            <td style="text-align: center; width: 12%;">{bh}</td>
-                            <td style="width: 38%; font-weight: bold;" title="{m_title}">{title_short}</td>
-                            <td style="width: 20%;"><code style="font-size: 10px;">{eh_short}</code></td>
-                            <td style="text-align: right; width: 12%;">{piq_val}</td>
-                            <td style="width: 18%;">{tx_link}</td>
-                        </tr>
-                    """
-                    
-                merged_table_template = """
-                <!DOCTYPE html>
-                <html>
-                <head>
-                <style>
-                    body { margin: 0; padding: 0; font-family: sans-serif; }
-                    .table-container {
-                        max-height: 250px;
-                        overflow-y: auto;
-                        overflow-x: hidden;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 8px;
-                        background-color: #ffffff;
-                        margin-bottom: 10px;
-                    }
-                    .leaderboard-table {
-                        width: 100%;
-                        font-size: 12px;
-                        border-collapse: collapse;
-                        table-layout: fixed;
-                    }
-                    .leaderboard-table th {
-                        background-color: #2c3e50;
-                        color: white;
-                        padding: 6px 8px;
-                        text-align: left;
-                        font-weight: 600;
-                        position: sticky;
-                        top: 0;
-                        z-index: 1;
-                    }
-                    .leaderboard-table td {
-                        padding: 6px 8px;
-                        border-bottom: 1px solid #ecf0f1;
-                        color: #2c3e50;
-                        vertical-align: middle;
-                    }
-                    .leaderboard-table tr:hover {
-                        background-color: #f8fafc;
-                    }
-                </style>
-                </head>
-                <body>
-                <div class="table-container">
-                    <table class="leaderboard-table">
-                        <thead>
-                            <tr>
-                                <th style="text-align: center; width: 12%;">Block</th>
-                                <th style="width: 38%;">Manuscript Title</th>
-                                <th style="width: 20%;">Eval Hash</th>
-                                <th style="text-align: right; width: 12%;">piQ</th>
-                                <th style="width: 18%;">Tx Hash</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            __ROWS_PLACEHOLDER__
-                        </tbody>
-                    </table>
-                </div>
-                </body>
-                </html>
-                """
-                components.html(merged_table_template.replace("__ROWS_PLACEHOLDER__", rows_html), height=210, scrolling=False)
-                
-                st.markdown("**Detailed Dossiers & Proofs:**")
-                
-                # 2. Render Expanders to avoid losing detail
-                for idx, mp in enumerate(merged_papers):
-                    (
-                        m_title, m_author, m_filename, m_score, m_logic,
-                        m_c1, m_c2, m_c3, m_c4, m_c5, m_c6, m_c7, m_c8,
-                        m_piq, m_tx, m_zk, m_mdar, m_rrid, m_repro, m_hash, m_time,
-                        m_block_height, m_block_hash,
-                        m_consensus, m_report, m_scilem
-                    ) = mp
-                    
-                    m_author_clean = clean_author_name(m_author)
-                    m_book = "0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40]
-                    m_tx_url = safe_get_sepolia_url(m_tx)
-                    tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
-
-                    with st.expander(f"[{idx+1}] {m_title[:45]}... (Score: **{m_score:.2f}** | Block: {m_block_height if m_block_height else 'Pending'})", expanded=False):
-                        st.write(f"**Author:** {m_author_clean}")
-                        st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
-                        st.write(f"**Evaluation Hash:** `{m_hash}`")
-                        st.write(f"**Block Hash:** `{m_block_hash if m_block_hash else 'Pending'}`")
-                        st.write(f"**Unique Book Address:** `{m_book}`")
-                        st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
+                        m_author_clean = clean_author_name(m_author)
+                        m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
+                        m_tx_url = safe_get_sepolia_url(m_tx)
                         
-                        if m_tx_url:
-                            st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
-                        else:
-                            st.write(f"**Tx Hash:** `{tx_disp_val}`")
+                        tx_disp_val = m_tx if m_tx and str(m_tx).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
 
-                        st.markdown(f"**Executable Reproducibility:** `{m_repro * 100:.1f}%` | **SciScore MDAR:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
+                        with st.expander(
+                            f"[{m_idx+1}] {m_title[:65]}... — *{m_author_clean}* (Score:"
+                            f" **{m_score:.2f}** | {m_time[:16]})",
+                            expanded=True,
+                        ):
+                            st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
+                            st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
+                            st.write(f"**Unique Book Address:** `{m_book}`")
+                            st.write(f"**piQ Minted:** `{m_piq}`")
+                            st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
+                            
+                            if m_tx_url:
+                                st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({m_tx_url})")
+                            else:
+                                st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
-                        if st.button("View Full Multi-LLM & Scilem Dossier", key=f"merged_det_{idx}_{m_hash}"):
-                            recent_item = {
-                                "title": m_title,
-                                "author_name": m_author,
-                                "score": m_score,
-                                "logic_integrity": m_logic if m_logic is not None else 75.0,
-                                "scores_dict": {
-                                    "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
-                                    "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
-                                    "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
-                                    "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
-                                },
-                                "used_weights": [1.0]*8,
-                                "eval_hash": m_hash,
-                                "piq": m_piq,
-                                "tx_hash": m_tx,
-                                "zk_proof": m_zk,
-                                "h_idx": m_mdar,
-                                "i10_idx": m_rrid,
-                                "repro_score": m_repro,
-                                "filename": m_filename or "N/A",
-                                "warnings": [],
-                                "consensus_raw": json.loads(m_consensus) if m_consensus else {},
-                                "evidence_report_text": m_report or "",
-                                "scilem_rating": m_scilem if m_scilem is not None else 50.0
-                            }
-                            more_details_dialog(recent_item)
-            else:
-                st.info("No ledger transaction proofs recorded yet.")
+                            st.markdown(f"**Executable Reproducibility Score:** `{m_repro * 100:.1f}%`", unsafe_allow_html=True)
+                            st.markdown(f"**SciScore MDAR Adherence:** `{m_mdar * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
+
+                            if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
+                                search_item = {
+                                    "title": m_title,
+                                    "author_name": m_author,
+                                    "score": m_score,
+                                    "logic_integrity": m_logic if m_logic is not None else 75.0,
+                                    "scores_dict": {
+                                        "C1_Semantic_Originality": m_c1, "C2_Methodological_Rigor_SciScore": m_c2,
+                                        "C3_Interdisciplinary_Entropy": m_c3, "C4_Societal_Impact": m_c4,
+                                        "C5_Open_Science_Repro": m_c5, "C6_Literature_Integration": m_c6,
+                                        "C7_Empirical_Density": m_c7, "C8_Future_Actionability_FAIR": m_c8
+                                    },
+                                    "used_weights": [1.0]*8,
+                                    "eval_hash": m_hash,
+                                    "piq": m_piq,
+                                    "tx_hash": m_tx,
+                                    "zk_proof": m_zk,
+                                    "h_idx": m_mdar,
+                                    "i10_idx": m_rrid,
+                                    "repro_score": m_repro,
+                                    "filename": m_filename or "N/A",
+                                    "warnings": [],
+                                    "consensus_raw": json.loads(m_consensus) if m_consensus else {},
+                                    "evidence_report_text": m_report or "",
+                                    "scilem_rating": m_scilem if m_scilem is not None else 50.0
+                                }
+                                more_details_dialog(search_item)
+                else:
+                    st.error(
+                        "No records matching that evaluation hash, block hash, paper name, author name, or book address were found on the ledger."
+                    )
+            except Exception as e:
+                st.error(f"Error reading database: {str(e)}")
+
+        st.info(
+            f"**Latest Proof-of-Research:** `{por_proof}` successfully verified and"
+            f" sealed to block `{block_hash}`."
+        )
+        st.caption(
+            f"**Unalterable Criteria State Hash:** `{formulas_hash}` (Guarantees"
+            " grading mathematical constants cannot be tampered with)."
+        )
+
+        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
+        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
+        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
 
 finally:
     conn.close()
