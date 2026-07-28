@@ -389,7 +389,7 @@ if not has_web3:
             box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
             transition: all 0.2s ease;
         ">
-            <span>Connect MetaMask Wallet</span>
+            <span>connect metamask</span>
         </button>
         <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
     </div>
@@ -513,9 +513,10 @@ if has_web3 or has_orcid:
     finally:
         conn_hist.close()
 
+    status_str = "Active Sync" if (has_web3 and has_orcid) else ("MetaMask Connected Only" if has_web3 else "ORCID Connected Only")
     st.sidebar.markdown(
         f"**Researcher:** {st.session_state.researcher_name}\n\n"
-        f"**Synced Status:** Active Sync\n\n"
+        f"**Synced Status:** {status_str}\n\n"
         f"**TOTAL piQ AWARDED:** `{total_user_piq:.2f} piQ`"
     )
 
