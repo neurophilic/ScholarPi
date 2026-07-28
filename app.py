@@ -1016,30 +1016,34 @@ with st.container(border=True):
 
                     if pdf_bytes:
                         clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
-                        (
-                            title, author_name, score, logic_integrity, drift, rec,
-                            fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                            consensus_raw, evidence_report_text, scilem_rating
-                        ) = process_single_pdf(
+                        res = process_single_pdf(
                             clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=p_doi,
                         )
+                        if res and len(res) >= 22:
+                            (
+                                title, author_name, score, logic_integrity, drift, rec,
+                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                                consensus_raw, evidence_report_text, scilem_rating
+                            ) = res
 
-                        eval_record = {
-                            "title": title, "author_name": clean_author_name(author_name),
-                            "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                            "rec": rec, "fields": fields, "subfields": subfields,
-                            "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                            "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                            "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                            "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                            "scilem_rating": scilem_rating
-                        }
-                        st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                        st.session_state["free_evals_used"] += 1
-                        add_log(f"Successfully processed and recorded evaluation for {fname}")
+                            eval_record = {
+                                "title": title, "author_name": clean_author_name(author_name),
+                                "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                                "rec": rec, "fields": fields, "subfields": subfields,
+                                "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                                "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                                "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                                "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                                "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                                "scilem_rating": scilem_rating
+                            }
+                            st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                            st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                            st.session_state["free_evals_used"] += 1
+                            add_log(f"Successfully processed and recorded evaluation for {fname}")
+                        else:
+                            add_log(f"Error: process_single_pdf returned incomplete data for {fname}")
                     else:
                         clean_doi = p_doi.replace("https://doi.org/", "").strip() if p_doi else "None"
                         doi_url = f"https://doi.org/{clean_doi}" if clean_doi and clean_doi != "None" else (p.get("pdf_url") or "N/A")
@@ -1074,30 +1078,34 @@ with st.container(border=True):
                 if pdf_bytes:
                     status_text.text("Assessing document from resolved source...")
                     clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
-                    (
-                        title, author_name, score, logic_integrity, drift, rec,
-                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                        consensus_raw, evidence_report_text, scilem_rating
-                    ) = process_single_pdf(
+                    res = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=doi_snap.strip(),
                     )
+                    if res and len(res) >= 22:
+                        (
+                            title, author_name, score, logic_integrity, drift, rec,
+                            fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                            consensus_raw, evidence_report_text, scilem_rating
+                        ) = res
 
-                    eval_record = {
-                        "title": title, "author_name": clean_author_name(author_name),
-                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                        "rec": rec, "fields": fields, "subfields": subfields,
-                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                        "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                        "scilem_rating": scilem_rating
-                    }
-                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                    st.session_state["free_evals_used"] += 1
-                    add_log("Successfully evaluated and logged DOI source.")
+                        eval_record = {
+                            "title": title, "author_name": clean_author_name(author_name),
+                            "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                            "rec": rec, "fields": fields, "subfields": subfields,
+                            "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                            "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                            "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                            "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                            "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                            "scilem_rating": scilem_rating
+                        }
+                        st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                        st.session_state["free_evals_used"] += 1
+                        add_log("Successfully evaluated and logged DOI source.")
+                    else:
+                        add_log("Error: process_single_pdf returned incomplete data for DOI source.")
                 else:
                     clean_doi = doi_snap.replace("https://doi.org/", "").strip()
                     doi_url = f"https://doi.org/{clean_doi}"
@@ -1119,31 +1127,35 @@ with st.container(border=True):
                         
                     clean_bytes = preprocess_pdf_layout(raw_bytes, fname)
                     
-                    (
-                        title, author_name, score, logic_integrity, drift, rec,
-                        fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                        zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                        consensus_raw, evidence_report_text, scilem_rating
-                    ) = process_single_pdf(
+                    res = process_single_pdf(
                         clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val="None",
                     )
+                    if res and len(res) >= 22:
+                        (
+                            title, author_name, score, logic_integrity, drift, rec,
+                            fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                            consensus_raw, evidence_report_text, scilem_rating
+                        ) = res
 
-                    eval_record = {
-                        "title": title, "author_name": clean_author_name(author_name),
-                        "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                        "rec": rec, "fields": fields, "subfields": subfields,
-                        "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                        "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                        "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                        "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                        "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                        "scilem_rating": scilem_rating
-                    }
-                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                    st.session_state["free_evals_used"] += 1
-                    progress_bar.progress((i + 1) / total_files)
-                    add_log(f"Stored local assessment result to cache.")
+                        eval_record = {
+                            "title": title, "author_name": clean_author_name(author_name),
+                            "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                            "rec": rec, "fields": fields, "subfields": subfields,
+                            "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                            "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                            "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                            "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                            "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                            "scilem_rating": scilem_rating
+                        }
+                        st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                        st.session_state["free_evals_used"] += 1
+                        progress_bar.progress((i + 1) / total_files)
+                        add_log(f"Stored local assessment result to cache.")
+                    else:
+                        add_log(f"Error: process_single_pdf returned incomplete data for {fname}")
 
             if st.session_state["cancel_requested"]:
                 st.warning("Pipeline operation was stopped.")
@@ -1955,7 +1967,6 @@ if merged_papers:
                     }
                     more_details_dialog(item_dossier)
             
-            # Distinct row separator for enhanced readability
             st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
 else:
     st.info("No paper assessments recorded on ledger yet.")
