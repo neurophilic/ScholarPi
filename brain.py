@@ -17,6 +17,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset
 from groq import Groq
 from openai import OpenAI
+from openrouter import OpenRouter
 
 from config import (
     GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY,
@@ -107,8 +108,6 @@ def extract_with_scilem(paper_text):
         feat_val = scilem_model(paper_tensor).item()
 
     # Scilem's own numeric rating, distinct from the Pidyne consensus rating.
-    # (Previously process_single_pdf mistakenly reused pidyne_ai_rating for the
-    # "scilem_score" DB column, making it a duplicate of logic_score.)
     scilem_numeric_score = 50.0 + (feat_val * 40.0)
 
     # Dynamic heuristics parsing for front-matter title/authors
@@ -132,9 +131,6 @@ def extract_with_scilem(paper_text):
         "opinion": opinion,
         "references": [],
         "api_failed": False,
-        # NOTE: this is a heuristic fallback extraction, not a verified title/author.
-        # It should only be used when every real LLM extraction fails (see the
-        # selection loop in evaluate_pdf_text_ensemble).
         "is_heuristic_fallback": True,
         "scilem_score": scilem_numeric_score,
     }
@@ -245,16 +241,37 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
             "api_failed": True
         }
     try:
-        client = OpenAI(api_key=api_key.strip(), base_url=base_url)
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.1
-        )
-        data = json.loads(response.choices[0].message.content)
-        data["api_failed"] = False
-        return provider_name, data
+        # OpenRouter SDK Integration
+        if "openrouter" in base_url.lower():
+            with OpenRouter(api_key=api_key.strip()) as client:
+                response = client.chat.send(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                
+                content = response.choices[0].message.content
+                if content.startswith("```json"):
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif content.startswith("```"):
+                    content = content.split("```")[1].split("```")[0].strip()
+                    
+                data = json.loads(content)
+                data["api_failed"] = False
+                return provider_name, data
+        
+        # Standard OpenAI-compatible SDK fallback
+        else:
+            client = OpenAI(api_key=api_key.strip(), base_url=base_url)
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.1
+            )
+            data = json.loads(response.choices[0].message.content)
+            data["api_failed"] = False
+            return provider_name, data
+            
     except Exception as e:
         err_str = str(e)
         if "402" in err_str or "insufficient credits" in err_str.lower():
@@ -443,8 +460,6 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     best_title = "Parsed via Local Heuristics"
     best_author = "Independent Research Scholar"
     title_found, author_found = False, False
-    # Real LLMs are preferred over Scilem's heuristic first-line/regex fallback.
-    # Scilem is tried last, and only used if no real LLM produced a usable value.
     for l_key in ["llama", "mistral", "qwen", "gemini", "scilem"]:
         entry = consensus_results.get(l_key, {})
         t_val = entry.get("title", "")
@@ -525,11 +540,6 @@ def process_single_pdf(
     try:
         cursor = conn.cursor()
 
-        # Idempotency guard: don't re-run the (paid) LLM ensemble or re-mint an
-        # already-assessed manuscript. The on-chain contract rejects a second
-        # verifyProofAndMint() for the same eval_hash ("Fraud Detected"), and
-        # without this guard that revert string would silently overwrite the
-        # earlier successful tx_hash/zk_proof/piq_minted via INSERT OR REPLACE.
         cursor.execute(
             """SELECT title, author_name, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8,
                       piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count,
