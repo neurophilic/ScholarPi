@@ -1939,10 +1939,10 @@ with side_col3:
 
 st.markdown("---")
 
-# Merged Title & Popover Button for Blockchain Explorer & Ledger Record Verification
+# Merged Title & Popover Button for Blockchain Explorer
 exp_head_col1, exp_head_col2 = st.columns([12, 1], vertical_alignment="center")
 with exp_head_col1:
-    st.markdown("### Proof-of-Research Blockchain Explorer & Ledger Record Verification", unsafe_allow_html=True)
+    st.markdown("### Proof-of-Research Blockchain Explorer", unsafe_allow_html=True)
 with exp_head_col2:
     with st.popover("ℹ️", help="View Extra Ledger Info"):
         conn_pop = get_db_connection()
@@ -1979,7 +1979,7 @@ try:
         epoch_data = None
 
     if epoch_data:
-        explore_col1, explore_col2 = st.columns([3, 1])
+        explore_col1, explore_col2 = st.columns([3, 1], vertical_alignment="bottom")
         with explore_col1:
             search_query = st.text_input(
                 "Search Ledger",
@@ -1988,9 +1988,7 @@ try:
                 key="pidyne_ledger_search_query"
             )
         with explore_col2:
-            st.write("")
-            st.write("")
-            search_btn = st.button("Verify Record", key="pidyne_verify_record_btn")
+            search_btn = st.button("Verify Ledger Record", key="pidyne_verify_record_btn", use_container_width=True)
 
         if search_btn and search_query:
             try:
