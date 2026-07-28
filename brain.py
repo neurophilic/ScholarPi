@@ -489,16 +489,31 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
 def get_formulas_hash():
     return hashlib.sha256(b"Pi-Index-Formula-State-v2.0").hexdigest()
 
-def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0):
+def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0, vapri=0.0):
+    # C1: Incorporate vapri (matching the UI formula: semantic distance + vapri)
+    c1 = (ai_rating * 0.9) + (vapri * 10)
+    
+    # C4: Societal utility approximated via topological spread
+    c4 = ai_rating * 0.95 + (topological_entropy * 5)
+    
+    # C6: Literature Integration weighted by SciScore adherence
+    c6 = ai_rating * 0.88 + (sciscore_adherence * 12)
+    
+    # C7: Empirical Density using tanh (matching UI formula math)
+    c7 = math.tanh((ai_rating / 100.0) * 1.5) * 100.0 
+    
+    # C8: FAIR Actionability integrating reproducibility limits
+    c8 = (ai_rating * 0.8) + (reproducibility_score * 20.0)
+
     return {
-        "C1_Semantic_Originality": min(100.0, max(0.0, ai_rating)),
+        "C1_Semantic_Originality": min(100.0, max(0.0, c1)),
         "C2_Methodological_Rigor_SciScore": min(100.0, max(0.0, sciscore_adherence * 100.0)),
         "C3_Interdisciplinary_Entropy": min(100.0, max(0.0, (ai_rating * 0.85) + (topological_entropy * 15.0))),
-        "C4_Societal_Impact": min(100.0, max(0.0, ai_rating)),
+        "C4_Societal_Impact": min(100.0, max(0.0, c4)),
         "C5_Open_Science_Repro": min(100.0, max(0.0, reproducibility_score * 100.0)),
-        "C6_Literature_Integration": min(100.0, max(0.0, ai_rating)),
-        "C7_Empirical_Density": min(100.0, max(0.0, ai_rating)),
-        "C8_Future_Actionability_FAIR": min(100.0, max(0.0, ai_rating))
+        "C6_Literature_Integration": min(100.0, max(0.0, c6)),
+        "C7_Empirical_Density": min(100.0, max(0.0, c7)),
+        "C8_Future_Actionability_FAIR": min(100.0, max(0.0, c8))
     }
 
 def generate_rebuttal_strategy(scores_dict):
@@ -592,14 +607,40 @@ def process_single_pdf(
         consensus_raw = raw_data.get("_consensus_raw", {})
         evidence_report = raw_data.get("_evidence_report", "")
 
+        # 1. Calculate vapri (simulating semantic/report state)
+        vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0 if evidence_report else 0.5
+
         external_active = any(
             not v.get("api_failed", False) 
             for k, v in consensus_raw.items() 
             if k != "scilem"
         )
         
-        piq_minted = 7.5
-        zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, pidyne_ai_rating, "None")
+        title = raw_data.get("Extracted_Title", filename.replace(".pdf", "").replace("_", " ").title())
+        extracted_author = raw_data.get("Extracted_Author", pdf_meta_author if pdf_meta_author else "Independent Research Scholar")
+        
+        # 2. Update criteria computation call to include vapri
+        scores_dict = compute_formulaic_criteria(
+            reproducibility_score=0.85,
+            sciscore_adherence=mdar_score,
+            topological_entropy=topological_entropy,
+            ai_rating=pidyne_ai_rating,
+            vapri=vapri
+        )
+        
+        final_score = sum(scores_dict.values()) / 8.0
+        
+        # 3. Dynamic piQ Minting based on final score (e.g., Max 10 piQ per paper)
+        piq_minted = round((final_score / 100.0) * 10.0, 2)
+        
+        # 4. Adversarial Logic Engine calculation
+        premise_gap = 1.0 - (pidyne_ai_rating / 100.0)
+        adversarial_penalty = math.exp(-(2 * max(0, topological_entropy - 0.5) + 1.5 * premise_gap))
+        logic_integrity = (pidyne_ai_rating * adversarial_penalty) + (vapri * 5.0)
+        logic_integrity = min(100.0, max(0.0, logic_integrity))
+
+        # Use the computed logic_integrity inside the SNARK generation
+        zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, logic_integrity, "None")
         
         if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000":
             tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
@@ -608,19 +649,6 @@ def process_single_pdf(
 
         if not external_active:
             warnings_list.append("⚠️ **NOTICE:** Assessment completed using local Scilem neural model & heuristics due to external API limits.")
-
-        title = raw_data.get("Extracted_Title", filename.replace(".pdf", "").replace("_", " ").title())
-        extracted_author = raw_data.get("Extracted_Author", pdf_meta_author if pdf_meta_author else "Independent Research Scholar")
-        
-        scores_dict = compute_formulaic_criteria(
-            reproducibility_score=0.85,
-            sciscore_adherence=mdar_score,
-            topological_entropy=topological_entropy,
-            ai_rating=pidyne_ai_rating
-        )
-        
-        final_score = sum(scores_dict.values()) / 8.0
-        logic_integrity = pidyne_ai_rating
 
         # Save assessment record
         cursor.execute(
