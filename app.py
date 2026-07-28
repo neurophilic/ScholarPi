@@ -285,6 +285,9 @@ st.sidebar.title("System Access")
 if "initialized" not in st.session_state:
     st.session_state["initialized"] = True
 
+if "free_evals_used" not in st.session_state:
+    st.session_state["free_evals_used"] = 0
+
 client_ip = "127.0.0.1"
 try:
     headers = st.context.headers
@@ -395,7 +398,7 @@ if not st.session_state.is_authenticated:
             st.sidebar.error("Invalid ORCID or DID format.")
 
     st.sidebar.markdown("---")
-    st.sidebar.info("Notice: Please connect your Web3 Ethereum Wallet or Academic ID above to unlock and use your personal Assessment History features.")
+    st.sidebar.info("Notice: Connect your Web3 Wallet to stake piQ tokens and receive earned rewards directly.")
 else:
     st.sidebar.success("Securely Connected")
     
@@ -787,11 +790,32 @@ with st.container(border=True):
     include_doi = False
     selected_alex_papers = []
 
-    stake_amount = st.checkbox(
-        "Stake 0.01 piQ to Process (Returned on Valid Assessment)",
-        value=True,
-        key=f"stake_chk_{st.session_state['reset_token']}",
+    # --- Free Assessment vs Obligatory Web3 Stake Logic ---
+    free_evals_used = st.session_state.get("free_evals_used", 0)
+    is_web3_authenticated = (
+        st.session_state.is_authenticated 
+        and st.session_state.auth_method == "Web3" 
+        and w3.is_address(st.session_state.orcid_id)
     )
+
+    if free_evals_used == 0:
+        st.info(
+            "🎁 **First Assessment Free:** Your first assessment runs with zero stake required! "
+            "**Recommendation:** Connect your Web3 Wallet in the sidebar first so earned **piQ** tokens can be credited directly to your address."
+        )
+        stake_amount = True
+    else:
+        if not is_web3_authenticated:
+            st.warning(
+                "🔒 **Free Trial Completed:** Please connect your **Web3 Ethereum Wallet** in the sidebar to stake **0.1 piQ** and execute further paper assessments."
+            )
+            stake_amount = False
+        else:
+            stake_amount = st.checkbox(
+                "Stake 0.1 piQ to Process (Returned on Valid Assessment)",
+                value=True,
+                key=f"stake_chk_{st.session_state['reset_token']}",
+            )
 
     if st.session_state["is_running"]:
         col_run, col_stop = st.columns([4, 1])
@@ -864,6 +888,7 @@ with st.container(border=True):
                         }
                         st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                         st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                        st.session_state["free_evals_used"] += 1
                         add_log(f"Successfully processed and recorded evaluation for {fname}")
                     else:
                         clean_doi = p_doi.replace("https://doi.org/", "").strip() if p_doi else "None"
@@ -921,6 +946,7 @@ with st.container(border=True):
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                    st.session_state["free_evals_used"] += 1
                     add_log("Successfully evaluated and logged DOI source.")
                 else:
                     clean_doi = doi_snap.replace("https://doi.org/", "").strip()
@@ -965,6 +991,7 @@ with st.container(border=True):
                     }
                     st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                     st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                    st.session_state["free_evals_used"] += 1
                     progress_bar.progress((i + 1) / total_files)
                     add_log(f"Stored local assessment result to cache.")
 
@@ -981,8 +1008,10 @@ with st.container(border=True):
 
     else:
         if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
-            if not stake_amount:
-                st.error("You must agree to the piQ micro-stake to execute the assessment pipeline.")
+            if free_evals_used >= 1 and not is_web3_authenticated:
+                st.error("Free trial limit reached. Please connect your Web3 Ethereum Wallet in the sidebar to stake 0.1 piQ and run assessments.")
+            elif free_evals_used >= 1 and not stake_amount:
+                st.error("You must agree to stake 0.1 piQ to execute further paper assessments.")
             elif (
                 not selected_uploaded_files
                 and not (include_doi and doi_input.strip())
@@ -1288,7 +1317,7 @@ with top_analytics_col1:
             Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
             1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria.
             2. **Multi-Model Consensus & LLM-as-a-Judge:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini), acting as the final judge of the paper to read reports and deliver a definitive verdict using an LLM model.
-            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block. (e.g., `PoR_b144463fa623_Score:75.55` successfully verified and sealed to block `c3992f28e95f2eaa5ac125e4c41ceb097d7f6ef564b0609f125083467822c11d`).
+            3. **Proof-of-Research (PoR) Validation:** Anchors assessment outcomes on the Sepolia testnet, sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) into a cryptographically verified SHA-256 block (e.g., `PoR_b144463fa623_Score:75.55` successfully verified and sealed to block `c3992f28e95f2eaa5ac125e4c41ceb097d7f6ef564b0609f125083467822c11d`).
             """)
     with col_fc2:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown", label_visibility="collapsed")
