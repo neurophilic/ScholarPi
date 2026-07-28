@@ -109,6 +109,9 @@ def get_author_piq_dict():
 def preprocess_pdf_layout(pdf_bytes, fname):
     return pdf_bytes
 
+def rbot(topic_key):
+    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
+
 if "siwe_address" in st.query_params:
     raw_address = st.query_params.get("siwe_address")
     raw_signature = st.query_params.get("siwe_signature")
@@ -397,19 +400,15 @@ if not st.session_state.is_authenticated:
 
             statusDiv.innerText = "Authenticating with engine...";
 
-            const targetWindow = window.parent || window;
-            const targetUrl = new URL(targetWindow.location.href);
+            const targetUrl = new URL(window.top.location.href);
             targetUrl.searchParams.set("siwe_address", account);
             if (signature) {
                 targetUrl.searchParams.set("siwe_signature", signature);
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }
 
-            try {
-                targetWindow.location.href = targetUrl.href;
-            } catch (navErr) {
-                window.location.href = targetUrl.href;
-            }
+            // Force top-level browser window navigation to prevent iframe nesting bugs
+            window.top.location.href = targetUrl.href;
 
         } catch (err) {
             console.error("MetaMask Connection Error:", err);
@@ -479,7 +478,6 @@ with st.sidebar.expander("Live System Monitor", expanded=True):
     log_text = "\n".join(st.session_state.app_logs)
     st.code(log_text if log_text else "No active logs...", language="bash")
 
-# Stable Sidebar Expander for Scilem Assistant (No risky DOM-stealing scripts)
 with st.sidebar.expander("🧠 Scilem Assistant", expanded=False):
     floating_chat_container = st.container(height=220)
     with floating_chat_container:
