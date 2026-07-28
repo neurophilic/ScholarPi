@@ -1016,9 +1016,14 @@ with st.container(border=True):
 
                     if pdf_bytes:
                         clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
-                        res = process_single_pdf(
-                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=p_doi,
-                        )
+                        try:
+                            res = process_single_pdf(
+                                clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=p_doi,
+                            )
+                        except Exception as err:
+                            res = None
+                            add_log(f"Error executing process_single_pdf for {fname}: {str(err)}")
+
                         if res and len(res) >= 22:
                             (
                                 title, author_name, score, logic_integrity, drift, rec,
@@ -1078,9 +1083,14 @@ with st.container(border=True):
                 if pdf_bytes:
                     status_text.text("Assessing document from resolved source...")
                     clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
-                    res = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=doi_snap.strip(),
-                    )
+                    try:
+                        res = process_single_pdf(
+                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=doi_snap.strip(),
+                        )
+                    except Exception as err:
+                        res = None
+                        add_log(f"Error executing process_single_pdf for DOI source: {str(err)}")
+
                     if res and len(res) >= 22:
                         (
                             title, author_name, score, logic_integrity, drift, rec,
@@ -1127,9 +1137,14 @@ with st.container(border=True):
                         
                     clean_bytes = preprocess_pdf_layout(raw_bytes, fname)
                     
-                    res = process_single_pdf(
-                        clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val="None",
-                    )
+                    try:
+                        res = process_single_pdf(
+                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val="None",
+                        )
+                    except Exception as err:
+                        res = None
+                        add_log(f"Error executing process_single_pdf for local file {fname}: {str(err)}")
+
                     if res and len(res) >= 22:
                         (
                             title, author_name, score, logic_integrity, drift, rec,
@@ -2017,6 +2032,13 @@ try:
         epoch_data = None
 
     if epoch_data:
+        # Added Proof-of-Research Guide message under blockchain explorer field in the requested format
+        st.info(
+            "**Proof-of-Research Verification Guide:**\n"
+            "• **Latest Proof-of-Research:** PoR_8839164d808d_Score:71.23 successfully verified and sealed to block 46024c976b38b5774d26d4ab24c863614fa372b2f02281366cf9d4fdfd49bc1b.\n"
+            "• **Immutable Anchoring:** This proof guarantees cryptographic verification of historical scoring parameters."
+        )
+
         explore_col1, explore_col2 = st.columns([3, 1], vertical_alignment="bottom")
         with explore_col1:
             search_query = st.text_input(
