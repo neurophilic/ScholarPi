@@ -284,7 +284,7 @@ st.sidebar.title("System Access & Sync")
 has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
 has_orcid = bool(st.session_state.orcid_profile)
 
-# Conditionally show the synchronization guide only if NOT both are connected
+# Make sure Dual-Auth Synchronization Guide disappears if both auth methods are connected
 if not (has_web3 and has_orcid):
     st.sidebar.info(
         "**Dual-Auth Synchronization Guide:**\n"
@@ -367,7 +367,7 @@ if "scilem_messages" not in st.session_state:
 # Sidebar Dual Identity Sync Dashboard
 st.sidebar.markdown("### Unified Identity & Sync")
 
-# 1. MetaMask Wallet Button on Top
+# 1. MetaMask Wallet Button on Top of ORCID Button with exact user label "Conncet MetaMask"
 if not has_web3:
     current_orcid_js = st.session_state.orcid_profile if st.session_state.orcid_profile else ""
     current_orcid_name_js = st.session_state.researcher_name if st.session_state.researcher_name != "Anonymous Researcher" else ""
@@ -391,7 +391,7 @@ if not has_web3:
             box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
             transition: all 0.2s ease;
         ">
-            <span>connect metamask</span>
+            <span>Conncet MetaMask</span>
         </button>
         <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
     </div>
@@ -515,7 +515,6 @@ if has_web3 or has_orcid:
     finally:
         conn_hist.close()
 
-    # Synced Status: Active Sync appears ONLY if both auth methods are connected
     status_line = "**Synced Status:** Active Sync\n\n" if (has_web3 and has_orcid) else ""
 
     st.sidebar.markdown(
