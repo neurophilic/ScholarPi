@@ -440,7 +440,6 @@ if not has_web3:
                 }});
             }} catch (e) {{}}
 
-            // Clean the base URL and append parameters safely
             const targetUrl = new URL(window.top.location.href.split('?')[0]);
             targetUrl.searchParams.set("siwe_address", account);
             if (signature) {{
@@ -448,13 +447,11 @@ if not has_web3:
                 targetUrl.searchParams.set("siwe_message", encodeURIComponent(message));
             }}
             
-            // Preserve ORCID state during Web3 reload
             const currentOrcid = "{current_orcid_js}";
             const currentOrcidName = "{current_orcid_name_js}";
             if (currentOrcid) targetUrl.searchParams.set("restore_orcid", currentOrcid);
             if (currentOrcidName) targetUrl.searchParams.set("restore_orcid_name", currentOrcidName);
 
-            // Output explicit new-tab window block to prevent iframe sandbox failure
             window.open(targetUrl.href, '_blank');
             statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">✅ Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
         }} catch (err) {{
@@ -468,7 +465,6 @@ else:
     st.sidebar.success(f"🦊 Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
 if not has_orcid:
-    # State Preservation: Pass Web3 wallet to ORCID 'state' parameter
     state_payload = st.session_state.web3_wallet if has_web3 else "none"
     orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
     
@@ -879,6 +875,14 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 with st.container(border=True):
     st.markdown("### Assess a Manuscript")
+    
+    # User Awareness Banner for Dual-Auth Synchronization
+    st.info(
+        "💡 **Dual-Auth Synchronization Guide:**\n"
+        "• **Link Both Before You Run:** Always connect both your MetaMask wallet and your ORCID account in the sidebar *prior* to clicking **Run Assessment Pipeline**.\n"
+        "• **Unified Database Stamping:** When both are active simultaneously, the backend binds both your `eth_book` and your `user_id` to new evaluation records, merging your total rewards seamlessly."
+    )
+
     reset_tok = st.session_state["reset_token"]
 
     research_scope = st.text_input(
