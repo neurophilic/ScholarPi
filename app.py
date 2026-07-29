@@ -153,8 +153,11 @@ if "siwe_address" in st.query_params:
             except Exception as e:
                 add_log(f"SIWE signature verification fallback: {str(e)}")
         
-        st.session_state.web3_wallet = clean_wallet
-        st.toast(f"MetaMask Linked: {clean_wallet[:6]}...{clean_wallet[-4:]}")
+        if authenticated:
+            st.session_state.web3_wallet = clean_wallet
+            st.toast(f"MetaMask Linked: {clean_wallet[:6]}...{clean_wallet[-4:]}")
+        else:
+            st.error("Authentication failed: Invalid wallet signature.")
 
     st.query_params.clear()
     st.rerun()
