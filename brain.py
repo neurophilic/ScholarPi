@@ -29,23 +29,20 @@ except Exception:
 from config import (
     GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY,
     PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
-)
-from database import get_db_connection
+)[cite: 7]
+from database import get_db_connection[cite: 8]
 from ledger import (
     backup_state_to_web3, generate_zk_snark_proof, mint_pi_quotient_token, 
     validate_block_por, generate_blockchain_pi
-)
+)[cite: 10]
 from integrations import (
     clean_author_name, is_likely_institution, fetch_author_coara_metrics, 
     calculate_citation_topology
-)
+)[cite: 9]
 
-# ---------------------------------------------------------
-# Neural Networks: Scilem Network & Pidyne LSTM
-# ---------------------------------------------------------
-class ScilemNetwork(nn.Module): # 
+class ScilemNetwork(nn.Module):[cite: 6]
     def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
-        super(ScilemNetwork, self).__init__() # 
+        super(ScilemNetwork, self).__init__()[cite: 6]
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)
         self.fc1 = nn.Linear(hidden_dim, 16)
@@ -61,8 +58,8 @@ class ScilemNetwork(nn.Module): #
         return features
 
 @st.cache_resource
-def get_scilem_engine(): # 
-    model = ScilemNetwork() # 
+def get_scilem_engine():[cite: 6]
+    model = ScilemNetwork()[cite: 6]
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     return model, optimizer
 
@@ -71,26 +68,26 @@ def get_tinyllama_pipeline():
     from transformers import pipeline
     return pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v1.0", device_map="auto")
 
-def evaluate_scilem_analysis_report(raw_text): # 
+def evaluate_scilem_analysis_report(raw_text):[cite: 6]
     try:
-        scilem_nlp = get_tinyllama_pipeline() # 
-        prompt = f"<|system|>\nYou are Scilem, the AI assistant for the Pi-Index Framework.\n<|user|>\n{raw_text}\n<|assistant|>" # 
-        response = scilem_nlp(prompt, max_new_tokens=150, truncation=True) # 
+        scilem_nlp = get_tinyllama_pipeline()[cite: 6]
+        prompt = f"<|system|>\nYou are Scilem, the AI assistant for the Pi-Index Framework.\n<|user|>\n{raw_text}\n<|assistant|>"[cite: 6]
+        response = scilem_nlp(prompt, max_new_tokens=150, truncation=True)[cite: 6]
         generated_text = response[0]['generated_text'].split("<|assistant|>")[-1].strip()
-        return f"**Scilem:** {generated_text}" # 
+        return f"**Scilem:** {generated_text}"[cite: 6]
     except Exception as e:
-        return f"Scilem Local Neural Engine initialization failed: {e}" # 
+        return f"Scilem Local Neural Engine initialization failed: {e}"[cite: 6]
 
-def extract_with_scilem(paper_text): # 
-    scilem_model, scilem_optimizer = get_scilem_engine() # 
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt") # 
-    if os.path.exists(scilem_weights_path): # 
+def extract_with_scilem(paper_text):[cite: 6]
+    scilem_model, scilem_optimizer = get_scilem_engine()[cite: 6]
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")[cite: 6, 7]
+    if os.path.exists(scilem_weights_path):
         try:
-            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True)) # 
+            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))[cite: 6]
         except Exception:
             pass
 
-    scilem_model.eval() # 
+    scilem_model.eval()[cite: 6]
     words = paper_text.lower().split()[:512]
     tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
     if not tokens:
@@ -98,12 +95,12 @@ def extract_with_scilem(paper_text): #
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
     with torch.no_grad():
-        feat_val = scilem_model(paper_tensor).item() # 
+        feat_val = scilem_model(paper_tensor).item()[cite: 6]
 
-    scilem_numeric_score = 50.0 + (feat_val * 40.0) # 
+    scilem_numeric_score = 50.0 + (feat_val * 40.0)[cite: 6]
 
     lines = [l.strip() for l in paper_text.split("\n") if l.strip()]
-    cand_title = lines[0] if lines else "Scilem Neural Extraction" # 
+    cand_title = lines[0] if lines else "Scilem Neural Extraction"[cite: 6]
     cand_author = "Independent Research Scholar"
     for line in lines[1:10]:
         if any(kw in line.lower() for kw in ["by", "author", "university", "department", "@"]):
@@ -116,7 +113,7 @@ def extract_with_scilem(paper_text): #
     detected_markers = [k.replace("_", " ") for k, v in repro_flags.items() if v]
 
     opinion = (
-        f"Scilem Neural Engine Analysis: Deep LSTM feature representation score = {feat_val:.4f}. " # 
+        f"Scilem Neural Engine Analysis: Deep LSTM feature representation score = {feat_val:.4f}. "[cite: 6]
         f"Deterministic MDAR/RRID adherence measured at {mdar_signal * 100:.1f}% ({rrid_signal} valid RRID token(s)). "
         f"Empirical density signal (statistics, sample sizes, quantitative results) measured at {density_signal * 100:.1f}%. "
         f"Open-science reproducibility markers detected: "
@@ -124,27 +121,27 @@ def extract_with_scilem(paper_text): #
         f"(composite reproducibility signal {repro_signal * 100:.1f}%)."
     )
 
-    return "scilem", { # 
+    return "scilem", {[cite: 6]
         "title": cand_title[:120],
-        "authors": clean_author_name(cand_author)[:80],
+        "authors": clean_author_name(cand_author)[:80],[cite: 9]
         "opinion": opinion,
         "references": [],
         "api_failed": False,
         "is_heuristic_fallback": True,
-        "scilem_score": scilem_numeric_score, # 
+        "scilem_score": scilem_numeric_score,[cite: 6]
     }
 
-def train_scilem_on_input_and_report(raw_text, evidence_report): # 
-    scilem_model, scilem_optimizer = get_scilem_engine() # 
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt") # 
-    if os.path.exists(scilem_weights_path): # 
+def train_scilem_on_input_and_report(raw_text, evidence_report):[cite: 6]
+    scilem_model, scilem_optimizer = get_scilem_engine()[cite: 6]
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")[cite: 6, 7]
+    if os.path.exists(scilem_weights_path):
         try:
-            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True)) # 
+            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))[cite: 6]
         except Exception:
             pass
 
-    scilem_model.train() # 
-    scilem_optimizer.zero_grad() # 
+    scilem_model.train()[cite: 6]
+    scilem_optimizer.zero_grad()[cite: 6]
     
     words = raw_text.lower().split()[:512]
     tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
@@ -152,32 +149,32 @@ def train_scilem_on_input_and_report(raw_text, evidence_report): #
         tokens = [0]
     paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
-    features = scilem_model(paper_tensor) # 
+    features = scilem_model(paper_tensor)[cite: 6]
     
-    vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0 # 
-    target_tensor = torch.tensor([[vapri]], dtype=torch.float32) # 
+    vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0[cite: 6]
+    target_tensor = torch.tensor([[vapri]], dtype=torch.float32)[cite: 6]
 
     loss_function = nn.MSELoss()
     loss = loss_function(features, target_tensor)
     loss.backward()
-    scilem_optimizer.step() # 
+    scilem_optimizer.step()[cite: 6]
     
-    torch.save(scilem_model.state_dict(), scilem_weights_path) # 
+    torch.save(scilem_model.state_dict(), scilem_weights_path)[cite: 6]
 
-    return "Scilem Local Neural Engine Integration: Model weights updated dynamically via RLHF backpropagation from Pidyne synthesized consensus matrix." # 
+    return "Scilem Local Neural Engine Integration: Model weights updated dynamically via RLHF backpropagation from Pidyne synthesized consensus matrix."[cite: 6]
 
-def reset_scilem(): # 
-    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt") # 
-    res_msg = "Scilem state reset successfully." # 
-    if os.path.exists(scilem_weights_path): # 
+def reset_scilem():[cite: 6]
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")[cite: 6, 7]
+    res_msg = "Scilem state reset successfully."[cite: 6]
+    if os.path.exists(scilem_weights_path):
         try:
-            os.remove(scilem_weights_path) # 
+            os.remove(scilem_weights_path)[cite: 6]
         except Exception as e:
-            res_msg = f"Scilem weights file deletion warning: {e}" # 
+            res_msg = f"Scilem weights file deletion warning: {e}"[cite: 6]
             
-    scilem_model, scilem_optimizer = get_scilem_engine() # 
+    scilem_model, scilem_optimizer = get_scilem_engine()[cite: 6]
     
-    for m in scilem_model.modules(): # 
+    for m in scilem_model.modules():[cite: 6]
         if isinstance(m, nn.Linear):
             nn.init.xavier_uniform_(m.weight)
             if m.bias is not None:
@@ -204,7 +201,7 @@ class PiBlockchainDataset(Dataset):
         y = self.data[idx + self.lookback]
         return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.float32)
 
-PidyneBlockchainDataset = PiBlockchainDataset
+PidyneBlockchainDataset = PiBlockchainDataset[cite: 6]
 
 class PiBrainLSTM(nn.Module):
     def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
@@ -221,11 +218,8 @@ class PiBrainLSTM(nn.Module):
         predictions = self.linear(lstm_out[:, -1, :])
         return torch.softmax(predictions, dim=-1) * 8.0
 
-PidyneLSTM = PiBrainLSTM
+PidyneLSTM = PiBrainLSTM[cite: 6]
 
-# ---------------------------------------------------------
-# Multi-LLM Consensus Engine
-# ---------------------------------------------------------
 def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     if not api_key or not str(api_key).strip():
         return provider_name, {
@@ -236,8 +230,8 @@ def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
             "api_failed": True
         }
     try:
-        if "openrouter" in base_url.lower() and OPENROUTER_SDK_AVAILABLE:
-            with OpenRouter(api_key=api_key.strip()) as client:
+        if "openrouter" in base_url.lower() and OPENROUTER_SDK_AVAILABLE:[cite: 6]
+            with OpenRouter(api_key=api_key.strip()) as client:[cite: 6]
                 response = client.chat.send(
                     model=model_name,
                     messages=[{"role": "user", "content": prompt}],
@@ -313,30 +307,30 @@ Keys required in JSON:
 
 def extract_with_llama(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
-    if GROQ_API_KEY:
-        return query_llm_json("llama", PRIMARY_MODEL, GROQ_API_KEY, "https://api.groq.com/openai/v1", prompt)
-    elif OR_API_KEY:
-        return query_llm_json("llama", "meta-llama/llama-3.3-70b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
+    if GROQ_API_KEY:[cite: 7]
+        return query_llm_json("llama", PRIMARY_MODEL, GROQ_API_KEY, "https://api.groq.com/openai/v1", prompt)[cite: 7]
+    elif OR_API_KEY:[cite: 7]
+        return query_llm_json("llama", "meta-llama/llama-3.3-70b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)[cite: 7]
     return "llama", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
 
 def extract_with_mistral(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
-    if OR_API_KEY:
-        return query_llm_json("mistral", "mistralai/mistral-large", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
+    if OR_API_KEY:[cite: 7]
+        return query_llm_json("mistral", "mistralai/mistral-large", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)[cite: 7]
     return "mistral", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
 
 def extract_with_qwen(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
-    if OR_API_KEY:
-        return query_llm_json("qwen", "qwen/qwen-2.5-72b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
+    if OR_API_KEY:[cite: 7]
+        return query_llm_json("qwen", "qwen/qwen-2.5-72b-instruct", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)[cite: 7]
     return "qwen", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
 
 def extract_with_gemini(paper_text):
     prompt = build_multi_llm_prompt(paper_text)
-    if GEMINI_API_KEY:
-        return query_llm_json("gemini", "gemini-2.0-flash", GEMINI_API_KEY, "https://generativelanguage.googleapis.com/v1beta/openai/", prompt)
-    elif OR_API_KEY:
-        return query_llm_json("gemini", "google/gemini-2.0-flash-001", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)
+    if GEMINI_API_KEY:[cite: 7]
+        return query_llm_json("gemini", "gemini-2.0-flash", GEMINI_API_KEY, "https://generativelanguage.googleapis.com/v1beta/openai/", prompt)[cite: 7]
+    elif OR_API_KEY:[cite: 7]
+        return query_llm_json("gemini", "google/gemini-2.0-flash-001", OR_API_KEY, "https://openrouter.ai/api/v1", prompt)[cite: 7]
     return "gemini", {"title": "N/A", "authors": "N/A", "opinion": "API not configured.", "references": [], "api_failed": True}
 
 def run_multi_llm_consensus(paper_text):
@@ -346,7 +340,7 @@ def run_multi_llm_consensus(paper_text):
         "mistral": extract_with_mistral,
         "qwen": extract_with_qwen,
         "gemini": extract_with_gemini,
-        "scilem": extract_with_scilem # 
+        "scilem": extract_with_scilem[cite: 6]
     }
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -359,7 +353,7 @@ def run_multi_llm_consensus(paper_text):
 def generate_merged_evidence_report(consensus_results):
     successful_llms = [k for k, v in consensus_results.items() if not v.get("api_failed", False)]
     if not successful_llms:
-        return "Synthesized Evidence Report (Unified Consensus)\n\nExternal APIs offline. Local Scilem neural analysis active." # 
+        return "Synthesized Evidence Report (Unified Consensus)\n\nExternal APIs offline. Local Scilem neural analysis active."[cite: 6]
     
     report_md = "Synthesized Evidence Report (Unified Consensus)\n\n"
     for provider in successful_llms:
@@ -387,21 +381,21 @@ Respond strictly in JSON with keys:
 1. "evidence_report": string containing the markdown report with sections for Executive Summary, 8 Criteria Audit, and Methodological Quality.
 2. "ai_rating": float between 0.0 and 100.0.
 """
-    api_key = GROQ_API_KEY or OR_API_KEY or GEMINI_API_KEY
-    base_url = "https://api.groq.com/openai/v1" if GROQ_API_KEY else ("https://openrouter.ai/api/v1" if OR_API_KEY else "https://generativelanguage.googleapis.com/v1beta/openai/")
+    api_key = GROQ_API_KEY or OR_API_KEY or GEMINI_API_KEY[cite: 7]
+    base_url = "https://api.groq.com/openai/v1" if GROQ_API_KEY else ("https://openrouter.ai/api/v1" if OR_API_KEY else "https://generativelanguage.googleapis.com/v1beta/openai/")[cite: 7]
     
-    if GROQ_API_KEY:
-        model_name = PRIMARY_MODEL
-        judge_provider = f"Groq Cloud (Model: {PRIMARY_MODEL})"
-    elif OR_API_KEY:
+    if GROQ_API_KEY:[cite: 7]
+        model_name = PRIMARY_MODEL[cite: 7]
+        judge_provider = f"Groq Cloud (Model: {PRIMARY_MODEL})"[cite: 7]
+    elif OR_API_KEY:[cite: 7]
         model_name = "meta-llama/llama-3.3-70b-instruct"
         judge_provider = f"OpenRouter (Model: {model_name})"
-    elif GEMINI_API_KEY:
+    elif GEMINI_API_KEY:[cite: 7]
         model_name = "gemini-2.0-flash"
         judge_provider = f"Google Gemini (Model: {model_name})"
     else:
-        model_name = "Scilem Local Neural Engine" # 
-        judge_provider = "Scilem Local Neural Engine (API Fallback)" # 
+        model_name = "Scilem Local Neural Engine"[cite: 6]
+        judge_provider = "Scilem Local Neural Engine (API Fallback)"[cite: 6]
 
     data = None
     if api_key and active_count > 0:
@@ -420,8 +414,8 @@ Respond strictly in JSON with keys:
     if not data:
         fallback_rep = generate_merged_evidence_report(consensus_results)
         evidence_report = header_prefix + f"**Note:** External API judge limit reached; generated via unified fallback consensus.\n\n" + fallback_rep
-        scilem_score = consensus_results.get("scilem", {}).get("scilem_score", 75.0) # 
-        rating = float(scilem_score) # 
+        scilem_score = consensus_results.get("scilem", {}).get("scilem_score", 75.0)[cite: 6]
+        rating = float(scilem_score)[cite: 6]
     else:
         raw_rep = data.get("evidence_report", "Synthesized Evidence Report generated successfully.")
         if "Synthesized Evidence Report" in raw_rep[:50] or raw_rep.startswith("###"):
@@ -435,12 +429,9 @@ Respond strictly in JSON with keys:
             
     return evidence_report, rating
 
-# ---------------------------------------------------------
-# Utilities & Scoring Logic
-# ---------------------------------------------------------
-def generate_scilem_fallback_report(text): # 
-    scilem_rep = evaluate_scilem_analysis_report(text) # 
-    return f"Synthesized Evidence Report (Unified Consensus)\n\n### Scilem Neural Assessment\n{scilem_rep}" # 
+def generate_scilem_fallback_report(text):[cite: 6]
+    scilem_rep = evaluate_scilem_analysis_report(text)[cite: 6]
+    return f"Synthesized Evidence Report (Unified Consensus)\n\n### Scilem Neural Assessment\n{scilem_rep}"[cite: 6]
 
 def calculate_deterministic_mdar(text: str) -> Tuple[float, int]:
     text_lower = text.lower()
@@ -502,12 +493,12 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
     consensus_results = run_multi_llm_consensus(text)
     
     evidence_report, pidyne_ai_rating = generate_pidyne_judgement(consensus_results, text)
-    scilem_opinion = train_scilem_on_input_and_report(text, evidence_report) # 
+    scilem_opinion = train_scilem_on_input_and_report(text, evidence_report)[cite: 6]
 
     best_title = "Parsed via Local Heuristics"
     best_author = "Independent Research Scholar"
     title_found, author_found = False, False
-    for l_key in ["llama", "mistral", "qwen", "gemini", "scilem"]: # 
+    for l_key in ["llama", "mistral", "qwen", "gemini", "scilem"]:[cite: 6]
         entry = consensus_results.get(l_key, {})
         t_val = entry.get("title", "")
         a_val = entry.get("authors", "")
@@ -520,7 +511,7 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         if title_found and author_found:
             break
 
-    scilem_score = consensus_results.get("scilem", {}).get("scilem_score", pidyne_ai_rating) # 
+    scilem_score = consensus_results.get("scilem", {}).get("scilem_score", pidyne_ai_rating)[cite: 6]
 
     return {
         "Extracted_Title": best_title,
@@ -530,14 +521,14 @@ def evaluate_pdf_text_ensemble(text, model, text_limit, file_hash="unknown"):
         "_consensus_raw": consensus_results,
         "_evidence_report": evidence_report,
         "_pidyne_rating": pidyne_ai_rating,
-        "_scilem_score": scilem_score, # 
+        "_scilem_score": scilem_score,[cite: 6]
     }
 
 def get_formulas_hash():
     return hashlib.sha256(b"Pi-Index-Formula-State-v2.0").hexdigest()
 
-def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0, vapri=0.0, empirical_density=None): # 
-    c1 = (ai_rating * 0.9) + (vapri * 10) # 
+def compute_formulaic_criteria(reproducibility_score, sciscore_adherence=0.8, topological_entropy=0.5, ai_rating=75.0, vapri=0.0, empirical_density=None):[cite: 6]
+    c1 = (ai_rating * 0.9) + (vapri * 10)[cite: 6]
     c4 = ai_rating * 0.95 + (topological_entropy * 5)
     c6 = ai_rating * 0.88 + (sciscore_adherence * 12)
     
@@ -595,7 +586,7 @@ def process_single_pdf(
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
 
-    conn = get_db_connection()
+    conn = get_db_connection()[cite: 8]
     try:
         cursor = conn.cursor()
 
@@ -603,7 +594,7 @@ def process_single_pdf(
             """SELECT title, author_name, final_score, logic_score, c1, c2, c3, c4, c5, c6, c7, c8,
                       piq_minted, tx_hash, zk_proof, mdar_adherence_score, rrid_valid_count,
                       reproducibility_score, consensus_data, evidence_report, scilem_score
-               FROM papers_assessment WHERE eval_hash = ?""",
+               FROM papers_assessment WHERE eval_hash = ?"""[cite: 6],
             (file_hash,),
         )
         existing = cursor.fetchone()
@@ -642,23 +633,23 @@ def process_single_pdf(
             full_text = ""
 
         mdar_score, rrid_count = calculate_deterministic_mdar(full_text)
-        topological_entropy = calculate_citation_topology(provided_doi)
+        topological_entropy = calculate_citation_topology(provided_doi)[cite: 9]
         reproducibility_score, _repro_flags = calculate_reproducibility_score(full_text)
         empirical_density = calculate_empirical_density(full_text)
 
-        raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)
+        raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)[cite: 7]
         
         pidyne_ai_rating = raw_data.get("_pidyne_rating", 75.0)
-        scilem_score = raw_data.get("_scilem_score", pidyne_ai_rating)
+        scilem_score = raw_data.get("_scilem_score", pidyne_ai_rating)[cite: 6]
         consensus_raw = raw_data.get("_consensus_raw", {})
         evidence_report = raw_data.get("_evidence_report", "")
 
-        vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0 if evidence_report else 0.5 # 
+        vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0 if evidence_report else 0.5[cite: 6]
 
         external_active = any(
             not v.get("api_failed", False) 
             for k, v in consensus_raw.items() 
-            if k != "scilem" and k != "_judge_metadata" # 
+            if k != "scilem" and k != "_judge_metadata"[cite: 6]
         )
         
         title = raw_data.get("Extracted_Title", filename.replace(".pdf", "").replace("_", " ").title())
@@ -669,7 +660,7 @@ def process_single_pdf(
             sciscore_adherence=mdar_score,
             topological_entropy=topological_entropy,
             ai_rating=pidyne_ai_rating,
-            vapri=vapri, # 
+            vapri=vapri,[cite: 6]
             empirical_density=empirical_density
         )
         
@@ -677,24 +668,24 @@ def process_single_pdf(
         
         premise_gap = 1.0 - (pidyne_ai_rating / 100.0)
         adversarial_penalty = math.exp(-(2 * max(0, topological_entropy - 0.5) + 1.5 * premise_gap))
-        logic_integrity = (pidyne_ai_rating * adversarial_penalty) + (vapri * 5.0) # 
+        logic_integrity = (pidyne_ai_rating * adversarial_penalty) + (vapri * 5.0)[cite: 6]
         logic_integrity = min(100.0, max(0.0, logic_integrity))
 
         if final_score >= 50.0 and logic_integrity >= 50.0:
-            piq_minted = round((final_score / 100.0) * 10.0, 2)
+            piq_minted = round((final_score / 100.0) * 10.0, 2)[cite: 5]
         else:
             piq_minted = 0.00
-            warnings_list.append("⚠️ **MINIMUM piQ THRESHOLD UNMET:** Manuscript score or logic integrity fell below 50.0%. piQ reward set to 0.00.")
+            warnings_list.append("⚠️ **MINIMUM piQ THRESHOLD UNMET:** Manuscript score or logic integrity fell below 50.0%. piQ reward set to 0.00.")[cite: 5]
 
-        zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, logic_integrity, "None")
+        zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, logic_integrity, "None")[cite: 10]
         
-        if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000" and piq_minted > 0:
-            tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
+        if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000" and piq_minted > 0:[cite: 5]
+            tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)[cite: 5, 10]
         else:
             tx_hash = "Simulated_Ledger_Record"
 
         if not external_active:
-            warnings_list.append("⚠️ **NOTICE:** Assessment completed using local Scilem neural model & heuristics due to external API limits.") # 
+            warnings_list.append("⚠️ **NOTICE:** Assessment completed using local Scilem neural model & heuristics due to external API limits.")[cite: 6]
 
         cursor.execute(
             """INSERT OR REPLACE INTO papers_assessment (
@@ -703,15 +694,15 @@ def process_single_pdf(
                 timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, 
                 gaming_penalty, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, 
                 reproducibility_score, doi, consensus_data, evidence_report, scilem_score
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""[cite: 6],
             (
                 file_hash, user_id, title, filename, scope, *scores_dict.values(),
                 logic_integrity, 0.0, json.dumps(["Core Research Domain"]),
                 json.dumps(["Computer Science"]), extracted_author, final_score,
-                datetime.now().isoformat(), book_address, piq_minted,
+                datetime.now().isoformat(), book_address, piq_minted,[cite: 5]
                 tx_hash, zk_proof, user_id, "None", 0.0,
                 mdar_score, rrid_count, json.dumps(["Data Curation"]), reproducibility_score,
-                provided_doi, json.dumps(consensus_raw), evidence_report, scilem_score # 
+                provided_doi, json.dumps(consensus_raw), evidence_report, scilem_score[cite: 6]
             ),
         )
 
@@ -726,26 +717,26 @@ def process_single_pdf(
         new_height = block_count + 1
         ts = datetime.now().isoformat()
         f_hash = get_formulas_hash()
-        val_node, b_hash, por_p = validate_block_por(
-            new_height, active_weights, ts, prev_hash, file_hash, "Pidyne_Scilem_Ensemble", final_score, f_hash # 
+        val_node, b_hash, por_p = validate_block_por([cite: 10]
+            new_height, active_weights, ts, prev_hash, file_hash, "Pidyne_Scilem_Ensemble", final_score, f_hash[cite: 6]
         )
 
         cursor.execute(
             """INSERT INTO blockchain_por_weights 
                (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (*active_weights, ts, prev_hash, val_node, b_hash, file_hash, "Pidyne_Scilem_Ensemble", por_p, f_hash) # 
+            (*active_weights, ts, prev_hash, val_node, b_hash, file_hash, "Pidyne_Scilem_Ensemble", por_p, f_hash)[cite: 6]
         )
 
         conn.commit()
     finally:
         conn.close()
 
-    backup_state_to_web3()
+    backup_state_to_web3()[cite: 10]
 
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
-        ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
+        ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,[cite: 5]
         active_weights, mdar_score, rrid_count, reproducibility_score, False, warnings_list,
-        consensus_raw, evidence_report, scilem_score # 
+        consensus_raw, evidence_report, scilem_score[cite: 6]
     )
