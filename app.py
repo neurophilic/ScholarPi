@@ -1,17 +1,20 @@
 import streamlit as st
-from database import get_db_connection
 
-st.set_page_config(page_title="Pi-Index Engine", layout="wide", page_icon="🧠", initial_sidebar_state="expanded")
+# Must be the first Streamlit command
+st.set_page_config(page_title="Pi-Index Assessment Engine", layout="wide")
 
-# Initialize DB & Queues on Boot
-get_db_connection().close()
+from shared_ui import setup_global_state_and_sidebar
 
-pg = st.navigation({
-    "ScholarPi Modules": [
-        st.Page("pages/1_intake.py", title="1. Intake & Ingestion", icon="📄"),
-        st.Page("pages/2_brain_eval.py", title="2. Pidyne Brain & Jury", icon="🧠"),
-        st.Page("pages/3_analytics.py", title="3. Analytics & Cartography", icon="🌐"),
-        st.Page("pages/4_blockchain.py", title="4. Blockchain Explorer", icon="⛓️")
-    ]
-})
+# Initialize session states, authentication, and the persistent sidebar
+setup_global_state_and_sidebar()
+
+# Define the multipage routing architecture
+pg = st.navigation([
+    st.Page("pages/1_Intake_Engine.py", title="Manuscript Intake", icon="📄"),
+    st.Page("pages/2_Pidyne_Brain.py", title="Pidyne Brain & AI Jury", icon="🧠"),
+    st.Page("pages/3_Analytics.py", title="Analytics & Map", icon="🌐"),
+    st.Page("pages/4_Explorer.py", title="Blockchain Explorer", icon="⛓️"),
+])
+
+# Execute the active page
 pg.run()
