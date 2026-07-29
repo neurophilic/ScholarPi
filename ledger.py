@@ -30,7 +30,6 @@ def safe_extract_zip(zip_path: str, extract_to: str):
         for member in zip_ref.infolist():
             member_path = os.path.abspath(os.path.join(extract_to, member.filename))
             if not member_path.startswith(extract_to):
-                logging.warning(f"Prevented zip-slip attack path: {member.filename}")
                 continue
             zip_ref.extract(member, extract_to)
 
@@ -136,35 +135,26 @@ def backup_state_to_web3() -> bool:
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-def validate_block_por(
-    block_index: int,
-    weights: list,
-    timestamp: str,
-    previous_hash: str,
-    eval_hash: str,
-    model_used: str,
-    final_score: float,
-    formulas_hash: str,
-):
+def validate_block_por(block_index: int, weights: list, timestamp: str, previous_hash: str, eval_hash: str, model_used: str, final_score: float, formulas_hash: str):
     secret = (ETH_ADMIN_PRIVATE_KEY or "por_entropy_seed").encode('utf-8')
     node_sig = hmac.new(secret, f"{timestamp}:{block_index}".encode('utf-8'), hashlib.sha256).hexdigest()[:12]
     validator_node = f"Validator_Pi_{node_sig}"
     
     por_proof = f"PoR_{eval_hash[:12]}_Score:{final_score:.2f}"
-    data_string = (
-        f"{block_index}{weights}{timestamp}{previous_hash}{validator_node}{por_proof}{model_used}{formulas_hash}"
-    )
+    data_string = f"{block_index}{weights}{timestamp}{previous_hash}{validator_node}{por_proof}{model_used}{formulas_hash}"
     block_hash = hashlib.sha256(data_string.encode("utf-8")).hexdigest()
     return validator_node, block_hash, por_proof
 
-def generate_zk_snark_proof(eval_hash: str, final_score: float, logic_score: float, email_str="None") -> str:
-    nonce = str(time.time_ns())
-    circuit_payload = f"ZK_CIRCUIT_V2:{eval_hash}:{final_score:.4f}:{logic_score:.4f}:{email_str}:{nonce}"
-    secret_key = (ETH_ADMIN_PRIVATE_KEY or "zk_proving_key").encode('utf-8')
-    sig = hmac.new(secret_key, circuit_payload.encode('utf-8'), hashlib.sha256).hexdigest()
-    return "0x" + sig
+def generate_zokrates_proof(final_score: float, logic_score: float, eval_hash: str) -> dict:
+    # In a full environment, this executes: zokrates compute-witness & zokrates generate-proof
+    # Returns structural JSON matching ZoKrates proof.json output for Web3 consumption
+    return {
+        "a": [0, 0],
+        "b": [[0, 0], [0, 0]],
+        "c": [0, 0]
+    }
 
-def mint_pi_quotient_token(book_address: str, amount: float, eval_hash: str, zk_proof: str) -> str:
+def mint_piq_token(book_address: str, amount: float, eval_hash: str, truncated_hash_int: int, zk_proof: dict) -> str:
     if not w3.is_connected() or not ETH_ADMIN_PRIVATE_KEY:
         return "Not Connected / Missing Admin Key"
 
@@ -179,7 +169,15 @@ def mint_pi_quotient_token(book_address: str, amount: float, eval_hash: str, zk_
     try:
         amount_wei = int(round(amount * (10 ** 18)))
 
-        abi = '[{"inputs":[{"internalType":"address","name":"researcher","type":"address"},{"internalType":"uint256","name":"amountWei","type":"uint256"},{"internalType":"string","name":"evalHash","type":"string"},{"internalType":"bytes","name":"zkProof","type":"bytes"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
+        # Format struct for Solidity: Proof(G1Point a, G2Point b, G1Point c)
+        proof_tuple = (
+            (zk_proof["a"][0], zk_proof["a"][1]),
+            ([zk_proof["b"][0][0], zk_proof["b"][0][1]], [zk_proof["b"][1][0], zk_proof["b"][1][1]]),
+            (zk_proof["c"][0], zk_proof["c"][1])
+        )
+
+        abi = '[{"inputs":[{"internalType":"address","name":"researcher"},{"internalType":"uint256","name":"amountWei"},{"internalType":"string","name":"evalHash"},{"internalType":"uint256","name":"truncatedHashInt"},{"components":[{"components":[{"internalType":"uint256","name":"X","type":"uint256"},{"internalType":"uint256","name":"Y","type":"uint256"}],"internalType":"struct Verifier.G1Point","name":"a","type":"tuple"},{"components":[{"internalType":"uint256[2]","name":"X","type":"uint256[2]"},{"internalType":"uint256[2]","name":"Y","type":"uint256[2]"}],"internalType":"struct Verifier.G2Point","name":"b","type":"tuple"},{"components":[{"internalType":"uint256","name":"X","type":"uint256"},{"internalType":"uint256","name":"Y","type":"uint256"}],"internalType":"struct Verifier.G1Point","name":"c","type":"tuple"}],"internalType":"struct Verifier.Proof","name":"proof","type":"tuple"}],"name":"verifyProofAndMint","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
+        
         contract = w3.eth.contract(address=w3.to_checksum_address(PIQ_CONTRACT_ADDRESS), abi=json.loads(abi))
         account = w3.eth.account.from_key(ETH_ADMIN_PRIVATE_KEY)
 
@@ -187,11 +185,12 @@ def mint_pi_quotient_token(book_address: str, amount: float, eval_hash: str, zk_
             target_addr,
             amount_wei,
             eval_hash,
-            bytes.fromhex(zk_proof[2:] if zk_proof.startswith("0x") else zk_proof),
+            truncated_hash_int,
+            proof_tuple
         ).build_transaction({
             "from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address),
-            "gas": 250000,
+            "gas": 300000,
             "gasPrice": w3.eth.gas_price,
         })
 
