@@ -38,11 +38,11 @@ from integrations import (
     fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics,
     fetch_core_text_by_doi, create_virtual_pdf_from_text
 )
-from brain import (
-    process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
-    PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem,
-    evaluate_scilem_analysis_report
-)
+from brain import ( # 
+    process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, # 
+    PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem, # 
+    evaluate_scilem_analysis_report # 
+) # 
 
 w3 = Web3()
 OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"
@@ -92,7 +92,7 @@ def get_author_piq_dict():
     return author_piq, author_book
 
 def preprocess_pdf_layout(pdf_bytes, fname): return pdf_bytes
-def rbot(topic_key): return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
+def rbot(topic_key): return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>" # 
 
 if "web3_wallet" not in st.session_state: st.session_state.web3_wallet = None
 if "orcid_profile" not in st.session_state: st.session_state.orcid_profile = None
@@ -107,8 +107,8 @@ if "cancel_requested" not in st.session_state: st.session_state["cancel_requeste
 if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
-if "scilem_messages" not in st.session_state:
-    st.session_state.scilem_messages = [{"role": "assistant", "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."}]
+if "scilem_messages" not in st.session_state: # 
+    st.session_state.scilem_messages = [{"role": "assistant", "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."}] # 
 
 if "state_restored" not in st.session_state:
     restore_state_from_web3()
@@ -128,17 +128,17 @@ def framework_workflow_dialog():
 @st.dialog("Criterion Details & Adversarial Logic Engine", width="medium")
 def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula):
     st.markdown(f"### {c_id}: {title}")
-    st.markdown(rf"**Current Epoch Weight ($\varpi_{sym}$):** `{weight_val:.6f}`")
+    st.markdown(f"**Current Epoch Weight (\\varpi_{{{sym}}}):** `{weight_val:.6f}`")
     st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
     st.markdown(formula)
     st.markdown("---")
     st.markdown(r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence.")
-    st.markdown(r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right) \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \text{vapri} $$")
+    st.markdown(r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right) \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \text{vapri} $$") # 
 
 @st.dialog("Detailed Research Integrity Dossier", width="large")
 def more_details_dialog(item):
     st.subheader(f"{item.get('title', 'Unknown')} by {clean_author_name(item.get('author_name', 'Unknown'))}")
-    st.write(f"**Evaluation Hash:** `{item.get('eval_hash', '0x0')}`\n**piQ Minted:** `{safe_float(item.get('piq'), 0.0)}`")
+    st.write(f"**Evaluation Hash:** `{item.get('eval_hash', '0x0')}`\n**piQ Minted:** `{safe_float(item.get('piq'), 0.0)}`") # 
     if item.get("evidence_report_text"): st.markdown("### Evidence Report\n" + item["evidence_report_text"])
 
 @st.dialog("AI Peer Review Defense Strategy", width="medium")
@@ -148,10 +148,10 @@ def defense_strategy_dialog(scores_dict):
 
 # --- SIDEBAR UI ---
 st.sidebar.title("System Access & Sync")
-if not has_web3: st.sidebar.button("Connect MetaMask", use_container_width=True) # Placeholder for actual SIWE logic
+if not has_web3: st.sidebar.button("Connect MetaMask", use_container_width=True)
 else: st.sidebar.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
-if not has_orcid: st.sidebar.button("Link ORCID Account", use_container_width=True) # Placeholder for ORCID auth
+if not has_orcid: st.sidebar.button("Link ORCID Account", use_container_width=True)
 else: st.sidebar.success(f"ORCID Linked: `{st.session_state.orcid_profile}`")
 
 st.sidebar.markdown(f"**Researcher:** {st.session_state.researcher_name}")
@@ -163,16 +163,16 @@ st.sidebar.markdown("---")
 with st.sidebar.expander("Live System Monitor", expanded=True):
     st.code("\n".join(st.session_state.app_logs) if st.session_state.app_logs else "No active logs...", language="bash")
 
-with st.sidebar.expander("🧠 Scilem Assistant", expanded=False):
-    for message in st.session_state.scilem_messages:
+with st.sidebar.expander("🧠 Scilem Assistant", expanded=False): # 
+    for message in st.session_state.scilem_messages: # 
         with st.chat_message(message["role"], avatar="🧠" if message["role"] == "assistant" else "👤"):
             st.markdown(message["content"])
-    if prompt := st.chat_input("Ask Scilem..."):
-        st.session_state.scilem_messages.append({"role": "user", "content": prompt})
-        st.session_state.scilem_messages.append({"role": "assistant", "content": evaluate_scilem_analysis_report(prompt)})
+    if prompt := st.chat_input("Ask Scilem..."): # 
+        st.session_state.scilem_messages.append({"role": "user", "content": prompt}) # 
+        st.session_state.scilem_messages.append({"role": "assistant", "content": evaluate_scilem_analysis_report(prompt)}) # 
         st.rerun()
-    if has_web3 and st.session_state.web3_wallet.lower() == OWNER_ID.lower() and st.button("Reset Scilem (Owner)", use_container_width=True):
-        st.success(reset_scilem())
+    if has_web3 and st.session_state.web3_wallet.lower() == OWNER_ID.lower() and st.button("Reset Scilem (Owner)", use_container_width=True): # 
+        st.success(reset_scilem()) # 
 
 # --- PAGE FUNCTIONS ---
 def page_assessment():
@@ -195,7 +195,7 @@ def page_assessment():
                 st.warning("🔒 **Free Trial Completed:** Please connect your **Web3 Ethereum Wallet** in the sidebar to continue.")
                 stake_amount = False
             else:
-                stake_amount = st.checkbox("Stake 0.1 piQ to Process", value=True)
+                stake_amount = st.checkbox("Stake 0.1 piQ to Process", value=True) # 
 
         t_local, t_doi = st.tabs(["📄 Local Upload", "🔗 DOI Lookup"])
         selected_uploaded_files = []
@@ -231,7 +231,7 @@ def page_assessment():
                             status_box.update(label="Assessing document...")
                             res = process_single_pdf(preprocess_pdf_layout(pdf_bytes, f"DOI_{doi_snap}.pdf"), f"DOI_{doi_snap}.pdf", "", current_user, valid_book_address, provided_doi=doi_snap)
                             if res:
-                                item = {"title": res[0], "author_name": clean_author_name(res[1]), "score": res[2], "logic_integrity": res[3], "scores_dict": res[8], "eval_hash": res[9], "piq": res[10], "tx_hash": res[11], "zk_proof": res[12], "h_idx": res[14], "i10_idx": res[15], "repro_score": res[16], "filename": f"DOI_{doi_snap}.pdf", "warnings": res[18], "consensus_raw": res[19], "evidence_report_text": res[20], "scilem_rating": res[21]}
+                                item = {"title": res[0], "author_name": clean_author_name(res[1]), "score": res[2], "logic_integrity": res[3], "scores_dict": res[8], "eval_hash": res[9], "piq": res[10], "tx_hash": res[11], "zk_proof": res[12], "h_idx": res[14], "i10_idx": res[15], "repro_score": res[16], "filename": f"DOI_{doi_snap}.pdf", "warnings": res[18], "consensus_raw": res[19], "evidence_report_text": res[20], "scilem_rating": res[21]} # 
                                 st.session_state["evaluated_papers_buffer"].insert(0, item)
                                 st.session_state["free_evals_used"] += 1
                         else:
@@ -244,7 +244,7 @@ def page_assessment():
                         with open(fpath, "rb") as in_f: raw_bytes = in_f.read()
                         res = process_single_pdf(preprocess_pdf_layout(raw_bytes, fname), fname, "", current_user, valid_book_address)
                         if res:
-                            item = {"title": res[0], "author_name": clean_author_name(res[1]), "score": res[2], "logic_integrity": res[3], "scores_dict": res[8], "eval_hash": res[9], "piq": res[10], "tx_hash": res[11], "zk_proof": res[12], "h_idx": res[14], "i10_idx": res[15], "repro_score": res[16], "filename": fname, "warnings": res[18], "consensus_raw": res[19], "evidence_report_text": res[20], "scilem_rating": res[21]}
+                            item = {"title": res[0], "author_name": clean_author_name(res[1]), "score": res[2], "logic_integrity": res[3], "scores_dict": res[8], "eval_hash": res[9], "piq": res[10], "tx_hash": res[11], "zk_proof": res[12], "h_idx": res[14], "i10_idx": res[15], "repro_score": res[16], "filename": fname, "warnings": res[18], "consensus_raw": res[19], "evidence_report_text": res[20], "scilem_rating": res[21]} # 
                             st.session_state["evaluated_papers_buffer"].insert(0, item)
                             st.session_state["free_evals_used"] += 1
 
@@ -258,7 +258,7 @@ def page_assessment():
         else:
             if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
                 if free_evals_used >= 1 and (not has_web3 or not stake_amount):
-                    st.error("Free trial limit reached. Connect Web3 and stake 0.1 piQ.")
+                    st.error("Free trial limit reached. Connect Web3 and stake 0.1 piQ.") # 
                 elif not selected_uploaded_files and not (include_doi and doi_input.strip()):
                     st.warning("Please tick at least one source to assess.")
                 else:
@@ -279,7 +279,7 @@ def page_assessment():
         for item_idx, item in enumerate(st.session_state["evaluated_papers_buffer"]):
             with st.container(border=True):
                 c_info, c_actions = st.columns([6, 4])
-                c_info.markdown(f"**{item['title']}** — *{item['author_name']}*\n\n**Score: {item['score']:.2f} | piQ: {item['piq']}**")
+                c_info.markdown(f"**{item['title']}** — *{item['author_name']}*\n\n**Score: {item['score']:.2f} | piQ: {item['piq']}**") # 
                 ac1, ac2, ac3 = c_actions.columns([3, 3, 1])
                 if ac1.button("More Details", key=f"det_{item['eval_hash']}_{item_idx}", use_container_width=True): more_details_dialog(item)
                 if ac2.button("Suggest Defense", key=f"strat_{item['eval_hash']}_{item_idx}", use_container_width=True): defense_strategy_dialog(item['scores_dict'])
@@ -303,7 +303,6 @@ def page_analytics():
     else:
         weight_data = np.array([[safe_float(v, 1.0) for v in r] for r in historical_rows], dtype=np.float32)
         
-        # In a real app this uses the cached train function; here we mock it for display
         df_hist = pd.DataFrame(historical_rows[-(actual_lookback + 1):], columns=["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"])
         df_hist.index.name = "Block"
         df_melted = df_hist.reset_index().melt('Block', var_name='Criterion', value_name='Weight')
@@ -312,15 +311,15 @@ def page_analytics():
     st.markdown("---")
     col1, col2 = st.columns(2, gap="large")
     with col1:
-        st.markdown("### Pi Quotient (piQ) Leaderboard")
+        st.markdown("### Pi Quotient (piQ) Leaderboard") # 
         data = pd.read_sql_query("SELECT author_name, piq_minted FROM papers_assessment", conn)
         author_piq = {}
         for _, row in data.iterrows():
             ca = clean_author_name(row["author_name"])
             if ca and ca.lower() not in ["unidentified", "unknown"] and not is_likely_institution(ca):
-                for a in [x.strip() for x in ca.split(",")]: author_piq[a] = author_piq.get(a, 0.0) + float(row["piq_minted"] or 0)
+                for a in [x.strip() for x in ca.split(",")]: author_piq[a] = author_piq.get(a, 0.0) + float(row["piq_minted"] or 0) # 
         if author_piq:
-            st.dataframe(pd.DataFrame(sorted(author_piq.items(), key=lambda x: x[1], reverse=True)[:20], columns=["Author", "piQ"]), hide_index=True)
+            st.dataframe(pd.DataFrame(sorted(author_piq.items(), key=lambda x: x[1], reverse=True)[:20], columns=["Author", "piQ"]), hide_index=True) # 
 
     with col2:
         st.markdown("### piX Top Papers")
@@ -355,9 +354,9 @@ def page_explorer():
                         more_details_dialog({
                             "title": r[0], "author_name": r[1], "score": r[3], "logic_integrity": r[4], 
                             "scores_dict": {"C1": r[5], "C2": r[6], "C3": r[7], "C4": r[8], "C5": r[9], "C6": r[10], "C7": r[11], "C8": r[12]},
-                            "eval_hash": r[19], "piq": r[13], "tx_hash": r[14], "zk_proof": r[15],
+                            "eval_hash": r[19], "piq": r[13], "tx_hash": r[14], "zk_proof": r[15], # 
                             "h_idx": r[16], "i10_idx": r[17], "repro_score": r[18], "filename": r[2], 
-                            "consensus_raw": json.loads(r[20]) if r[20] else {}, "evidence_report_text": r[21], "scilem_rating": r[22]
+                            "consensus_raw": json.loads(r[20]) if r[20] else {}, "evidence_report_text": r[21], "scilem_rating": r[22] # 
                         })
         else:
             st.error("No matching ledger records found.")
