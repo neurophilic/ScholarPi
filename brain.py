@@ -1,116 +1,215 @@
-import os, json, time, math, hashlib, re, fitz, concurrent.futures
+import os
+import json
+import time
+import math
+import random
+import hashlib
+import re
+import difflib
+import concurrent.futures
 from datetime import datetime
+
+import fitz
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
 from openai import OpenAI
-from config import GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY, PRIMARY_MODEL, MAX_TEXT_TOKENS, BASE_DIR
-from database import get_db_connection
-from ledger import generate_zk_snark_proof, mint_pi_quotient_token, validate_block_por
-from integrations import clean_author_name, calculate_citation_topology
+import streamlit as st
 
+try:
+    from openrouter import OpenRouter
+    OPENROUTER_SDK_AVAILABLE = True
+except Exception:
+    OpenRouter = None
+    OPENROUTER_SDK_AVAILABLE = False
+
+from config import (
+    GROQ_API_KEY, OR_API_KEY, GEMINI_API_KEY,
+    PRIMARY_MODEL, FALLBACK_MODEL, MAX_TEXT_TOKENS, EPOCH_BLOCK_SIZE, BASE_DIR
+)
+from database import get_db_connection
+from ledger import (
+    backup_state_to_web3, generate_zk_snark_proof, mint_pi_quotient_token, 
+    validate_block_por, generate_blockchain_pi
+)
+from integrations import (
+    clean_author_name, is_likely_institution, fetch_author_coara_metrics, 
+    calculate_citation_topology
+)
+
+# ---------------------------------------------------------
+# Neural Networks: Scilem Network & Pidyne LSTM
+# ---------------------------------------------------------
 class ScilemNetwork(nn.Module):
     def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
-        super().__init__()
+        super(ScilemNetwork, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)
         self.fc1 = nn.Linear(hidden_dim, 16)
+        self.relu = nn.ReLU()
         self.fc2 = nn.Linear(16, 1)
-    def forward(self, x):
-        return torch.tanh(self.fc2(torch.relu(self.fc1(self.lstm(self.embedding(x))[0][:, -1, :]))))
 
+    def forward(self, text_tensor):
+        embedded = self.embedding(text_tensor)
+        lstm_out, _ = self.lstm(embedded)
+        last_hidden = lstm_out[:, -1, :]
+        x = self.relu(self.fc1(last_hidden))
+        features = torch.tanh(self.fc2(x))
+        return features
+
+@st.cache_resource
 def get_scilem_engine():
-    m = ScilemNetwork()
-    return m, optim.Adam(m.parameters(), lr=0.001)
+    model = ScilemNetwork()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    return model, optimizer
 
-class PiBrainLSTM(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.lstm = nn.LSTM(8, 32, batch_first=True)
-        self.linear = nn.Sequential(nn.Linear(32, 16), nn.ReLU(), nn.Linear(16, 8))
-    def forward(self, x):
-        return torch.softmax(self.linear(self.lstm(x)[0][:, -1, :]), dim=-1) * 8.0
-PidyneLSTM = PiBrainLSTM
-PidyneBlockchainDataset = lambda data, lookback: [(torch.tensor(data[i:i+lookback], dtype=torch.float32), torch.tensor(data[i+lookback], dtype=torch.float32)) for i in range(len(data)-lookback)]
+@st.cache_resource
+def get_tinyllama_pipeline():
+    from transformers import pipeline
+    return pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v1.0", device_map="auto")
 
 def evaluate_scilem_analysis_report(raw_text):
-    return f"**Scilem:** Neural extraction of '{raw_text[:20]}...' validated locally without API fallback."
-
-def calculate_deterministic_mdar(text):
-    text_lower = text.lower()
-    rrid_count = len(set(re.findall(r'\brrid\s*:?\s*[a-zA-Z0-9_:-]+\b', text_lower)))
-    mdar = (bool(re.search(r'\b(blinded|masking)\b', text_lower)) + bool(re.search(r'\brandomized\b', text_lower)) + bool(re.search(r'\bpower analysis\b', text_lower)) + min(1.0, rrid_count/3.0)) / 4.0
-    return mdar, rrid_count
-
-def calculate_reproducibility_score(text):
-    signals = ["github.com", "data availability", "mit license", "docker", "supplementary", "preregistered"]
-    hits = sum(1 for s in signals if s in text.lower())
-    return min(1.0, max(0.0, 0.30 + (hits / len(signals)) * 0.70)), {}
-
-def calculate_empirical_density(text):
-    hits = len(re.findall(r'\bp\s*[<>=]\s*0?\.\d+|\bn\s*=\s*\d+', text.lower()))
-    return min(1.0, hits / 40.0)
-
-def extract_with_llm(provider, paper_text):
-    # Fallback mock for demonstration if API keys are missing, to ensure processing passes
-    return provider, {"title": "Heuristic Extracted Paper", "authors": "Research Scholar", "opinion": "Extracted via NLP heuristic consensus.", "api_failed": False, "scilem_score": 75.0}
-
-def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None", force_proceed=False):
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
     try:
-        doc = fitz.open(stream=file_bytes, filetype="pdf")
-        full_text = "\n".join([page.get_text("text") for page in doc])
-    except:
-        return None
+        scilem_nlp = get_tinyllama_pipeline()
+        prompt = f"<|system|>\nYou are Scilem, the AI assistant for the Pi-Index Framework.\n<|user|>\n{raw_text}\n<|assistant|>"
+        response = scilem_nlp(prompt, max_new_tokens=150, truncation=True)
+        generated_text = response[0]['generated_text'].split("<|assistant|>")[-1].strip()
+        return f"**Scilem:** {generated_text}"
+    except Exception as e:
+        return f"Scilem Local Neural Engine initialization failed: {e}"
 
-    mdar_score, rrid_count = calculate_deterministic_mdar(full_text)
-    reproducibility_score, _ = calculate_reproducibility_score(full_text)
-    empirical_density = calculate_empirical_density(full_text)
-    topological_entropy = calculate_citation_topology(provided_doi)
-    
-    ai_rating = 82.0 
-    vapri = 0.5 
-    
-    # C1 through C8 formulas[cite: 2, 3]
-    scores_dict = {
-        "C1_Semantic_Originality": min(100.0, max(0.0, (ai_rating * 0.9) + (vapri * 10))),
-        "C2_Methodological_Rigor_SciScore": min(100.0, max(0.0, mdar_score * 100.0)),
-        "C3_Interdisciplinary_Entropy": min(100.0, max(0.0, (ai_rating * 0.85) + (topological_entropy * 15.0))),
-        "C4_Societal_Impact": min(100.0, max(0.0, ai_rating * 0.95 + (topological_entropy * 5))),
-        "C5_Open_Science_Repro": min(100.0, max(0.0, reproducibility_score * 100.0)),
-        "C6_Literature_Integration": min(100.0, max(0.0, ai_rating * 0.88 + (mdar_score * 12))),
-        "C7_Empirical_Density": min(100.0, max(0.0, (empirical_density * 60.0) + (math.tanh(ai_rating/100.0*1.5)*40.0))),
-        "C8_Future_Actionability_FAIR": min(100.0, max(0.0, (ai_rating * 0.8) + (reproducibility_score * 20.0)))
-    }
-    
-    final_score = sum(scores_dict.values()) / 8.0
-    logic_integrity = min(100.0, max(0.0, (ai_rating * math.exp(-(2 * max(0, topological_entropy - 0.5) + 1.5 * (1.0 - ai_rating/100.0)))) + (vapri * 5.0)))
-    piq_minted = round((final_score / 100.0) * 10.0, 2) if (final_score >= 50.0 and logic_integrity >= 50.0) else 0.0
+def extract_with_scilem(paper_text):
+    scilem_model, scilem_optimizer = get_scilem_engine()
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
+    if os.path.exists(scilem_weights_path):
+        try:
+            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
+        except Exception:
+            pass
 
-    zk_proof = generate_zk_snark_proof(file_hash, ai_rating, logic_integrity)
-    tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof) if book_address != "None" else "Simulated_Ledger_Record"
+    scilem_model.eval()
+    words = paper_text.lower().split()[:512]
+    tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
+    if not tokens: tokens = [0]
+    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
 
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""INSERT OR REPLACE INTO papers_assessment (
-                    eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, 
-                    logic_score, author_name, final_score, timestamp, eth_book, piq_minted, tx_hash, zk_proof, 
-                    mdar_adherence_score, rrid_valid_count, reproducibility_score, doi
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (file_hash, user_id, filename.replace(".pdf", ""), filename, scope, *scores_dict.values(),
-         logic_integrity, "Independent Research Scholar", final_score, datetime.now().isoformat(), book_address, 
-         piq_minted, tx_hash, zk_proof, mdar_score, rrid_count, reproducibility_score, provided_doi)
+    with torch.no_grad():
+        feat_val = scilem_model(paper_tensor).item()
+
+    scilem_numeric_score = 50.0 + (feat_val * 40.0)
+
+    lines = [l.strip() for l in paper_text.split("\n") if l.strip()]
+    cand_title = lines[0] if lines else "Scilem Neural Extraction"
+    cand_author = "Independent Research Scholar"
+    for line in lines[1:10]:
+        if any(kw in line.lower() for kw in ["by", "author", "university", "department", "@"]):
+            cand_author = line
+            break
+
+    mdar_signal, rrid_signal = calculate_deterministic_mdar(paper_text)
+    repro_signal, repro_flags = calculate_reproducibility_score(paper_text)
+    density_signal = calculate_empirical_density(paper_text)
+    detected_markers = [k.replace("_", " ") for k, v in repro_flags.items() if v]
+
+    opinion = (
+        f"Scilem Neural Engine Analysis: Deep LSTM feature representation score = {feat_val:.4f}. "
+        f"Deterministic MDAR/RRID adherence measured at {mdar_signal * 100:.1f}% ({rrid_signal} valid RRID token(s)). "
+        f"Empirical density signal measured at {density_signal * 100:.1f}%. "
+        f"Open-science reproducibility markers detected: "
+        f"{', '.join(detected_markers) if detected_markers else 'none found'}."
     )
-    
-    cur.execute("SELECT COUNT(*), block_hash FROM blockchain_por_weights ORDER BY block_height DESC LIMIT 1")
-    count, prev_hash = cur.fetchone()
-    v_node, b_hash, por_p = validate_block_por(count + 1, [1.0]*8, datetime.now().isoformat(), prev_hash or "0"*64, file_hash, "Pidyne_Ensemble", final_score, hashlib.sha256(b"V2").hexdigest())
-    
-    cur.execute("INSERT INTO blockchain_por_weights (w1, w2, w3, w4, w5, w6, w7, w8, timestamp, previous_hash, validator_node, block_hash, eval_hash, model_used, por_proof, formulas_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (*[1.0]*8, datetime.now().isoformat(), prev_hash, v_node, b_hash, file_hash, "Pidyne_Ensemble", por_p, "locked"))
-    conn.commit()
-    conn.close()
 
-    return (filename.replace(".pdf", ""), "Independent Research Scholar", final_score, logic_integrity, "N/A", "N/A", ["CS"], ["AI"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof, [1.0]*8, mdar_score, rrid_count, reproducibility_score, False, [], {}, "", ai_rating)
+    return "scilem", {
+        "title": cand_title[:120],
+        "authors": clean_author_name(cand_author)[:80],
+        "opinion": opinion,
+        "references": [],
+        "api_failed": False,
+        "is_heuristic_fallback": True,
+        "scilem_score": scilem_numeric_score,
+    }
+
+def train_scilem_on_input_and_report(raw_text, evidence_report):
+    scilem_model, scilem_optimizer = get_scilem_engine()
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
+    if os.path.exists(scilem_weights_path):
+        try:
+            scilem_model.load_state_dict(torch.load(scilem_weights_path, weights_only=True))
+        except Exception:
+            pass
+
+    scilem_model.train()
+    scilem_optimizer.zero_grad()
+    
+    words = raw_text.lower().split()[:512]
+    tokens = [int(hashlib.md5(w.encode("utf-8")).hexdigest(), 16) % 10000 for w in words]
+    if not tokens: tokens = [0]
+    paper_tensor = torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
+
+    features = scilem_model(paper_tensor)
+    vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0
+    target_tensor = torch.tensor([[vapri]], dtype=torch.float32)
+
+    loss_function = nn.MSELoss()
+    loss = loss_function(features, target_tensor)
+    loss.backward()
+    scilem_optimizer.step()
+    
+    torch.save(scilem_model.state_dict(), scilem_weights_path)
+    return "Scilem Local Neural Engine Integration: Model weights updated dynamically."
+
+def reset_scilem():
+    scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
+    res_msg = "Scilem state reset successfully."
+    if os.path.exists(scilem_weights_path):
+        try: os.remove(scilem_weights_path)
+        except Exception as e: res_msg = f"Scilem weights file deletion warning: {e}"
+            
+    scilem_model, _ = get_scilem_engine()
+    for m in scilem_model.modules():
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None: nn.init.zeros_(m.bias)
+        elif isinstance(m, nn.LSTM):
+            for name, param in m.named_parameters():
+                if 'weight' in name: nn.init.orthogonal_(param)
+                elif 'bias' in name: nn.init.zeros_(param)
+    return res_msg
+
+class PiBlockchainDataset(Dataset):
+    def __init__(self, data_matrix, lookback):
+        self.data = data_matrix
+        self.lookback = lookback
+    def __len__(self):
+        return len(self.data) - self.lookback
+    def __getitem__(self, idx):
+        return torch.tensor(self.data[idx : idx + self.lookback], dtype=torch.float32), torch.tensor(self.data[idx + self.lookback], dtype=torch.float32)
+
+PidyneBlockchainDataset = PiBlockchainDataset
+
+class PiBrainLSTM(nn.Module):
+    def __init__(self, input_size=8, hidden_layer_size=32, output_size=8):
+        super(PiBrainLSTM, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_layer_size, batch_first=True)
+        self.linear = nn.Sequential(nn.Linear(hidden_layer_size, 16), nn.ReLU(), nn.Linear(16, output_size))
+    def forward(self, x):
+        lstm_out, _ = self.lstm(x)
+        return torch.softmax(self.linear(lstm_out[:, -1, :]), dim=-1) * 8.0
+
+PidyneLSTM = PiBrainLSTM
+
+# ---------------------------------------------------------
+# Multi-LLM Consensus Engine
+# ---------------------------------------------------------
+def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
+    if not api_key or not str(api_key).strip():
+        return provider_name, {"title": "N/A", "authors": "Unconfigured Key", "opinion": f"API key for {provider_name.upper()} is missing.", "references": [], "api_failed": True}
+    try:
+        if "openrouter" in base_url.lower() and OPENROUTER_SDK_AVAILABLE:
+            with OpenRouter(api_key=api_key.strip()) as client:
+                response = client.chat.send(model=model_name, messages=[{"role": "user", "content": prompt}])
+                content = response.choices[0].message.content
+                if content.startswith("```json"): content = content.split("```json")[1].split("```")[0].strip()
+                elif content.startswith("```"): content = content.split("
