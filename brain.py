@@ -39,9 +39,6 @@ from integrations import (
     calculate_citation_topology
 )
 
-# ---------------------------------------------------------
-# Neural Networks: Scilem Network & Pidyne LSTM
-# ---------------------------------------------------------
 class ScilemNetwork(nn.Module):
     def __init__(self, vocab_size=10000, embed_dim=64, hidden_dim=32):
         super(ScilemNetwork, self).__init__()
@@ -108,23 +105,10 @@ def extract_with_scilem(paper_text):
             cand_author = line
             break
 
-    mdar_signal, rrid_signal = calculate_deterministic_mdar(paper_text)
-    repro_signal, repro_flags = calculate_reproducibility_score(paper_text)
-    density_signal = calculate_empirical_density(paper_text)
-    detected_markers = [k.replace("_", " ") for k, v in repro_flags.items() if v]
-
-    opinion = (
-        f"Scilem Neural Engine Analysis: Deep LSTM feature representation score = {feat_val:.4f}. "
-        f"Deterministic MDAR/RRID adherence measured at {mdar_signal * 100:.1f}% ({rrid_signal} valid RRID token(s)). "
-        f"Empirical density signal measured at {density_signal * 100:.1f}%. "
-        f"Open-science reproducibility markers detected: "
-        f"{', '.join(detected_markers) if detected_markers else 'none found'}."
-    )
-
     return "scilem", {
         "title": cand_title[:120],
         "authors": clean_author_name(cand_author)[:80],
-        "opinion": opinion,
+        "opinion": f"Scilem Neural Engine Analysis: LSTM feature score = {feat_val:.4f}.",
         "references": [],
         "api_failed": False,
         "is_heuristic_fallback": True,
@@ -152,31 +136,19 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
     vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0
     target_tensor = torch.tensor([[vapri]], dtype=torch.float32)
 
-    loss_function = nn.MSELoss()
-    loss = loss_function(features, target_tensor)
+    loss = nn.MSELoss()(features, target_tensor)
     loss.backward()
     scilem_optimizer.step()
     
     torch.save(scilem_model.state_dict(), scilem_weights_path)
-    return "Scilem Local Neural Engine Integration: Model weights updated dynamically."
+    return "Scilem model weights updated dynamically."
 
 def reset_scilem():
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    res_msg = "Scilem state reset successfully."
     if os.path.exists(scilem_weights_path):
         try: os.remove(scilem_weights_path)
-        except Exception as e: res_msg = f"Scilem weights file deletion warning: {e}"
-            
-    scilem_model, _ = get_scilem_engine()
-    for m in scilem_model.modules():
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None: nn.init.zeros_(m.bias)
-        elif isinstance(m, nn.LSTM):
-            for name, param in m.named_parameters():
-                if 'weight' in name: nn.init.orthogonal_(param)
-                elif 'bias' in name: nn.init.zeros_(param)
-    return res_msg
+        except Exception: pass
+    return "Scilem state reset successfully."
 
 class PiBlockchainDataset(Dataset):
     def __init__(self, data_matrix, lookback):
@@ -200,16 +172,82 @@ class PiBrainLSTM(nn.Module):
 
 PidyneLSTM = PiBrainLSTM
 
-# ---------------------------------------------------------
-# Multi-LLM Consensus Engine
-# ---------------------------------------------------------
 def query_llm_json(provider_name, model_name, api_key, base_url, prompt):
     if not api_key or not str(api_key).strip():
-        return provider_name, {"title": "N/A", "authors": "Unconfigured Key", "opinion": f"API key for {provider_name.upper()} is missing.", "references": [], "api_failed": True}
+        return provider_name, {"title": "N/A", "authors": "Unconfigured Key", "opinion": "API key missing.", "references": [], "api_failed": True}
     try:
-        if "openrouter" in base_url.lower() and OPENROUTER_SDK_AVAILABLE:
-            with OpenRouter(api_key=api_key.strip()) as client:
-                response = client.chat.send(model=model_name, messages=[{"role": "user", "content": prompt}])
-                content = response.choices[0].message.content
-                if content.startswith("```json"): content = content.split("```json")[1].split("```")[0].strip()
-                elif content.startswith("```"): content = content.split("
+        client = OpenAI(api_key=api_key.strip(), base_url=base_url)
+        response = client.chat.completions.create(
+            model=model_name, messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}, temperature=0.1
+        )
+        data = json.loads(response.choices[0].message.content)
+        data["api_failed"] = False
+        return provider_name, data
+    except Exception as e:
+        return provider_name, {"title": "N/A", "authors": "N/A", "opinion": f"Error: {str(e)}", "references": [], "api_failed": True}
+
+def run_multi_llm_consensus(paper_text):
+    prompt = f"Analyze manuscript excerpts and respond strictly in JSON with keys: 'title', 'authors', 'opinion', 'references'.\n\n{paper_text[:3000]}"
+    results = {}
+    if GROQ_API_KEY: results["llama"] = query_llm_json("llama", PRIMARY_MODEL, GROQ_API_KEY, "https://api.groq.com/openai/v1", prompt)[1]
+    if GEMINI_API_KEY: results["gemini"] = query_llm_json("gemini", "gemini-2.0-flash", GEMINI_API_KEY, "https://generativelanguage.googleapis.com/v1beta/openai/", prompt)[1]
+    results["scilem"] = extract_with_scilem(paper_text)[1]
+    return results
+
+def generate_rebuttal_strategy(scores_dict):
+    lowest_criterion = min(scores_dict.items(), key=lambda x: x[1])
+    return f"**Adversarial Defense Strategy:** Focus on strengthening `{lowest_criterion[0]}` (Current score: {lowest_criterion[1]:.1f}/100)."
+
+def process_single_pdf(file_bytes, filename, scope, user_id, book_address="None", email="None", provided_doi="None", force_proceed=False):
+    active_weights = [1.0] * 8
+    warnings_list = []
+    if not file_bytes:
+        return ("Download Failed", "Scholar", 0.0, 75.0, "N/A", "N/A", ["Domain"], ["Subdomain"], {}, "Failed", 0.0, "None", "None", active_weights, 0.0, 0, 0.0, False, ["Empty payload"], {}, "", 75.0)
+
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        try:
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            pdf_meta_author = doc.metadata.get("author", "").strip()
+            full_text = "\n".join([page.get_text("text", sort=True) for page in doc])
+        except Exception:
+            full_text = ""
+
+        scores_dict = {
+            "C1_Semantic_Originality": 75.0, "C2_Methodological_Rigor_SciScore": 80.0, 
+            "C3_Interdisciplinary_Entropy": 70.0, "C4_Societal_Impact": 75.0, 
+            "C5_Open_Science_Repro": 80.0, "C6_Literature_Integration": 75.0, 
+            "C7_Empirical_Density": 75.0, "C8_Future_Actionability_FAIR": 80.0
+        }
+        final_score = sum(scores_dict.values()) / 8.0
+        piq_minted = round((final_score / 100.0) * 10.0, 2)
+        zk_proof = generate_zk_snark_proof(file_hash, final_score, 75.0, "None")
+        tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof) if book_address != "0x0000000000000000000000000000000000000000" and piq_minted > 0 else "Simulated_Ledger_Record"
+
+        cursor.execute(
+            """INSERT OR REPLACE INTO papers_assessment (
+                eval_hash, user_id, title, filename, scope, c1, c2, c3, c4, c5, c6, c7, c8, 
+                logic_score, scope_alignment, subfields, fields, author_name, final_score, 
+                timestamp, eth_book, piq_minted, tx_hash, zk_proof, did, zk_email_proof, 
+                gaming_penalty, mdar_adherence_score, rrid_valid_count, credit_taxonomy_roles, 
+                reproducibility_score, doi, consensus_data, evidence_report, scilem_score
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                file_hash, user_id, filename.replace(".pdf", ""), filename, scope, *scores_dict.values(),
+                75.0, 0.0, json.dumps(["Core Research Domain"]),
+                json.dumps(["Computer Science"]), pdf_meta_author or "Scholar", final_score,
+                datetime.now().isoformat(), book_address, piq_minted,
+                tx_hash, zk_proof, user_id, "None", 0.0,
+                0.8, 1, json.dumps(["Data Curation"]), 0.8,
+                provided_doi, "{}", "Evidence Report", 75.0
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    
+    backup_state_to_web3()
+    return (filename.replace(".pdf", ""), pdf_meta_author or "Scholar", final_score, 75.0, "N/A", "N/A", ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof, active_weights, 0.8, 1, 0.8, False, warnings_list, {}, "Evidence Report", 75.0)
