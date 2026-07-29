@@ -31,7 +31,7 @@ from config import (
 )
 from database import get_db_connection
 from ledger import (
-    backup_state_to_web3, generate_zk_snark_proof, mint_pi_quotient_token, 
+    backup_state_to_web3, generate_zokrates_proof, mint_piq_token, 
     validate_block_por, generate_blockchain_pi
 )
 from integrations import (
@@ -109,9 +109,9 @@ def extract_with_scilem(paper_text):
             cand_author = line
             break
 
-    mdar_signal, rrid_signal = calculate_deterministic_mdar(paper_text)
-    repro_signal, repro_flags = calculate_reproducibility_score(paper_text)
-    density_signal = calculate_empirical_density(paper_text)
+    mdar_signal, rrid_signal = compute_mdar_adherence(paper_text)
+    repro_signal, repro_flags = compute_reproducibility(paper_text)
+    density_signal = compute_empirical_density(paper_text)
     detected_markers = [k.replace("_", " ") for k, v in repro_flags.items() if v]
 
     opinion = (
@@ -441,7 +441,7 @@ def generate_scilem_fallback_report(text):
     scilem_rep = evaluate_scilem_analysis_report(text)
     return f"Synthesized Evidence Report (Unified Consensus)\n\n### Scilem Neural Assessment\n{scilem_rep}"
 
-def calculate_deterministic_mdar(text: str) -> tuple[float, int]:
+def compute_mdar_adherence(text: str) -> tuple[float, int]:
     text_lower = text.lower()
     blinded = 1.0 if re.search(r'\b(blinded|double-blind|single-blind|masking)\b', text_lower) else 0.0
     randomized = 1.0 if re.search(r'\b(randomized|randomly assigned|random sequence)\b', text_lower) else 0.0
@@ -454,7 +454,7 @@ def calculate_deterministic_mdar(text: str) -> tuple[float, int]:
     
     return mdar_adherence, rrid_count
 
-def calculate_reproducibility_score(text: str) -> tuple[float, dict]:
+def compute_reproducibility(text: str) -> tuple[float, dict]:
     text_lower = text.lower()
     signals = {
         "code_or_data_repository": bool(re.search(
@@ -476,7 +476,7 @@ def calculate_reproducibility_score(text: str) -> tuple[float, dict]:
     score = 0.30 + (hits / total) * 0.70
     return min(1.0, max(0.0, score)), signals
 
-def calculate_empirical_density(text: str) -> float:
+def compute_empirical_density(text: str) -> float:
     text_lower = text.lower()
     stat_terms = len(re.findall(
         r'\b(p\s*[<>=]\s*0?\.\d+|confidence interval|standard deviation|standard error|'
@@ -567,7 +567,7 @@ def generate_rebuttal_strategy(scores_dict):
         f"register active RRIDs, and upload raw experimental artifacts to open repositories."
     )
 
-def process_single_pdf(
+def assess_manuscript(
     file_bytes,
     filename,
     scope,
@@ -626,7 +626,7 @@ def process_single_pdf(
                 return (
                     e_title, e_author, e_score, e_logic, "N/A", "N/A",
                     ["Computer Science"], ["Core Research Domain"], e_scores_dict, file_hash,
-                    e_piq, e_tx, e_zk, active_weights, e_mdar, e_rrid, e_repro, True,
+                    e_piq, e_tx, json.dumps(e_zk) if isinstance(e_zk, dict) else e_zk, active_weights, e_mdar, e_rrid, e_repro, True,
                     ["This manuscript was already assessed previously; returning the cached, already-minted record instead of re-processing."],
                     json.loads(e_consensus) if e_consensus else {}, e_report or "", e_scilem,
                 )
@@ -640,10 +640,10 @@ def process_single_pdf(
             warnings_list.append(f"PyMuPDF parsing note: {e}")
             full_text = ""
 
-        mdar_score, rrid_count = calculate_deterministic_mdar(full_text)
+        mdar_score, rrid_count = compute_mdar_adherence(full_text)
         topological_entropy = calculate_citation_topology(provided_doi)
-        reproducibility_score, _repro_flags = calculate_reproducibility_score(full_text)
-        empirical_density = calculate_empirical_density(full_text)
+        reproducibility_score, _repro_flags = compute_reproducibility(full_text)
+        empirical_density = compute_empirical_density(full_text)
 
         raw_data = evaluate_pdf_text_ensemble(full_text, PRIMARY_MODEL, MAX_TEXT_TOKENS, file_hash)
         
@@ -685,15 +685,18 @@ def process_single_pdf(
             piq_minted = 0.00
             warnings_list.append("⚠️ **MINIMUM piQ THRESHOLD UNMET:** Manuscript score or logic integrity fell below 50.0%. piQ reward set to 0.00.")
 
-        zk_proof = generate_zk_snark_proof(file_hash, pidyne_ai_rating, logic_integrity, "None")
+        zk_proof = generate_zokrates_proof(pidyne_ai_rating, logic_integrity, file_hash)
+        truncated_hash_int = int(file_hash[:16], 16)
         
         if external_active and book_address and book_address != "0x0000000000000000000000000000000000000000" and piq_minted > 0:
-            tx_hash = mint_pi_quotient_token(book_address, piq_minted, file_hash, zk_proof)
+            tx_hash = mint_piq_token(book_address, piq_minted, file_hash, truncated_hash_int, zk_proof)
         else:
             tx_hash = "Simulated_Ledger_Record"
 
         if not external_active:
             warnings_list.append("⚠️ **NOTICE:** Assessment completed using local Scilem neural model & heuristics due to external API limits.")
+
+        zk_proof_str = json.dumps(zk_proof)
 
         cursor.execute(
             """INSERT OR REPLACE INTO papers_assessment (
@@ -708,7 +711,7 @@ def process_single_pdf(
                 logic_integrity, 0.0, json.dumps(["Core Research Domain"]),
                 json.dumps(["Computer Science"]), extracted_author, final_score,
                 datetime.now().isoformat(), book_address, piq_minted,
-                tx_hash, zk_proof, user_id, "None", 0.0,
+                tx_hash, zk_proof_str, user_id, "None", 0.0,
                 mdar_score, rrid_count, json.dumps(["Data Curation"]), reproducibility_score,
                 provided_doi, json.dumps(consensus_raw), evidence_report, scilem_score
             ),
@@ -744,7 +747,7 @@ def process_single_pdf(
 
     return (
         title, extracted_author, final_score, logic_integrity, drift, rec,
-        ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof,
+        ["Computer Science"], ["Core Research Domain"], scores_dict, file_hash, piq_minted, tx_hash, zk_proof_str,
         active_weights, mdar_score, rrid_count, reproducibility_score, False, warnings_list,
         consensus_raw, evidence_report, scilem_score
     )
