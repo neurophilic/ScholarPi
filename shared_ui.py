@@ -65,15 +65,10 @@ def more_details_dialog(item):
     author_name = clean_author_name(item.get("author_name", "Unknown"))
     score = safe_float(item.get("score"), 0.0)
     logic_integrity = safe_float(item.get("logic_integrity"), 75.0)
-    scores_dict = item.get("scores_dict", {})
-    used_weights = item.get("used_weights", [1.0]*8)
     eval_hash = item.get("eval_hash", "0x0")
     piq = safe_float(item.get("piq"), 0.0)
     tx_hash = item.get("tx_hash", "None")
     zk_proof = item.get("zk_proof", "None")
-    mdar_score = safe_float(item.get("h_idx"), 0.0)
-    rrid_count = int(safe_float(item.get("i10_idx"), 0))
-    repro_score = safe_float(item.get("repro_score"), 0.0)
     filename = item.get("filename", "N/A")
     warnings = item.get("warnings", [])
     evidence_report_text = item.get("evidence_report_text", "")
@@ -95,9 +90,6 @@ def more_details_dialog(item):
     tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
     if tx_url: st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
     else: st.write(f"**Tx Hash:** `{tx_disp_val}`")
-
-    st.markdown(f"**Executable Reproducibility Score:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
-    st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("### Synthesized Evidence Report")
     if evidence_report_text:
