@@ -207,30 +207,13 @@ current_orcid_name_js = st.session_state.researcher_name if st.session_state.res
 state_payload = st.session_state.web3_wallet if has_web3 else "none"
 orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
 
-# Styled to match standard Streamlit secondary buttons precisely
+# Plain, unstyled button HTML structure for MetaMask connection
 mm_button_html = f"""
-    <div style="width: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box;">
-        <button id="connect-mm-btn" type="button" style="
-            width: 100%;
-            background-color: #ffffff;
-            color: #1e293b;
-            border: 1px solid #d1d5db;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-            transition: all 0.2s ease;
-            box-sizing: border-box;
-        ">
-            <span>Connect MetaMask</span>
+    <div style="width: 100%; box-sizing: border-box;">
+        <button id="connect-mm-btn" type="button" style="width: 100%; cursor: pointer;">
+            Connect MetaMask
         </button>
-        <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
+        <div id="mm-status" style="margin-top: 4px; font-size: 11px; color: #dc2626; text-align: center;"></div>
     </div>
     <script>
     function getEthereumProvider() {{
@@ -244,14 +227,14 @@ mm_button_html = f"""
     if (mmBtn) {{
         mmBtn.addEventListener('click', async () => {{
             const statusDiv = document.getElementById('mm-status');
-            statusDiv.style.color = "#2563eb"; statusDiv.innerText = "Connecting...";
+            statusDiv.innerText = "Connecting...";
             const provider = getEthereumProvider();
             if (!provider) {{ statusDiv.innerText = "MetaMask not detected!"; return; }}
             try {{
                 const accounts = await provider.request({{ method: 'eth_requestAccounts' }});
                 if (!accounts || accounts.length === 0) return;
                 const account = accounts[0];
-                statusDiv.innerText = "Signing SIWE...";
+                statusDiv.innerText = "Signing...";
                 const domain = "ScholarPi";
                 const nonce = Math.floor(Math.random() * 100000000);
                 const message = `${{domain}} wants you to sign in with your Ethereum account:\\n${{account}}\\n\\nSign in with Ethereum to authenticate session.\\n\\nNonce: ${{nonce}}\\nIssued At: ${{new Date().toISOString()}}`;
@@ -267,7 +250,7 @@ mm_button_html = f"""
                 if (currentOrcid) targetUrl.searchParams.set("restore_orcid", currentOrcid);
                 if (currentOrcidName) targetUrl.searchParams.set("restore_orcid_name", currentOrcidName);
                 window.open(targetUrl.href, '_blank');
-                statusDiv.innerHTML = `<div style="background:#10b981; color:white; padding:8px; border-radius:6px; margin-top:8px;">Verified! Sync completed in the newly opened tab. You may close this tab.</div>`;
+                statusDiv.innerHTML = "Verified! Sync completed in the newly opened tab.";
             }} catch (err) {{ statusDiv.innerText = err.message || "Rejected."; }}
         }});
     }}
@@ -276,7 +259,7 @@ mm_button_html = f"""
 
 st.sidebar.title("System Access & Sync")
 with st.sidebar:
-    if not has_web3: components.html(mm_button_html, height=85)
+    if not has_web3: components.html(mm_button_html, height=55)
     else: st.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
     if not has_orcid: st.link_button("Link ORCID Account", orcid_auth_url, use_container_width=True)
