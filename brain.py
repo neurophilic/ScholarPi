@@ -77,9 +77,9 @@ def evaluate_scilem_analysis_report(raw_text):
         prompt = f"<|system|>\nYou are Scilem, the AI assistant for the Pi-Index Framework.\n<|user|>\n{raw_text}\n<|assistant|>"
         response = scilem_nlp(prompt, max_new_tokens=150, truncation=True)
         generated_text = response[0]['generated_text'].split("<|assistant|>")[-1].strip()
-        return f"**Scilem:** {generated_text}"[cite: 5]
+        return f"**Scilem:** {generated_text}"
     except Exception as e:
-        return f"Scilem Local Neural Engine initialization failed: {e}"[cite: 5]
+        return f"Scilem Local Neural Engine initialization failed: {e}"
 
 def extract_with_scilem(paper_text):
     scilem_model, scilem_optimizer = get_scilem_engine()
@@ -154,8 +154,8 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
 
     features = scilem_model(paper_tensor)
     
-    vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0[cite: 5]
-    target_tensor = torch.tensor([[vapri]], dtype=torch.float32)[cite: 5]
+    vapri = (int(hashlib.md5(evidence_report.encode()).hexdigest(), 16) % 1000) / 1000.0
+    target_tensor = torch.tensor([[vapri]], dtype=torch.float32)
 
     loss_function = nn.MSELoss()
     loss = loss_function(features, target_tensor)
@@ -164,16 +164,16 @@ def train_scilem_on_input_and_report(raw_text, evidence_report):
     
     torch.save(scilem_model.state_dict(), scilem_weights_path)
 
-    return "Scilem Local Neural Engine Integration: Model weights updated dynamically via RLHF backpropagation from Pidyne synthesized consensus matrix."[cite: 5]
+    return "Scilem Local Neural Engine Integration: Model weights updated dynamically via RLHF backpropagation from Pidyne synthesized consensus matrix."
 
 def reset_scilem():
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
-    res_msg = "Scilem state reset successfully."[cite: 5]
+    res_msg = "Scilem state reset successfully."
     if os.path.exists(scilem_weights_path):
         try:
             os.remove(scilem_weights_path)
         except Exception as e:
-            res_msg = f"Scilem weights file deletion warning: {e}"[cite: 5]
+            res_msg = f"Scilem weights file deletion warning: {e}"
             
     scilem_model, scilem_optimizer = get_scilem_engine()
     
