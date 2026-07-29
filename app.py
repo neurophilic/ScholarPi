@@ -7,6 +7,7 @@ import tempfile
 import shutil
 import colorsys
 import logging
+import traceback
 import urllib.parse
 import requests
 from datetime import datetime
@@ -26,7 +27,10 @@ import streamlit.components.v1 as components
 from web3 import Web3
 from eth_account.messages import encode_defunct
 
-from config import BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS, HOT_TOPICS
+from config import (
+    BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS, 
+    HOT_TOPICS, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_REDIRECT_URI
+)
 from database import get_db_connection
 from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url
 from integrations import (
@@ -43,9 +47,6 @@ from brain import (
 w3 = Web3()
 
 OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"
-ORCID_CLIENT_ID = "APP-4C9H89YFZQ7JGC6Z"
-ORCID_CLIENT_SECRET = "e900b780-b4bd-447d-84b5-2c035333e6e3"
-ORCID_REDIRECT_URI = "https://scholarpi.streamlit.app"
 
 st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
@@ -315,7 +316,7 @@ mm_button_html = f"""
         transition: all 0.2s ease;
         box-sizing: border-box;
     ">
-        <span>Conncet MetaMask</span>
+        <span>Connect MetaMask</span>
     </button>
     <div id="mm-status" style="margin-top: 4px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
 
@@ -421,7 +422,6 @@ with st.sidebar:
     else:
         st.success(f"ORCID Linked: `{st.session_state.orcid_profile}`")
 
-# Make sure Dual-Auth Synchronization Guide disappears if both auth methods are connected
 if not (has_web3 and has_orcid):
     st.sidebar.info(
         "**Dual-Auth Synchronization Guide:**\n"
@@ -621,7 +621,8 @@ def refine_science_field(s):
     else:
         return f"Engineering & Technology > Applied Technical Research ({s.title()})"
 
-def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, size_scale=1.5, central_grav=0.15):
+@st.cache_data(ttl=3600)
+def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, size_scale=1.5, central_grav=0.15, _db_token=0):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -820,11 +821,10 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
 
     return html_string, table_html
 
-
 def get_criteria_info(weights):
     tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = weights
     return [
-        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + v_{apri} $$"),
+        ("C1", "Originality", "c1: originality", tw1, "1", "Semantic distance from literature corpus penalized by generative AI laundering heuristics.", r"$$ C_1 = \varpi_1 \cdot \mathcal{D}_{semantic}(P_{target}, P_{corpus}) \times (1 - \lambda_{laundering}) + \text{vapri} $$"),
         ("C2", "Methodological Rigor", "c2: methodological rigor", tw2, "2", "Deterministic adherence to MDAR reporting standards and valid RRIDs via SciScore.", r"$$ C_2 = \varpi_2 \cdot \mathcal{I}_{blinding} + \varpi_2 \cdot \mathcal{I}_{randomization} + \varpi_2 \cdot \mathcal{I}_{power\_calc} + \varpi_2 \cdot \left(\frac{N_{RRID\_valid}}{N_{RRID\_expected} + \epsilon}\right) $$"),
         ("C3", "Interdisciplinary Synergy", "c3: interdisciplinary synergy", tw3, "3", "Measures cross-disciplinary integration and entropy across scientific domains.", r"$$ C_3 = \varpi_3 \cdot -\sum_{i=1}^{k} p_i \ln(p_i) $$"),
         ("C4", "Societal Impact", "c4: societal impact", tw4, "4", "Evaluates broader societal and open infrastructure contributions.", r"$$ C_4 = \varpi_4 \cdot \Theta\left[ \sum_{v \in \mathcal{V}} \omega_v U_v(\tau, \mathbf{x}) \right] $$"),
@@ -849,7 +849,7 @@ def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula)
         r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot"
         r" \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} -"
         r" \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right)"
-        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot v_{apri} $$"
+        r" \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \text{vapri} $$"
     )
 
 top_title_col, top_badge_col = st.columns([4, 2], vertical_alignment="center")
@@ -946,138 +946,145 @@ with st.container(border=True):
                 st.info("Pipeline operation cancelled by user.")
                 st.rerun()
 
-        progress_bar, status_text = st.progress(0), st.empty()
         scope_val = ""
         snap_files = st.session_state.get("snap_files", [])
         include_doi_snap = st.session_state.get("snap_include_doi", False)
         doi_snap = st.session_state.get("snap_doi", "")
-
-        try:
-            if (
-                include_doi_snap
-                and doi_snap.strip()
-                and not st.session_state["cancel_requested"]
-            ):
-                status_text.text(f"Resolving DOI: {doi_snap}...")
-                metadata = fetch_doi_metadata(doi_snap)
-                fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
-                pdf_bytes = None
-                add_log(f"Attempting API resolution for standalone DOI: {doi_snap}")
-                
-                if metadata and metadata.get("pdf_url"):
-                    pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
-                if not pdf_bytes:
-                    s2_url = fetch_semantic_scholar_pdf(doi_snap)
-                    if s2_url:
-                        pdf_bytes = download_pdf_from_url(s2_url)
-                
-                if not pdf_bytes:
-                    core_text = fetch_core_text_by_doi(doi_snap)
-                    if core_text:
-                        pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
-
-                if pdf_bytes:
-                    status_text.text("Assessing document from resolved source...")
-                    clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
-                    try:
-                        res = process_single_pdf(
-                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val=doi_snap.strip(),
-                        )
-                    except Exception as err:
-                        res = None
-                        add_log(f"Error executing process_single_pdf for DOI source: {str(err)}")
-
-                    if res and len(res) >= 22:
-                        (
-                            title, author_name, score, logic_integrity, drift, rec,
-                            fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                            consensus_raw, evidence_report_text, scilem_rating
-                        ) = res
-
-                        eval_record = {
-                            "title": title, "author_name": clean_author_name(author_name),
-                            "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                            "rec": rec, "fields": fields, "subfields": subfields,
-                            "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                            "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                            "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                            "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                            "scilem_rating": scilem_rating
-                        }
-                        st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                        st.session_state["free_evals_used"] += 1
-                        add_log("Successfully evaluated and logged DOI source.")
-                    else:
-                        add_log("Error: process_single_pdf returned incomplete data for DOI source.")
-                else:
-                    clean_doi = doi_snap.replace("https://doi.org/", "").strip()
-                    doi_url = f"https://doi.org/{clean_doi}"
-                    err_item = {"title": f"DOI Input: {clean_doi}", "doi": clean_doi, "url": doi_url}
-                    add_log("Publisher access blocks direct binary extraction for standalone DOI.")
-                    if err_item not in st.session_state["download_errors"]:
-                        st.session_state["download_errors"].append(err_item)
-
-            if snap_files and not st.session_state["cancel_requested"]:
-                total_files = len(snap_files)
-                for i, (fname, fpath) in enumerate(snap_files):
-                    if st.session_state["cancel_requested"]:
-                        break
-                    status_text.text(f"Analyzing uploaded file {i+1} of {total_files}: {fname}...")
-                    add_log(f"Engaging logical extraction on local file structure: {fname}")
+        
+        with st.status("Initializing Assessment Pipeline...", expanded=True) as status_box:
+            try:
+                if (
+                    include_doi_snap
+                    and doi_snap.strip()
+                    and not st.session_state["cancel_requested"]
+                ):
+                    status_box.update(label=f"Resolving DOI: {doi_snap}...")
+                    metadata = fetch_doi_metadata(doi_snap)
+                    fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
+                    pdf_bytes = None
+                    add_log(f"Attempting API resolution for standalone DOI: {doi_snap}")
+                    status_box.write(f"Attempting API resolution for standalone DOI: {doi_snap}")
                     
-                    with open(fpath, "rb") as in_f:
-                        raw_bytes = in_f.read()
+                    if metadata and metadata.get("pdf_url"):
+                        pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+                    if not pdf_bytes:
+                        s2_url = fetch_semantic_scholar_pdf(doi_snap)
+                        if s2_url:
+                            pdf_bytes = download_pdf_from_url(s2_url)
+                    
+                    if not pdf_bytes:
+                        core_text = fetch_core_text_by_doi(doi_snap)
+                        if core_text:
+                            pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
+
+                    if pdf_bytes:
+                        status_box.update(label="Assessing document from resolved source...")
+                        clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
+                        try:
+                            res = process_single_pdf(
+                                clean_bytes, fname, scope_val, current_user, valid_book_address, email="None", provided_doi=doi_snap.strip(),
+                            )
+                        except Exception as err:
+                            res = None
+                            err_trace = traceback.format_exc()
+                            add_log(f"Error executing process_single_pdf for DOI source: {str(err)}\n{err_trace}")
+                            status_box.write(f"Pipeline error: {str(err)}")
+
+                        if res and len(res) >= 22:
+                            (
+                                title, author_name, score, logic_integrity, drift, rec,
+                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                                consensus_raw, evidence_report_text, scilem_rating
+                            ) = res
+
+                            eval_record = {
+                                "title": title, "author_name": clean_author_name(author_name),
+                                "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                                "rec": rec, "fields": fields, "subfields": subfields,
+                                "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                                "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                                "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                                "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                                "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                                "scilem_rating": scilem_rating
+                            }
+                            st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                            st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                            st.session_state["free_evals_used"] += 1
+                            add_log("Successfully evaluated and logged DOI source.")
+                            status_box.write("Successfully evaluated and logged DOI source.")
+                        else:
+                            add_log("Error: process_single_pdf returned incomplete data for DOI source.")
+                    else:
+                        clean_doi = doi_snap.replace("https://doi.org/", "").strip()
+                        doi_url = f"https://doi.org/{clean_doi}"
+                        err_item = {"title": f"DOI Input: {clean_doi}", "doi": clean_doi, "url": doi_url}
+                        add_log("Publisher access blocks direct binary extraction for standalone DOI.")
+                        if err_item not in st.session_state["download_errors"]:
+                            st.session_state["download_errors"].append(err_item)
+
+                if snap_files and not st.session_state["cancel_requested"]:
+                    total_files = len(snap_files)
+                    for i, (fname, fpath) in enumerate(snap_files):
+                        if st.session_state["cancel_requested"]:
+                            break
+                        status_box.update(label=f"Analyzing uploaded file {i+1} of {total_files}: {fname}...")
+                        add_log(f"Engaging logical extraction on local file structure: {fname}")
+                        status_box.write(f"Engaging logical extraction on local file structure: {fname}")
                         
-                    clean_bytes = preprocess_pdf_layout(raw_bytes, fname)
-                    
-                    try:
-                        res = process_single_pdf(
-                            clean_bytes, fname, scope_val, current_user, valid_book_address, current_email="None", doi_val="None",
-                        )
-                    except Exception as err:
-                        res = None
-                        add_log(f"Error executing process_single_pdf for local file {fname}: {str(err)}")
+                        with open(fpath, "rb") as in_f:
+                            raw_bytes = in_f.read()
+                            
+                        clean_bytes = preprocess_pdf_layout(raw_bytes, fname)
+                        
+                        try:
+                            res = process_single_pdf(
+                                clean_bytes, fname, scope_val, current_user, valid_book_address, email="None", provided_doi="None",
+                            )
+                        except Exception as err:
+                            res = None
+                            err_trace = traceback.format_exc()
+                            add_log(f"Error executing process_single_pdf for local file {fname}: {str(err)}\n{err_trace}")
+                            status_box.write(f"Pipeline error for local file {fname}: {str(err)}")
 
-                    if res and len(res) >= 22:
-                        (
-                            title, author_name, score, logic_integrity, drift, rec,
-                            fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                            zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                            consensus_raw, evidence_report_text, scilem_rating
-                        ) = res
+                        if res and len(res) >= 22:
+                            (
+                                title, author_name, score, logic_integrity, drift, rec,
+                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
+                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
+                                consensus_raw, evidence_report_text, scilem_rating
+                            ) = res
 
-                        eval_record = {
-                            "title": title, "author_name": clean_author_name(author_name),
-                            "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                            "rec": rec, "fields": fields, "subfields": subfields,
-                            "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                            "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                            "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                            "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                            "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                            "scilem_rating": scilem_rating
-                        }
-                        st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
-                        st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
-                        st.session_state["free_evals_used"] += 1
-                        progress_bar.progress((i + 1) / total_files)
-                        add_log(f"Stored local assessment result to cache.")
-                    else:
-                        add_log(f"Error: process_single_pdf returned incomplete data for {fname}")
+                            eval_record = {
+                                "title": title, "author_name": clean_author_name(author_name),
+                                "score": score, "logic_integrity": logic_integrity, "drift": drift,
+                                "rec": rec, "fields": fields, "subfields": subfields,
+                                "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
+                                "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
+                                "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
+                                "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
+                                "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
+                                "scilem_rating": scilem_rating
+                            }
+                            st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                            st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                            st.session_state["free_evals_used"] += 1
+                            add_log(f"Stored local assessment result to cache.")
+                        else:
+                            add_log(f"Error: process_single_pdf returned incomplete data for {fname}")
 
-            if st.session_state["cancel_requested"]:
-                st.warning("Pipeline operation was stopped.")
-            else:
-                status_text.success("Pipeline processing complete.")
-                time.sleep(1)
-        finally:
-            st.session_state["is_running"] = False
-            st.session_state["cancel_requested"] = False
-            st.session_state["reset_token"] += 1
-            st.session_state["assessment_update_token"] = time.time()
+                if st.session_state["cancel_requested"]:
+                    status_box.update(label="Pipeline operation was stopped.", state="error")
+                else:
+                    status_box.update(label="Pipeline processing complete.", state="complete")
+                    time.sleep(1)
+            finally:
+                st.session_state["is_running"] = False
+                st.session_state["cancel_requested"] = False
+                st.session_state["reset_token"] += 1
+                st.session_state["assessment_update_token"] = time.time()
+                st.rerun()
 
     else:
         if st.button("Run Assessment Pipeline", type="primary", use_container_width=True):
@@ -1094,12 +1101,13 @@ with st.container(border=True):
                 add_log("Preparing pipeline dispatch queue...")
                 saved_files = []
                 for f in selected_uploaded_files:
-                    f_path = os.path.join(st.session_state["session_temp_dir"], f.name)
+                    safe_filename = os.path.basename(f.name)
+                    f_path = os.path.join(st.session_state["session_temp_dir"], safe_filename)
                     with open(f_path, "wb") as out_f:
                         out_f.write(f.getvalue())
                     f.seek(0)
-                    saved_files.append((f.name, f_path))
-                    add_log(f"Cached user file to temporary disk node: {f.name}")
+                    saved_files.append((safe_filename, f_path))
+                    add_log(f"Cached user file to temporary disk node: {safe_filename}")
                     
                 st.session_state["snap_files"] = saved_files
                 st.session_state["snap_scope"] = ""
@@ -1560,7 +1568,8 @@ with top_analytics_col2:
         repulsion=st.session_state.mod_repulsion,
         spring_len=st.session_state.mod_spring,
         size_scale=st.session_state.mod_size,
-        central_grav=st.session_state.mod_gravity
+        central_grav=st.session_state.mod_gravity,
+        _db_token=st.session_state['assessment_update_token']
     )
 
     map_container = st.container()
@@ -1704,7 +1713,7 @@ if has_web3 or has_orcid:
 side_col1, side_col2 = st.columns(2, gap="large")
 
 with side_col1:
-    st.markdown("### Pi Quotient (piQ) Leaderboard [Top Authors]")
+    st.markdown("### Pi Quotient (piQ) Leaderboard")
     piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
