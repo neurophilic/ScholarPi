@@ -108,7 +108,7 @@ if "session_temp_dir" not in st.session_state:
     st.session_state["session_temp_dir"] = tempfile.mkdtemp()
     add_log(f"Temporary volume allocated: {st.session_state['session_temp_dir']}")
 if "scilem_messages" not in st.session_state:
-    st.session_state.scilem_messages = [{"role": "assistant", "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."}]
+    st.session_state.scilem_messages = [{"role": "assistant", "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."}][cite: 5]
 
 if "state_restored" not in st.session_state:
     restore_state_from_web3()
@@ -127,10 +127,11 @@ def framework_workflow_dialog():
 
 @st.dialog("Criterion Details & Adversarial Logic Engine", width="medium")
 def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula):
-    st.markdown(f"### {c_id}: {title}\n**Current Epoch Weight ($\varpi_{sym}$):** `{weight_val:.6f}`\n{desc} {rbot(q_key)}", unsafe_allow_html=True)
+    st.markdown(f"### {c_id}: {title}\n**Current Epoch Weight (\\varpi_{sym}):** `{weight_val:.6f}`\n{desc} {rbot(q_key)}", unsafe_allow_html=True)
     st.markdown(formula)
-    st.markdown("---\n**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence.")
-    st.markdown(r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right) \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \text{vapri} $$")
+    st.markdown("---")
+    st.markdown(r"**Adversarial Logic Gap ($\Delta_{Logic}$):** Evaluates reasoning structure and penalizes claims unsupported by evidence.")
+    st.markdown(r"$$ L_i = \left( (\mathcal{P}_{valid} \cdot \mathcal{E}_{strength}) \cdot \exp\left(-\left(2 \cdot \max(0, \mathcal{C}_{reach} - \mathcal{E}_{strength}) + 1.5 \cdot \lambda_{jumps}\right)\right) \right) \times \frac{1}{1 + e^{-\Delta Premise}} + \lambda \cdot \text{vapri} $$")[cite: 5]
 
 @st.dialog("Detailed Research Integrity Dossier", width="large")
 def more_details_dialog(item):
@@ -309,7 +310,7 @@ def page_analytics():
     st.markdown("---")
     col1, col2 = st.columns(2, gap="large")
     with col1:
-        st.markdown("### Pi Quotient (piQ) Leaderboard")
+        st.markdown("### Pi Quotient (piQ) Leaderboard")[cite: 3]
         data = pd.read_sql_query("SELECT author_name, piq_minted FROM papers_assessment", conn)
         author_piq = {}
         for _, row in data.iterrows():
