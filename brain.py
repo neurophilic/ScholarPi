@@ -80,6 +80,10 @@ def evaluate_scilem_analysis_report(raw_text):
     except Exception as e:
         return f"Scilem Local Neural Engine initialization failed: {e}"
 
+def generate_scilem_fallback_report(text):
+    scilem_rep = evaluate_scilem_analysis_report(text)
+    return f"Synthesized Evidence Report (Dynamic Consensus)\n\n### Scilem Neural Assessment\n{scilem_rep}"
+
 def extract_with_scilem(paper_text):
     scilem_model, scilem_optimizer = get_scilem_engine()
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
