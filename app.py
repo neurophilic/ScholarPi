@@ -30,26 +30,26 @@ from eth_account.messages import encode_defunct
 from config import (
     BASE_DIR, EPOCH_BLOCK_SIZE, PIQ_CONTRACT_ADDRESS, REGISTRY_CONTRACT_ADDRESS, 
     HOT_TOPICS, ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_REDIRECT_URI
-)
-from database import get_db_connection
-from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url
+)[cite: 7]
+from database import get_db_connection[cite: 8]
+from ledger import restore_state_from_web3, generate_blockchain_pi, get_sepolia_explorer_url[cite: 10]
 from integrations import (
     clean_author_name, is_likely_institution, fetch_doi_metadata, 
     fetch_semantic_scholar_pdf, download_pdf_from_url, search_openalex_topics,
     fetch_core_text_by_doi, create_virtual_pdf_from_text
-)
-from brain import (
+)[cite: 9]
+from brain import ([cite: 6]
     process_single_pdf, generate_rebuttal_strategy, PidyneLSTM, 
     PidyneBlockchainDataset, generate_scilem_fallback_report, reset_scilem,
     evaluate_scilem_analysis_report
-)
+)[cite: 6]
 
 w3 = Web3()
-OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"
+OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"[cite: 5]
 
 st.set_page_config(
     page_title="Pi-Index Assessment Engine", layout="wide"
-)
+)[cite: 5]
 
 if "app_logs" not in st.session_state:
     st.session_state.app_logs = deque(maxlen=50)
@@ -64,7 +64,7 @@ def safe_get_sepolia_url(tx):
     if not tx or not isinstance(tx, str) or not tx.startswith("0x") or len(tx) != 66:
         return None
     try:
-        return get_sepolia_explorer_url(tx, "tx")
+        return get_sepolia_explorer_url(tx, "tx")[cite: 10]
     except Exception:
         return None
 
@@ -83,7 +83,7 @@ def safe_float(val, default=0.0):
             return default
 
 def get_author_piq_dict():
-    conn = get_db_connection()
+    conn = get_db_connection()[cite: 8]
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT author_name, piq_minted, eth_book FROM papers_assessment")
@@ -93,12 +93,12 @@ def get_author_piq_dict():
     
     author_piq, author_book = {}, {}
     for authors_str, piq, eth_book in data:
-        clean_authors = clean_author_name(authors_str)
+        clean_authors = clean_author_name(authors_str)[cite: 9]
         if (
             not clean_authors
             or clean_authors.lower()
             in ["unidentified", "unknown", "research scholar"]
-            or is_likely_institution(clean_authors)
+            or is_likely_institution(clean_authors)[cite: 9]
         ):
             continue
         alist = [a.strip() for a in clean_authors.split(",") if a.strip()]
@@ -111,10 +111,10 @@ def get_author_piq_dict():
     return author_piq, author_book
 
 def preprocess_pdf_layout(pdf_bytes, fname):
-    return pdf_bytes
+    return pdf_bytes[cite: 5]
 
 def rbot(topic_key):
-    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"
+    return f"<span class='scilem-trigger' data-query='{topic_key}' title='Ask Scilem' style='cursor: pointer !important; opacity:0.8;'>[?]</span>"[cite: 5]
 
 if "web3_wallet" not in st.session_state:
     st.session_state.web3_wallet = None
@@ -166,11 +166,11 @@ if "code" in st.query_params:
         token_url = "https://orcid.org/oauth/token"
         headers = {"Accept": "application/json"}
         payload = {
-            "client_id": ORCID_CLIENT_ID,
-            "client_secret": ORCID_CLIENT_SECRET,
+            "client_id": ORCID_CLIENT_ID,[cite: 7]
+            "client_secret": ORCID_CLIENT_SECRET,[cite: 7]
             "grant_type": "authorization_code",
             "code": auth_code,
-            "redirect_uri": ORCID_REDIRECT_URI
+            "redirect_uri": ORCID_REDIRECT_URI[cite: 7]
         }
         
         response = requests.post(token_url, data=payload, headers=headers)
@@ -277,30 +277,32 @@ has_orcid = bool(st.session_state.orcid_profile)
 current_orcid_js = st.session_state.orcid_profile if st.session_state.orcid_profile else ""
 current_orcid_name_js = st.session_state.researcher_name if st.session_state.researcher_name != "Anonymous Researcher" else ""
 state_payload = st.session_state.web3_wallet if has_web3 else "none"
-orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
+orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"[cite: 7]
 
 mm_button_html = f"""
-    <button id="connect-mm-btn" type="button" style="
-        width: 100%;
-        background: linear-gradient(135deg, #f6851b, #e2761b);
-        color: white;
-        border: none;
-        padding: 10px 14px;
-        border-radius: 8px;
-        font-weight: 700;
-        font-size: 13px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
-        transition: all 0.2s ease;
-        box-sizing: border-box;
-    ">
-        <span>Connect MetaMask</span>
-    </button>
-    <div id="mm-status" style="margin-top: 4px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
+    <div style="width: 100%; font-family: sans-serif; box-sizing: border-box;">
+        <button id="connect-mm-btn" type="button" style="
+            width: 100%;
+            background: linear-gradient(135deg, #f6851b, #e2761b);
+            color: white;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25);
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        ">
+            <span>Connect MetaMask</span>
+        </button>
+        <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
+    </div>
     <script>
     function getEthereumProvider() {{
         let provider = window.ethereum;
@@ -362,36 +364,14 @@ mm_button_html = f"""
     </script>
 """
 
-orcid_button_html = f"""
-    <a href="{orcid_auth_url}" target="_blank" style="
-        width: 100%;
-        background: #A6CE39;
-        color: #ffffff;
-        border: none;
-        padding: 10px 14px;
-        border-radius: 8px;
-        font-weight: 700;
-        font-size: 13px;
-        text-align: center;
-        text-decoration: none;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 2px 6px rgba(166, 206, 57, 0.3);
-        box-sizing: border-box;
-    ">
-        Link ORCID Account
-    </a>
-"""
-
 with st.sidebar:
     if not has_web3:
-        components.html(mm_button_html, height=120)
+        components.html(mm_button_html, height=85)
     else:
         st.success(f"Web3 Linked: `{st.session_state.web3_wallet[:6]}...{st.session_state.web3_wallet[-4:]}`")
 
     if not has_orcid:
-        components.html(orcid_button_html, height=80)
+        st.link_button("Link ORCID Account", orcid_auth_url, use_container_width=True)
     else:
         st.success(f"ORCID Linked: `{st.session_state.orcid_profile}`")
 
@@ -421,7 +401,7 @@ try:
 except Exception:
     pass
 
-conn_ip = get_db_connection()
+conn_ip = get_db_connection()[cite: 8]
 try:
     cur_ip = conn_ip.cursor()
     cur_ip.execute(
@@ -437,7 +417,7 @@ try:
 finally:
     conn_ip.close()
 
-conn_cnt = get_db_connection()
+conn_cnt = get_db_connection()[cite: 8]
 try:
     cur_cnt = conn_cnt.cursor()
     cur_cnt.execute("SELECT COUNT(*) FROM papers_assessment")
@@ -446,7 +426,7 @@ finally:
     conn_cnt.close()
 
 if "state_restored" not in st.session_state:
-    restore_state_from_web3()
+    restore_state_from_web3()[cite: 10]
     st.session_state["state_restored"] = True
     add_log("Synchronized state with Sepolia Ethereum Ledger.")
 
@@ -475,7 +455,7 @@ if "scilem_messages" not in st.session_state:
     ]
 
 if has_web3 or has_orcid:
-    conn_hist = get_db_connection()
+    conn_hist = get_db_connection()[cite: 8]
     total_user_piq = 0.0
     try:
         cur_h = conn_hist.cursor()
@@ -533,7 +513,7 @@ with st.sidebar.expander("🧠 Scilem Assistant", expanded=False):
             submitted_floating = st.form_submit_button("Send")
             if submitted_floating and floating_prompt.strip():
                 st.session_state.scilem_messages.append({"role": "user", "content": floating_prompt})
-                scilem_neural_reply = evaluate_scilem_analysis_report(floating_prompt)
+                scilem_neural_reply = evaluate_scilem_analysis_report(floating_prompt)[cite: 6]
                 st.session_state.scilem_messages.append({
                     "role": "assistant",
                     "content": scilem_neural_reply
@@ -542,7 +522,7 @@ with st.sidebar.expander("🧠 Scilem Assistant", expanded=False):
 
     if has_web3 and w3.is_address(st.session_state.web3_wallet) and w3.is_address(OWNER_ID) and st.session_state.web3_wallet.lower() == OWNER_ID.lower():
         if st.button("Reset Scilem (Owner)", use_container_width=True):
-            msg = reset_scilem()
+            msg = reset_scilem()[cite: 6]
             st.session_state.scilem_messages = [
                 {
                     "role": "assistant", 
@@ -596,7 +576,7 @@ def refine_science_field(s):
 
 @st.cache_data(ttl=3600)
 def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, size_scale=1.5, central_grav=0.15, _db_token=0):
-    conn = get_db_connection()
+    conn = get_db_connection()[cite: 8]
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT fields, subfields, final_score, author_name FROM papers_assessment")
@@ -615,7 +595,7 @@ def render_bubble_chart_clean(target_author, repulsion=-3000, spring_len=180, si
     }
 
     for fields_json, subfields_json, final_score, author_str in data:
-        cleaned_author = clean_author_name(author_str)
+        cleaned_author = clean_author_name(author_str)[cite: 9]
         if (
             target_author
             and target_author != "All Authors"
@@ -811,7 +791,7 @@ def get_criteria_info(weights):
 def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula):
     st.markdown(f"### {c_id}: {title}")
     st.markdown(rf"**Current Epoch Weight ($\varpi_{sym}$):** `{weight_val:.6f}`")
-    st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)
+    st.markdown(f"{desc} {rbot(q_key)}", unsafe_allow_html=True)[cite: 5]
     st.markdown(formula)
     st.markdown("---")
     st.markdown(
@@ -827,7 +807,7 @@ def criterion_details_dialog(c_id, title, q_key, weight_val, sym, desc, formula)
 
 top_title_col, top_badge_col = st.columns([4, 2], vertical_alignment="center")
 with top_title_col:
-    st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom:0;'>Pi-Index Assessment Engine</h1>", unsafe_allow_html=True)[cite: 5]
 with top_badge_col:
     st.markdown(
         f"""
@@ -932,29 +912,29 @@ with st.container(border=True):
                     and not st.session_state["cancel_requested"]
                 ):
                     status_box.update(label=f"Resolving DOI: {doi_snap}...")
-                    metadata = fetch_doi_metadata(doi_snap)
+                    metadata = fetch_doi_metadata(doi_snap)[cite: 9]
                     fname = f"DOI_{doi_snap.replace('/', '_')}.pdf"
                     pdf_bytes = None
                     add_log(f"Attempting API resolution for standalone DOI: {doi_snap}")
                     status_box.write(f"Attempting API resolution for standalone DOI: {doi_snap}")
                     
                     if metadata and metadata.get("pdf_url"):
-                        pdf_bytes = download_pdf_from_url(metadata["pdf_url"])
+                        pdf_bytes = download_pdf_from_url(metadata["pdf_url"])[cite: 9]
                     if not pdf_bytes:
-                        s2_url = fetch_semantic_scholar_pdf(doi_snap)
+                        s2_url = fetch_semantic_scholar_pdf(doi_snap)[cite: 9]
                         if s2_url:
-                            pdf_bytes = download_pdf_from_url(s2_url)
+                            pdf_bytes = download_pdf_from_url(s2_url)[cite: 9]
                     
                     if not pdf_bytes:
-                        core_text = fetch_core_text_by_doi(doi_snap)
+                        core_text = fetch_core_text_by_doi(doi_snap)[cite: 9]
                         if core_text:
-                            pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")
+                            pdf_bytes = create_virtual_pdf_from_text(core_text, title="DOI Target Text")[cite: 9]
 
                     if pdf_bytes:
                         status_box.update(label="Assessing document from resolved source...")
-                        clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
+                        clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)[cite: 5]
                         try:
-                            res = process_single_pdf(
+                            res = process_single_pdf([cite: 6]
                                 clean_bytes, fname, scope_val, current_user, valid_book_address, email="None", provided_doi=doi_snap.strip(),
                             )
                         except Exception as err:
@@ -972,7 +952,7 @@ with st.container(border=True):
                             ) = res
 
                             eval_record = {
-                                "title": title, "author_name": clean_author_name(author_name),
+                                "title": title, "author_name": clean_author_name(author_name),[cite: 9]
                                 "score": score, "logic_integrity": logic_integrity, "drift": drift,
                                 "rec": rec, "fields": fields, "subfields": subfields,
                                 "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
@@ -988,7 +968,7 @@ with st.container(border=True):
                             add_log("Successfully evaluated and logged DOI source.")
                             status_box.write("Successfully evaluated and logged DOI source.")
                         else:
-                            add_log("Error: process_single_pdf returned incomplete data for DOI source.")
+                            add_log("Error: process_single_pdf returned incomplete data for DOI source.")[cite: 6]
                     else:
                         clean_doi = doi_snap.replace("https://doi.org/", "").strip()
                         doi_url = f"https://doi.org/{clean_doi}"
@@ -1009,10 +989,10 @@ with st.container(border=True):
                         with open(fpath, "rb") as in_f:
                             raw_bytes = in_f.read()
                             
-                        clean_bytes = preprocess_pdf_layout(raw_bytes, fname)
+                        clean_bytes = preprocess_pdf_layout(raw_bytes, fname)[cite: 5]
                         
                         try:
-                            res = process_single_pdf(
+                            res = process_single_pdf([cite: 6]
                                 clean_bytes, fname, scope_val, current_user, valid_book_address, email="None", provided_doi="None",
                             )
                         except Exception as err:
@@ -1030,7 +1010,7 @@ with st.container(border=True):
                             ) = res
 
                             eval_record = {
-                                "title": title, "author_name": clean_author_name(author_name),
+                                "title": title, "author_name": clean_author_name(author_name),[cite: 9]
                                 "score": score, "logic_integrity": logic_integrity, "drift": drift,
                                 "rec": rec, "fields": fields, "subfields": subfields,
                                 "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
@@ -1045,7 +1025,7 @@ with st.container(border=True):
                             st.session_state["free_evals_used"] += 1
                             add_log(f"Stored local assessment result to cache.")
                         else:
-                            add_log(f"Error: process_single_pdf returned incomplete data for {fname}")
+                            add_log(f"Error: process_single_pdf returned incomplete data for {fname}")[cite: 6]
 
                 if st.session_state["cancel_requested"]:
                     status_box.update(label="Pipeline operation was stopped.", state="error")
@@ -1094,7 +1074,7 @@ with st.container(border=True):
 @st.dialog("Detailed Research Integrity Dossier", width="large")
 def more_details_dialog(item):
     title = item.get("title", "Unknown Title")
-    author_name = clean_author_name(item.get("author_name", "Unknown"))
+    author_name = clean_author_name(item.get("author_name", "Unknown"))[cite: 9]
     score = safe_float(item.get("score"), 0.0)
     logic_integrity = safe_float(item.get("logic_integrity"), 75.0)
     scores_dict = item.get("scores_dict", {})
@@ -1141,16 +1121,16 @@ def more_details_dialog(item):
     st.markdown("### Multi-LLM Extractions")
     if consensus_raw and isinstance(consensus_raw, dict):
         llm_cols = st.columns(2, gap="medium")
-        target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"]
+        target_llms = ["llama", "mistral", "qwen", "gemini", "scilem"][cite: 6]
         for idx, llm_key in enumerate(target_llms):
             col = llm_cols[idx % 2]
             with col:
                 data = consensus_raw.get(llm_key, {})
                 with st.container(border=True):
                     st.markdown(f"**Model: {llm_key.upper()}**")
-                    if llm_key == "scilem":
+                    if llm_key == "scilem":[cite: 6]
                         st.markdown(f"**Engine Status:** Active (Local PyTorch Neural Network)")
-                        st.markdown(f"**Structural Analysis:** {data.get('opinion', 'Scilem structural analysis active.')}")
+                        st.markdown(f"**Structural Analysis:** {data.get('opinion', 'Scilem structural analysis active.')}")[cite: 6]
                     elif data.get('api_failed', False):
                         st.markdown(f"**Status:** Rate / Credit Limit Hit")
                         st.markdown(f"**Opinion:** {data.get('opinion', 'No opinion extracted.')}")
@@ -1252,15 +1232,15 @@ def more_details_dialog(item):
 @st.dialog("AI Peer Review Defense Strategy", width="medium")
 def defense_strategy_dialog(scores_dict):
     with st.spinner("Synthesizing adversarial defense strategy..."):
-        rebuttal = generate_rebuttal_strategy(scores_dict)
+        rebuttal = generate_rebuttal_strategy(scores_dict)[cite: 6]
     st.markdown(rebuttal)
 
 def render_breakdown_item(item, index):
     title = item["title"]
-    author_name = clean_author_name(item["author_name"])
+    author_name = clean_author_name(item["author_name"])[cite: 9]
     score = safe_float(item["score"], 0.0)
     eval_hash = item["eval_hash"]
-    piq = safe_float(item["piq"], 0.0)
+    piq = safe_float(item["piq"], 0.0)[cite: 5]
     scores_dict = item["scores_dict"]
     warnings = item.get("warnings", [])
     acknowledged = item.get("warnings_acknowledged", False)
@@ -1299,7 +1279,7 @@ def render_breakdown_item(item, index):
                 extraction_badge = ""
 
             st.markdown(f"**{title}** — *{author_name}*{extraction_badge}{warn_badge}")
-            st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")
+            st.markdown(f"**Score: {score:.2f} | piQ: {piq}**")[cite: 5]
             
             if warnings:
                 with st.expander(f"View Warning Checks ({len(warnings)})", expanded=not acknowledged):
@@ -1311,7 +1291,7 @@ def render_breakdown_item(item, index):
                             add_log(f"Warnings acknowledged for {item['filename']}")
                             st.rerun()
                     else:
-                        st.caption("Warnings acknowledged. Paper evaluated normally with piQ minted.")
+                        st.caption("Warnings acknowledged. Paper evaluated normally with piQ minted.")[cite: 5]
         with col_actions:
             c_det, c_strat, c_del = st.columns([3, 3, 1], gap="small")
             with c_det:
@@ -1363,7 +1343,7 @@ top_analytics_col1, top_analytics_col2 = st.columns(2, gap="large")
 with top_analytics_col1:
     col_fc1, col_fc_pop, col_fc2 = st.columns([2.5, 0.5, 1], vertical_alignment="center")
     with col_fc1:
-        st.markdown("### Pidyne Forecast", unsafe_allow_html=True)
+        st.markdown("### Pidyne Forecast", unsafe_allow_html=True)[cite: 5]
     with col_fc_pop:
         with st.popover("❔", help="What's Pidyne?"):
             st.markdown(r"""
@@ -1371,20 +1351,20 @@ with top_analytics_col1:
             Pidyne serves as the core orchestration and meta-learning brain of the Pi-Index Assessment Engine, integrating multi-LLM consensus with decentralized ledger infrastructure:
             1. **LSTM Meta-Learning:** Deploys a local PyTorch neural network (`PidyneLSTM`) that continuously trains on historical blockchain epoch weights, forecasting future shifts in scientific evaluation standards across the 8 core criteria.
             2. **Multi-Model Consensus & LLM-as-a-Judge:** Aggregates independent evaluations from local networks (Scilem) and remote LLMs (Llama, Mistral, Qwen, Gemini), acting as the final judge of the paper to read reports and deliver a definitive verdict using an LLM model.
-            """)
+            """)[cite: 5, 6]
     with col_fc2:
         forecast_horizon = st.selectbox("Lookback", ["1 Epoch", "3 Epochs", "5 Epochs"], index=1, key="pidyne_lookback_dropdown", label_visibility="collapsed")
         actual_lookback = int(forecast_horizon.split()[0])
 
     @st.cache_data(show_spinner="Training Pidyne LSTM Model in background...")
     def train_pidyne_cached(weight_data, actual_lookback):
-        dataset = PidyneBlockchainDataset(weight_data, actual_lookback)
+        dataset = PidyneBlockchainDataset(weight_data, actual_lookback)[cite: 6]
         dataloader = DataLoader(
             dataset, batch_size=min(4, max(1, len(dataset))), shuffle=False
         )
 
-        model = PidyneLSTM()
-        weights_path = os.path.join(BASE_DIR, "pidyne_weights.pt")
+        model = PidyneLSTM()[cite: 6]
+        weights_path = os.path.join(BASE_DIR, "pidyne_weights.pt")[cite: 7]
         if os.path.exists(weights_path):
             try:
                 model.load_state_dict(torch.load(weights_path, weights_only=True))
@@ -1420,7 +1400,7 @@ with top_analytics_col1:
             torch.save(model.state_dict(), weights_path)
             return predicted
 
-    conn_pb = get_db_connection()
+    conn_pb = get_db_connection()[cite: 8]
     try:
         cursor_pb = conn_pb.cursor()
         cursor_pb.execute(
@@ -1503,16 +1483,16 @@ with top_analytics_col1:
 with top_analytics_col2:
     st.markdown("### Global Map of Science")
 
-    conn_m = get_db_connection()
+    conn_m = get_db_connection()[cite: 8]
     try:
         cursor_m = conn_m.cursor()
         cursor_m.execute("SELECT DISTINCT author_name FROM papers_assessment")
         all_global_authors = []
         for row in cursor_m.fetchall():
             if row[0]:
-                cleaned = clean_author_name(row[0])
+                cleaned = clean_author_name(row[0])[cite: 9]
                 for a in cleaned.split(","):
-                    if a.strip() and not is_likely_institution(a.strip()):
+                    if a.strip() and not is_likely_institution(a.strip()):[cite: 9]
                         all_global_authors.append(a.strip())
     finally:
         conn_m.close()
@@ -1584,7 +1564,7 @@ with top_analytics_col2:
 st.markdown("---")
 
 if has_web3 or has_orcid:
-    conn_hist = get_db_connection()
+    conn_hist = get_db_connection()[cite: 8]
     try:
         cur_h = conn_hist.cursor()
         history_clauses = []
@@ -1628,7 +1608,7 @@ if has_web3 or has_orcid:
                 u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8
             ) = uh
 
-            u_author_clean = clean_author_name(u_author)
+            u_author_clean = clean_author_name(u_author)[cite: 9]
             u_book = "0x" + hashlib.sha256(u_author_clean.encode()).hexdigest()[:40]
             u_tx_url = safe_get_sepolia_url(u_tx)
             
@@ -1652,7 +1632,7 @@ if has_web3 or has_orcid:
                 st.markdown(f"**Executable Reproducibility Score:** `{safe_float(u_repro, 0.0) * 100:.1f}%`", unsafe_allow_html=True)
                 st.markdown(f"**SciScore MDAR Adherence:** `{safe_float(u_mdar, 0.0) * 100:.1f}%` | **Valid RRIDs:** `{u_rrid}`", unsafe_allow_html=True)
 
-                if st.button("View Full Multi-LLM & Scilem Dossier", key=f"hist_det_{idx}_{u_hash}"):
+                if st.button("View Full Multi-LLM & Scilem Dossier", key=f"hist_det_{idx}_{u_hash}"):[cite: 6]
                     hist_item = {
                         "title": u_title,
                         "author_name": u_author,
@@ -1676,7 +1656,7 @@ if has_web3 or has_orcid:
                         "warnings": [],
                         "consensus_raw": json.loads(u_consensus) if u_consensus else {},
                         "evidence_report_text": u_report or "",
-                        "scilem_rating": safe_float(u_scilem, 50.0)
+                        "scilem_rating": safe_float(u_scilem, 50.0)[cite: 6]
                     }
                     more_details_dialog(hist_item)
     else:
@@ -1686,7 +1666,7 @@ if has_web3 or has_orcid:
 side_col1, side_col2 = st.columns(2, gap="large")
 
 with side_col1:
-    st.markdown("### Pi Quotient (piQ) Leaderboard")
+    st.markdown("### Pi Quotient (piQ) Leaderboard")[cite: 3]
     piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
@@ -1695,7 +1675,7 @@ with side_col1:
         h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
         h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
         h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Book Address</div>", unsafe_allow_html=True)
-        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>piQ</div>", unsafe_allow_html=True)
+        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>piQ</div>", unsafe_allow_html=True)[cite: 5]
         st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
 
         piq_scroll = st.container(height=380)
@@ -1709,11 +1689,11 @@ with side_col1:
                 r_c4.markdown(f"**{safe_float(piq, 0.0):.2f}**")
                 st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
     else:
-        st.info("No piQ tokens minted yet.")
+        st.info("No piQ tokens minted yet.")[cite: 5]
 
 with side_col2:
     st.markdown("### pi-Index (piX) Leaderboard [Top Papers]")
-    conn_pi = get_db_connection()
+    conn_pi = get_db_connection()[cite: 8]
     try:
         cur_pi = conn_pi.cursor()
         cur_pi.execute(
@@ -1722,7 +1702,7 @@ with side_col2:
                       piq_minted, tx_hash, zk_proof, mdar_adherence_score, 
                       rrid_valid_count, reproducibility_score, eval_hash, filename,
                       consensus_data, evidence_report, scilem_score
-               FROM papers_assessment ORDER BY final_score DESC LIMIT 20"""
+               FROM papers_assessment ORDER BY final_score DESC LIMIT 20"""[cite: 6]
         )
         top_papers = cur_pi.fetchall()
     finally:
@@ -1745,7 +1725,7 @@ with side_col2:
                     p_piq, p_tx, p_zk, p_mdar, p_rrid, p_repro, p_hash,
                     p_consensus, p_report, p_scilem
                 ) = tp
-                clean_auth = clean_author_name(p_author)
+                clean_auth = clean_author_name(p_author)[cite: 9]
                 r_c1, r_c2, r_c3, r_c4 = st.columns([0.8, 4.2, 2.5, 2.5], vertical_alignment="center")
                 r_c1.markdown(f"**{rank}**")
                 r_c2.markdown(f"**{p_title}**")
@@ -1765,7 +1745,7 @@ with side_col2:
                             },
                             "used_weights": [1.0]*8,
                             "eval_hash": p_hash,
-                            "piq": safe_float(p_piq, 0.0),
+                            "piq": safe_float(p_piq, 0.0),[cite: 5]
                             "tx_hash": p_tx,
                             "zk_proof": p_zk,
                             "h_idx": safe_float(p_mdar, 0.0),
@@ -1775,7 +1755,7 @@ with side_col2:
                             "warnings": [],
                             "consensus_raw": json.loads(p_consensus) if p_consensus else {},
                             "evidence_report_text": p_report or "",
-                            "scilem_rating": safe_float(p_scilem, 50.0)
+                            "scilem_rating": safe_float(p_scilem, 50.0)[cite: 6]
                         }
                         more_details_dialog(item_dossier)
                 st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
@@ -1785,7 +1765,7 @@ with side_col2:
 st.markdown("---")
 
 st.markdown("### Latest Assessed Papers")
-conn_recent = get_db_connection()
+conn_recent = get_db_connection()[cite: 8]
 try:
     cur_recent = conn_recent.cursor()
     cur_recent.execute(
@@ -1797,7 +1777,7 @@ try:
                   p.consensus_data, p.evidence_report, p.scilem_score
            FROM papers_assessment p
            LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
-           ORDER BY p.timestamp DESC LIMIT 20"""
+           ORDER BY p.timestamp DESC LIMIT 20"""[cite: 6]
     )
     merged_papers = cur_recent.fetchall()
 finally:
@@ -1809,7 +1789,7 @@ if merged_papers:
     h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
     h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Block</div>", unsafe_allow_html=True)
     h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Manuscript & Author</div>", unsafe_allow_html=True)
-    h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Score / piQ</div>", unsafe_allow_html=True)
+    h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Score / piQ</div>", unsafe_allow_html=True)[cite: 5]
     h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Action</div>", unsafe_allow_html=True)
     st.markdown("<hr style='margin:4px 0px 12px 0px; border-top: 2px solid #cbd5e1;'>", unsafe_allow_html=True)
 
@@ -1825,7 +1805,7 @@ if merged_papers:
             ) = mp
             
             bh = m_block_height if m_block_height is not None else "Pending"
-            clean_auth = clean_author_name(m_author)
+            clean_auth = clean_author_name(m_author)[cite: 9]
             
             r_col1, r_col2, r_col3, r_col4 = st.columns([1.5, 4.5, 2.0, 2.0], vertical_alignment="center")
             with r_col1:
@@ -1834,7 +1814,7 @@ if merged_papers:
                 st.markdown(f"**{m_title}**")
                 st.markdown(f"*{clean_auth}*")
             with r_col3:
-                st.markdown(f"`{safe_float(m_score, 0.0):.2f}` / `{safe_float(m_piq, 0.0):.2f}`")
+                st.markdown(f"`{safe_float(m_score, 0.0):.2f}` / `{safe_float(m_piq, 0.0):.2f}`")[cite: 5]
             with r_col4:
                 if st.button("View Dossier", key=f"native_row_dossier_{idx}_{m_hash}", use_container_width=True):
                     item_dossier = {
@@ -1850,7 +1830,7 @@ if merged_papers:
                         },
                         "used_weights": [1.0]*8,
                         "eval_hash": m_hash,
-                        "piq": safe_float(m_piq, 0.0),
+                        "piq": safe_float(m_piq, 0.0),[cite: 5]
                         "tx_hash": m_tx,
                         "zk_proof": m_zk,
                         "h_idx": safe_float(m_mdar, 0.0),
@@ -1860,7 +1840,7 @@ if merged_papers:
                         "warnings": [],
                         "consensus_raw": json.loads(m_consensus) if m_consensus else {},
                         "evidence_report_text": m_report or "",
-                        "scilem_rating": safe_float(m_scilem, 50.0)
+                        "scilem_rating": safe_float(m_scilem, 50.0)[cite: 6]
                     }
                     more_details_dialog(item_dossier)
             
@@ -1880,7 +1860,7 @@ with exp_head_col2:
             "sealing the block index, criteria weights, and unalterable state hashes (`formulas_hash`) "
             "into a cryptographically verified SHA-256 block."
         )
-        conn_pop = get_db_connection()
+        conn_pop = get_db_connection()[cite: 8]
         try:
             cur_pop = conn_pop.cursor()
             cur_pop.execute(
@@ -1896,11 +1876,11 @@ with exp_head_col2:
             p_proof, b_hash, f_hash = p_data
             st.markdown(f"**Latest Proof-of-Research:** `{p_proof}` successfully verified and sealed to block `{b_hash}`.")
             st.markdown(f"**Unalterable Criteria State Hash:** `{f_hash}` (Guarantees grading mathematical constants cannot be tampered with).")
-        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"
-        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"
-        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")
+        piq_url = f"https://sepolia.etherscan.io/address/{PIQ_CONTRACT_ADDRESS}"[cite: 7]
+        reg_url = f"https://sepolia.etherscan.io/address/{REGISTRY_CONTRACT_ADDRESS}" if REGISTRY_CONTRACT_ADDRESS else "#"[cite: 7]
+        st.markdown(f"**Deployed Smart Contracts on Sepolia Etherscan:** PiQ Token Contract: [`{PIQ_CONTRACT_ADDRESS}`]({piq_url}) | Registry Contract: [`{REGISTRY_CONTRACT_ADDRESS}`]({reg_url})")[cite: 7]
 
-conn = get_db_connection()
+conn = get_db_connection()[cite: 8]
 try:
     cursor = conn.cursor()
     try:
@@ -1944,8 +1924,7 @@ try:
                        FROM papers_assessment p
                        LEFT JOIN blockchain_por_weights b ON p.eval_hash = b.eval_hash
                        WHERE b.block_hash LIKE ? OR p.eval_hash LIKE ? OR p.title LIKE ? OR p.author_name LIKE ? OR p.eth_book LIKE ?
-                       LIMIT 5""",
-                    (q_term, q_term, q_term, q_term, q_term)
+                       LIMIT 5"""[cite: 6]
                 )
                 matched_records = cursor.fetchall()
                 if matched_records:
@@ -1959,7 +1938,7 @@ try:
                             m_consensus, m_report, m_scilem
                         ) = mr
 
-                        m_author_clean = clean_author_name(m_author)
+                        m_author_clean = clean_author_name(m_author)[cite: 9]
                         m_book = m_book_addr if m_book_addr else ("0x" + hashlib.sha256(m_author_clean.encode()).hexdigest()[:40])
                         m_tx_url = safe_get_sepolia_url(m_tx)
                         
@@ -1973,7 +1952,7 @@ try:
                             st.write(f"**File Name:** {m_filename if m_filename else 'N/A'}")
                             st.write(f"**Evaluation Hash (Paper Address):** `{m_hash}`")
                             st.write(f"**Unique Book Address:** `{m_book}`")
-                            st.write(f"**piQ Minted:** `{m_piq}`")
+                            st.write(f"**piQ Minted:** `{m_piq}`")[cite: 5]
                             st.markdown(f"**zk-SNARK Proof:** `{m_zk}`", unsafe_allow_html=True)
                             
                             if m_tx_url:
@@ -1984,7 +1963,7 @@ try:
                             st.markdown(f"**Executable Reproducibility Score:** `{safe_float(m_repro, 0.0) * 100:.1f}%`", unsafe_allow_html=True)
                             st.markdown(f"**SciScore MDAR Adherence:** `{safe_float(m_mdar, 0.0) * 100:.1f}%` | **Valid RRIDs:** `{m_rrid}`", unsafe_allow_html=True)
 
-                            if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):
+                            if st.button("View Full Multi-LLM & Scilem Dossier", key=f"search_det_{m_idx}_{m_hash}"):[cite: 6]
                                 search_item = {
                                     "title": m_title,
                                     "author_name": m_author,
@@ -1998,7 +1977,7 @@ try:
                                     },
                                     "used_weights": [1.0]*8,
                                     "eval_hash": m_hash,
-                                    "piq": safe_float(m_piq, 0.0),
+                                    "piq": safe_float(m_piq, 0.0),[cite: 5]
                                     "tx_hash": m_tx,
                                     "zk_proof": m_zk,
                                     "h_idx": safe_float(m_mdar, 0.0),
@@ -2008,7 +1987,7 @@ try:
                                     "warnings": [],
                                     "consensus_raw": json.loads(m_consensus) if m_consensus else {},
                                     "evidence_report_text": m_report or "",
-                                    "scilem_rating": safe_float(m_scilem, 50.0)
+                                    "scilem_rating": safe_float(m_scilem, 50.0)[cite: 6]
                                 }
                                 more_details_dialog(search_item)
                 else:
@@ -2062,7 +2041,7 @@ def framework_workflow_dialog():
 
             PyMuPDF [label="PyMuPDF Layout Sort\n• Spatial Reading Extraction\n• Mathematical Integrity Safeguard", fillcolor="#a3e4d7", style="dashed,filled"];
             SciParser [label="Deterministic SciScore API\n• MDAR Reporting Adherence\n• Valid RRIDs Count Extraction", fillcolor="#a3e4d7"];
-            Retry [label="Multi-LLM Consensus Engine\n• Llama, Mistral, Qwen, Gemini & Scilem Analysis\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];
+            Retry [label="Multi-LLM Consensus Engine\n• Llama, Mistral, Qwen, Gemini & Scilem Analysis\n• Synthesized Evidence Report", fillcolor="#a3e4d7", style="dashed,filled"];[cite: 6]
             IRTCalib [label="Item Response Theory Calibration\n• Counterfactual Stress Testing\n• Variance & Difficulty Mapping", fillcolor="#a3e4d7"];
             Criteria [label="8 Transparent Criteria Rubrics\n• C1 Originality to C8 FAIR Actionability\n• Formulaic Score Computation", fillcolor="#a3e4d7"];
             Logic [label="Adversarial Logic Integrity Matrix\n• Premise Validity & Evidence Strength\n• AI Hallucination & Laundering Penalty", fillcolor="#a3e4d7"];
@@ -2077,7 +2056,7 @@ def framework_workflow_dialog():
             fillcolor = "#f4ecf7";
 
             PoR [label="Proof-of-Research (PoR) Validation\n• Dynamic Epoch Weight Shifting\n• Formulas Hash Stamping & SHA-256 Block", fillcolor="#d7bde2"];
-            Slashing [label="Anti-Laundering Slashing Guard\n• Smart Contract piQ Burn for Fraud\n• Stake Penalty Enforcement", fillcolor="#f5b7b1"];
+            Slashing [label="Anti-Laundering Slashing Guard\n• Smart Contract piQ Burn for Fraud\n• Stake Penalty Enforcement", fillcolor="#f5b7b1"];[cite: 5]
             Mint [label="Soulbound Token Minting\n• Author-Specific Book Address (eth_book)\n• Shared Paper Address (eval_hash) & Tx Hash", fillcolor="#d7bde2"];
             
             PoR -> Slashing -> Mint;
