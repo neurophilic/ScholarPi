@@ -207,9 +207,27 @@ current_orcid_name_js = st.session_state.researcher_name if st.session_state.res
 state_payload = st.session_state.web3_wallet if has_web3 else "none"
 orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
 
+# Styled to match standard Streamlit secondary buttons precisely
 mm_button_html = f"""
-    <div style="width: 100%; font-family: sans-serif; box-sizing: border-box;">
-        <button id="connect-mm-btn" type="button" style="width: 100%; background: linear-gradient(135deg, #f6851b, #e2761b); color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25); transition: all 0.2s ease; box-sizing: border-box;">
+    <div style="width: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-sizing: border-box;">
+        <button id="connect-mm-btn" type="button" style="
+            width: 100%;
+            background-color: #ffffff;
+            color: #1e293b;
+            border: 1px solid #d1d5db;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        ">
             <span>Connect MetaMask</span>
         </button>
         <div id="mm-status" style="margin-top: 6px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word;"></div>
