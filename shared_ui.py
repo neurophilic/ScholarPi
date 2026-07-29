@@ -15,7 +15,7 @@ from web3 import Web3
 from eth_account.messages import encode_defunct
 
 from config import (
-    ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_REDIRECT_URI, OWNER_ID
+    ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, ORCID_REDIRECT_URI
 )
 from database import get_db_connection
 from ledger import restore_state_from_web3, get_sepolia_explorer_url
@@ -23,6 +23,7 @@ from integrations import clean_author_name
 from brain import generate_rebuttal_strategy, reset_scilem, evaluate_scilem_analysis_report
 
 w3 = Web3()
+OWNER_ID = "0x1Af8D9A120b02D0983590587364F8705e6942356"
 
 def add_log(msg):
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -75,15 +76,13 @@ def more_details_dialog(item):
     repro_score = safe_float(item.get("repro_score"), 0.0)
     filename = item.get("filename", "N/A")
     warnings = item.get("warnings", [])
-    consensus_raw = item.get("consensus_raw", {})
     evidence_report_text = item.get("evidence_report_text", "")
     author_book = "0x" + hashlib.sha256(author_name.encode()).hexdigest()[:40]
 
     st.subheader(f"{title} by {author_name}")
     if warnings:
         st.warning(f"⚠️ **Manuscript Flagged with {len(warnings)} Warning Check(s):**")
-        for w in warnings:
-            st.markdown(f"- {w}")
+        for w in warnings: st.markdown(f"- {w}")
 
     st.markdown("### Overview & Ledger")
     st.write(f"**File Name:** `{filename}`")
@@ -94,16 +93,13 @@ def more_details_dialog(item):
     
     tx_url = safe_get_sepolia_url(tx_hash)
     tx_disp_val = tx_hash if tx_hash and str(tx_hash).strip() not in ["None", ""] else "Not Connected / No Book / Missing PK"
-    if tx_url:
-        st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
-    else:
-        st.write(f"**Tx Hash:** `{tx_disp_val}`")
+    if tx_url: st.markdown(f"**Tx Hash:** [`{tx_disp_val}`]({tx_url})")
+    else: st.write(f"**Tx Hash:** `{tx_disp_val}`")
 
     st.markdown(f"**Executable Reproducibility Score:** `{repro_score * 100:.1f}%`", unsafe_allow_html=True)
     st.markdown(f"**SciScore MDAR Adherence:** `{mdar_score * 100:.1f}%` | **Valid RRIDs:** `{rrid_count}`", unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("### Synthesized Evidence Report")
-    
     if evidence_report_text:
         st.markdown(evidence_report_text)
         st.download_button(
@@ -118,7 +114,6 @@ def more_details_dialog(item):
         st.info("No synthesized evidence report generated for this manuscript.")
 
 def setup_global_state_and_sidebar():
-    # 1. State Initializations
     if "app_logs" not in st.session_state: st.session_state.app_logs = deque(maxlen=50)
     if "web3_wallet" not in st.session_state: st.session_state.web3_wallet = None
     if "orcid_profile" not in st.session_state: st.session_state.orcid_profile = None
@@ -140,7 +135,6 @@ def setup_global_state_and_sidebar():
     if "scilem_messages" not in st.session_state:
         st.session_state.scilem_messages = [{"role": "assistant", "content": "**Welcome! I am Scilem.** Ask any research question or check criteria ratings."}]
 
-    # 2. Callbacks (SIWE & ORCID)
     if "restore_orcid" in st.query_params:
         st.session_state.orcid_profile = st.query_params.get("restore_orcid")
         if st.query_params.get("restore_orcid_name"):
@@ -175,20 +169,16 @@ def setup_global_state_and_sidebar():
         st.query_params.clear()
         st.rerun()
 
-    # 3. CSS Injection
     custom_ui_code = """
     <style>
-    h1, h2, h3, h4, h5, h6 { color: #0f172a !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; font-weight: 600 !important; letter-spacing: -0.02em !important; }
-    hr { border-color: #e2e8f0 !important; margin: 1.5rem 0 !important; }
+    h1, h2, h3, h4, h5, h6 { color: #0f172a !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; font-weight: 600 !important; }
     [data-testid="stSidebar"] { background-color: #f8fafc !important; border-right: 1px solid #e2e8f0 !important; }
-    button[kind="primary"], [data-testid="baseButton-primary"] { background-color: #000080 !important; border-color: #000080 !important; color: #ffffff !important; }
-    button[kind="secondary"], [data-testid="baseButton-secondary"] { background-color: #dc2626 !important; border-color: #dc2626 !important; color: #ffffff !important; }
-    .stButton>button { border-radius: 8px !important; font-weight: 600 !important; }
+    button[kind="primary"] { background-color: #000080 !important; color: #ffffff !important; }
+    button[kind="secondary"] { background-color: #dc2626 !important; color: #ffffff !important; }
     </style>
     """
     components.html(custom_ui_code, height=0, width=0)
 
-    # 4. IP Tracking
     client_ip = "127.0.0.1"
     try:
         headers = st.context.headers
@@ -205,7 +195,6 @@ def setup_global_state_and_sidebar():
     finally:
         conn_ip.close()
 
-    # 5. Sidebar Rendering
     st.sidebar.title("System Access & Sync")
     has_web3 = bool(st.session_state.web3_wallet and w3.is_address(st.session_state.web3_wallet))
     has_orcid = bool(st.session_state.orcid_profile)
