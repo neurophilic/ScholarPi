@@ -757,7 +757,6 @@ with st.container(border=True):
         
         with st.status("Initializing Assessment Pipeline...", expanded=True) as status_box:
             try:
-                # 1. Process Open Source Search Queue
                 if snap_search and not st.session_state["cancel_requested"]:
                     total_search = len(snap_search)
                     for idx, s_item in enumerate(snap_search):
@@ -796,7 +795,6 @@ with st.container(border=True):
                             if err_item not in st.session_state["download_errors"]:
                                 st.session_state["download_errors"].append(err_item)
 
-                # 2. Process DOI Queue
                 if include_doi_snap and doi_snap.strip() and not st.session_state["cancel_requested"]:
                     status_box.update(label=f"Resolving DOI: {doi_snap}...")
                     metadata = fetch_doi_metadata(doi_snap)
@@ -853,7 +851,6 @@ with st.container(border=True):
                         if err_item not in st.session_state["download_errors"]:
                             st.session_state["download_errors"].append(err_item)
 
-                # 3. Process Local Files Queue
                 if snap_files and not st.session_state["cancel_requested"]:
                     total_files = len(snap_files)
                     for i, (fname, fpath) in enumerate(snap_files):
