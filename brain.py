@@ -8,7 +8,6 @@ import re
 import difflib
 import concurrent.futures
 from datetime import datetime
-from transformers import pipeline
 
 import fitz
 import numpy as np
@@ -17,6 +16,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
 from openai import OpenAI
+import streamlit as st
 
 try:
     from openrouter import OpenRouter
@@ -59,35 +59,29 @@ class ScilemNetwork(nn.Module):
         features = torch.tanh(self.fc2(x))
         return features
 
-scilem_model = ScilemNetwork()
-scilem_optimizer = optim.Adam(scilem_model.parameters(), lr=0.001)
+@st.cache_resource
+def get_scilem_engine():
+    model = ScilemNetwork()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    return model, optimizer
 
-# Global initialization for Scilem Assistant pipeline
-scilem_nlp = None 
+@st.cache_resource
+def get_tinyllama_pipeline():
+    from transformers import pipeline
+    return pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v1.0", device_map="auto")
 
 def evaluate_scilem_analysis_report(raw_text):
-    global scilem_nlp
-    if scilem_nlp is None:
-        try:
-            # Loads a lightweight, local conversational model
-            scilem_nlp = pipeline("text-generation", model="TinyLlama/TinyLlama-1.1B-Chat-v1.0", device_map="auto")
-        except Exception as e:
-            return f"Scilem Local Neural Engine initialization failed: {e}"
-
-    # Format the prompt for the model
-    prompt = f"<|system|>\nYou are Scilem, the AI assistant for the Pi-Index Framework.\n<|user|>\n{raw_text}\n<|assistant|>"
-    
     try:
+        scilem_nlp = get_tinyllama_pipeline()
+        prompt = f"<|system|>\nYou are Scilem, the AI assistant for the Pi-Index Framework.\n<|user|>\n{raw_text}\n<|assistant|>"
         response = scilem_nlp(prompt, max_new_tokens=150, truncation=True)
-        # Extract just the assistant's reply
         generated_text = response[0]['generated_text'].split("<|assistant|>")[-1].strip()
-        
         return f"**Scilem:** {generated_text}"
-        
     except Exception as e:
-        return f"Scilem encountered an error while processing the request: {e}"
+        return f"Scilem Local Neural Engine initialization failed: {e}"
 
 def extract_with_scilem(paper_text):
+    scilem_model, scilem_optimizer = get_scilem_engine()
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -140,6 +134,7 @@ def extract_with_scilem(paper_text):
     }
 
 def train_scilem_on_input_and_report(raw_text, evidence_report):
+    scilem_model, scilem_optimizer = get_scilem_engine()
     scilem_weights_path = os.path.join(BASE_DIR, "scilem_weights.pt")
     if os.path.exists(scilem_weights_path):
         try:
@@ -179,8 +174,7 @@ def reset_scilem():
         except Exception as e:
             res_msg = f"Scilem weights file deletion warning: {e}"
             
-    global scilem_model
-    scilem_model = ScilemNetwork()
+    scilem_model, scilem_optimizer = get_scilem_engine()
     
     for m in scilem_model.modules():
         if isinstance(m, nn.Linear):
