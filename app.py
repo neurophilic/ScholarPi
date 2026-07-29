@@ -206,7 +206,6 @@ if "code" in st.query_params:
     st.query_params.clear()
     st.rerun()
 
-# Refactored CSS (Moved all inline styles to centralized classes)
 custom_ui_code = """
 <style>
 h1, h2, h3, h4, h5, h6 {
@@ -230,16 +229,30 @@ button[kind="secondary"]:hover, [data-testid="baseButton-secondary"]:hover { bac
 iframe { border: none !important; border-radius: 8px !important; outline: none !important; }
 .pyvis-map-wrapper iframe { width: 100% !important; height: 600px !important; display: block !important; }
 
-.mm-auth-btn { width: 100%; background: linear-gradient(135deg, #f6851b, #e2761b); color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(246, 133, 27, 0.25); transition: all 0.2s ease; box-sizing: border-box; }
-.orcid-auth-btn { width: 100%; background: #A6CE39; color: #ffffff; border: none; padding: 10px 14px; border-radius: 8px; font-weight: 700; font-size: 13px; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(166, 206, 57, 0.3); box-sizing: border-box; }
+/* Unified Auth Buttons */
+.unified-auth-btn { 
+    width: 100%; 
+    background-color: #0f172a; 
+    color: white; 
+    border: 1px solid #1e293b; 
+    padding: 10px 14px; 
+    border-radius: 8px; 
+    font-weight: 600; 
+    font-size: 14px; 
+    cursor: pointer; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    transition: background-color 0.2s; 
+    text-decoration: none;
+    box-sizing: border-box;
+}
+.unified-auth-btn:hover { background-color: #1e293b; color: white;}
 .auth-status-txt { margin-top: 4px; font-size: 11px; color: #dc2626; font-weight: 500; text-align: center; word-break: break-word; }
 
-/* Injected visualization styling */
+/* Map canvas */
 .vis-gradient-canvas { background: radial-gradient(circle at 50% 50%, #ffffff 0%, #f0f2f5 100%); border: none !important; outline: none !important; width: 100% !important; height: 600px !important; }
-.table-compact { width: 100%; font-size: 12px; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-.table-compact th { background-color: #f8fafc; color: #475569; padding: 6px 8px; text-align: left; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; border-bottom: 2px solid #e2e8f0; position: sticky; top: 0; z-index: 1; }
-.table-compact td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-.color-box { width: 14px; height: 14px; border-radius: 3px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+.color-box { width: 14px; height: 14px; border-radius: 3px; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1); vertical-align: middle; margin-right: 8px; }
 </style>
 """
 components.html(custom_ui_code, height=0, width=0)
@@ -255,8 +268,8 @@ state_payload = st.session_state.web3_wallet if has_web3 else "none"
 orcid_auth_url = f"https://orcid.org/oauth/authorize?client_id={ORCID_CLIENT_ID}&response_type=code&scope=/authenticate&redirect_uri={ORCID_REDIRECT_URI}&state={state_payload}"
 
 mm_button_html = f"""
-    <button id="connect-mm-btn" class="mm-auth-btn" type="button">
-        <span>Connect MetaMask</span>
+    <button id="connect-mm-btn" class="unified-auth-btn" type="button">
+        <span>Connect MetaMask Web3</span>
     </button>
     <div id="mm-status" class="auth-status-txt"></div>
 
@@ -317,7 +330,7 @@ mm_button_html = f"""
     </script>
 """
 
-orcid_button_html = f"""<a href="{orcid_auth_url}" target="_blank" class="orcid-auth-btn">Link ORCID Account</a>"""
+orcid_button_html = f"""<a href="{orcid_auth_url}" target="_blank" class="unified-auth-btn">Link ORCID Account</a>"""
 
 with st.sidebar:
     if not has_web3:
@@ -490,27 +503,6 @@ with st.sidebar.expander("🧠 Scilem Assistant", expanded=False):
             time.sleep(0.5)
             st.rerun()
 
-def refine_science_field(s):
-    s_lower = s.lower()
-    if any(k in s_lower for k in ["blockchain", "smart contract", "crypto", "ledger"]): return "Computer Science > Blockchain & Distributed Systems"
-    elif any(k in s_lower for k in ["machine learning", "deep learning", "neural", "ai", "artificial intelligence"]): return "Computer Science > Artificial Intelligence & Machine Learning"
-    elif any(k in s_lower for k in ["algorithm", "software", "computation", "cyber", "data", "information"]): return "Computer Science > Algorithms & Software Engineering"
-    elif any(k in s_lower for k in ["quantum", "optics", "photonics"]): return "Physics > Quantum Mechanics & Optics"
-    elif any(k in s_lower for k in ["energy", "mechanics", "thermodynamics", "physics"]): return "Physics > Applied Mechanics & Energy Systems"
-    elif any(k in s_lower for k in ["polymer", "catalysis", "molecule", "chemical", "chemistry"]): return "Chemistry > Chemical Synthesis & Molecular Catalysis"
-    elif any(k in s_lower for k in ["genetics", "genomics", "gene", "biology"]): return "Life Sciences > Genetics & Genomics"
-    elif any(k in s_lower for k in ["cellular", "protein", "molecular biology"]): return "Life Sciences > Molecular & Cellular Biology"
-    elif any(k in s_lower for k in ["ecology", "ecosystem", "biodiversity"]): return "Life Sciences > Ecology & Evolutionary Biology"
-    elif any(k in s_lower for k in ["clinical", "hospital", "patient", "disease", "pharmac", "medical", "medicine"]): return "Medical Sciences > Clinical Medicine & Pharmacology"
-    elif any(k in s_lower for k in ["biomedical", "neuroscience", "cardiac"]): return "Medical Sciences > Biomedical Research"
-    elif any(k in s_lower for k in ["climate", "carbon", "atmosphere", "meteorology", "earth"]): return "Earth Sciences > Climate Science & Meteorology"
-    elif any(k in s_lower for k in ["geology", "ocean", "seismic"]): return "Earth Sciences > Geology & Earth Systems"
-    elif any(k in s_lower for k in ["economics", "finance", "market", "social"]): return "Social Sciences > Economics & Quantitative Finance"
-    elif any(k in s_lower for k in ["sociology", "psychology", "policy", "management"]): return "Social Sciences > Behavioral & Policy Studies"
-    elif any(k in s_lower for k in ["math", "statistics", "algebra", "probability", "calculus"]): return "Mathematics & Statistics > Applied Mathematics & Statistics"
-    elif any(k in s_lower for k in ["engineering", "robotics", "materials", "civil", "electrical"]): return "Engineering & Technology > Applied Engineering & Materials Science"
-    else: return f"Engineering & Technology > Applied Technical Research ({s.title()})"
-
 @st.cache_data(ttl=3600)
 def build_science_map(target_author, repulsion=-3000, spring_len=180, size_scale=1.5, central_grav=0.15, _db_token=0):
     conn = get_db_connection()
@@ -521,9 +513,9 @@ def build_science_map(target_author, repulsion=-3000, spring_len=180, size_scale
     finally:
         conn.close()
 
-    html_string, table_html = "", ""
+    html_string, table_data = "", []
     if not data:
-        return html_string, table_html
+        return html_string, table_data
 
     topic_aggregates = {}
     exclude_terms = { "general", "general science", "unspecified domain", "unspecified sub-domain", "core research topic" }
@@ -537,7 +529,7 @@ def build_science_map(target_author, repulsion=-3000, spring_len=180, size_scale
             score = safe_float(final_score, 50.0)
             for rs in raw_subfields:
                 if rs and rs.lower() not in exclude_terms:
-                    s = refine_science_field(rs)
+                    s = rs 
                     if s not in topic_aggregates:
                         topic_aggregates[s] = {"weight_sum": 0.0, "frequency": 0}
                     topic_aggregates[s]["weight_sum"] += score
@@ -633,18 +625,16 @@ def build_science_map(target_author, repulsion=-3000, spring_len=180, size_scale
     html_string = html_string.replace("<canvas", "<canvas class='vis-gradient-canvas'")
     html_string = html_string.replace("mynetwork", f"pi_network_{int(time.time() * 1000)}")
 
-    table_html = "<div style='max-height: 220px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;'><table class='table-compact'><thead><tr><th style='width: 15%; text-align: center;'>Color</th><th>Science Field</th><th style='text-align: center;'>Freq</th><th style='text-align: center;'>Avg Weight</th></tr></thead><tbody>"
     for topic, metrics in sorted(topic_aggregates.items(), key=lambda x: x[1]["frequency"], reverse=True):
         avg_w = metrics["weight_sum"] / metrics["frequency"]
-        table_html += (
-            f"<tr><td style='text-align: center;'><div class='color-box'"
-            f" style='background-color:{color_map[topic]};'></div></td><td><b>{topic}</b></td><td"
-            f" style='text-align: center;'>{metrics['frequency']}</td><td"
-            f" style='text-align: center;'>{avg_w:.1f}</td></tr>"
-        )
-    table_html += "</tbody></table></div>"
+        table_data.append({
+            "Color": color_map[topic],
+            "Science Field": topic,
+            "Frequency": metrics["frequency"],
+            "Avg Weight": round(avg_w, 1)
+        })
 
-    return html_string, table_html
+    return html_string, table_data
 
 def get_criteria_info(weights):
     tw1, tw2, tw3, tw4, tw5, tw6, tw7, tw8 = weights
@@ -710,7 +700,7 @@ with st.container(border=True):
 
     reset_tok = st.session_state["reset_token"]
 
-    intake_tab_local, intake_tab_doi = st.tabs(["📄 Local Upload", "🔗 DOI Lookup"])
+    intake_tab_local, intake_tab_doi, intake_tab_search = st.tabs(["📄 Local Upload", "🔗 DOI Lookup", "🌐 Open Source Search"])
 
     selected_uploaded_files = []
     with intake_tab_local:
@@ -734,6 +724,19 @@ with st.container(border=True):
         )
         st.caption("Pi-Index resolves open-access PDFs automatically via Unpaywall → Semantic Scholar → CORE, in that order.")
 
+    selected_search_urls = []
+    with intake_tab_search:
+        search_query = st.text_input("Search OpenAlex Topics/Keywords", key=f"search_{reset_tok}")
+        if st.button("Search Open Source Papers", key=f"search_btn_{reset_tok}") and search_query:
+            with st.spinner("Querying OpenAlex Database..."):
+                st.session_state["search_results"] = search_openalex_topics(search_query, limit=5)
+        
+        if "search_results" in st.session_state and st.session_state["search_results"]:
+            st.markdown("**Select papers to assess from Open Access Search:**")
+            for i, res in enumerate(st.session_state["search_results"]):
+                if st.checkbox(f"{res['title']} ({res['authors']})", key=f"srch_chk_{i}_{reset_tok}"):
+                    selected_search_urls.append(res)
+
     if st.session_state["is_running"]:
         col_run, col_stop = st.columns([4, 1], gap="medium")
         with col_run:
@@ -750,9 +753,50 @@ with st.container(border=True):
         snap_files = st.session_state.get("snap_files", [])
         include_doi_snap = st.session_state.get("snap_include_doi", False)
         doi_snap = st.session_state.get("snap_doi", "")
+        snap_search = st.session_state.get("snap_search", [])
         
         with st.status("Initializing Assessment Pipeline...", expanded=True) as status_box:
             try:
+                # 1. Process Open Source Search Queue
+                if snap_search and not st.session_state["cancel_requested"]:
+                    total_search = len(snap_search)
+                    for idx, s_item in enumerate(snap_search):
+                        if st.session_state["cancel_requested"]: break
+                        status_box.update(label=f"Resolving Open Source Paper {idx+1} of {total_search}: {s_item['title']}...")
+                        
+                        pdf_bytes = download_pdf_from_url(s_item['pdf_url'])
+                        if not pdf_bytes and s_item['doi']:
+                            core_text = fetch_core_text_by_doi(s_item['doi'])
+                            if core_text:
+                                pdf_bytes = create_virtual_pdf_from_text(core_text, title=s_item['title'])
+                        
+                        if pdf_bytes:
+                            fname = f"OA_Search_{int(time.time())}.pdf"
+                            clean_bytes = preprocess_pdf_layout(pdf_bytes, fname)
+                            try:
+                                res = assess_manuscript(clean_bytes, fname, scope_val, current_user, valid_book_address, email="None", provided_doi=s_item['doi'])
+                                if res and len(res) >= 22:
+                                    eval_record = {
+                                        "title": res[0], "author_name": clean_author_name(res[1]),
+                                        "score": res[2], "logic_integrity": res[3], "drift": res[4], "rec": res[5], 
+                                        "fields": res[6], "subfields": res[7], "scores_dict": res[8], "eval_hash": res[9], 
+                                        "piq": res[10], "tx_hash": res[11], "zk_proof": res[12], "used_weights": res[13],
+                                        "h_idx": res[14], "i10_idx": res[15], "repro_score": res[16], "filename": fname, 
+                                        "warnings": res[18], "warnings_acknowledged": False, "consensus_raw": res[19], 
+                                        "evidence_report_text": res[20], "scilem_rating": res[21]
+                                    }
+                                    st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
+                                    st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
+                                    st.session_state["free_evals_used"] += 1
+                                    add_log(f"Successfully evaluated search item: {s_item['title']}")
+                            except Exception as err:
+                                add_log(f"Error executing assess_manuscript for search source: {str(err)}")
+                        else:
+                            err_item = {"title": s_item['title'], "doi": s_item['doi'], "url": s_item['pdf_url']}
+                            if err_item not in st.session_state["download_errors"]:
+                                st.session_state["download_errors"].append(err_item)
+
+                # 2. Process DOI Queue
                 if include_doi_snap and doi_snap.strip() and not st.session_state["cancel_requested"]:
                     status_box.update(label=f"Resolving DOI: {doi_snap}...")
                     metadata = fetch_doi_metadata(doi_snap)
@@ -785,23 +829,14 @@ with st.container(border=True):
                             status_box.write(f"Pipeline error: {str(err)}")
 
                         if res and len(res) >= 22:
-                            (
-                                title, author_name, score, logic_integrity, drift, rec,
-                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                                consensus_raw, evidence_report_text, scilem_rating
-                            ) = res
-
                             eval_record = {
-                                "title": title, "author_name": clean_author_name(author_name),
-                                "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                                "rec": rec, "fields": fields, "subfields": subfields,
-                                "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                                "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                                "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                                "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                                "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                                "scilem_rating": scilem_rating
+                                "title": res[0], "author_name": clean_author_name(res[1]),
+                                "score": res[2], "logic_integrity": res[3], "drift": res[4], "rec": res[5], 
+                                "fields": res[6], "subfields": res[7], "scores_dict": res[8], "eval_hash": res[9], 
+                                "piq": res[10], "tx_hash": res[11], "zk_proof": res[12], "used_weights": res[13],
+                                "h_idx": res[14], "i10_idx": res[15], "repro_score": res[16], "filename": fname, 
+                                "warnings": res[18], "warnings_acknowledged": False, "consensus_raw": res[19], 
+                                "evidence_report_text": res[20], "scilem_rating": res[21]
                             }
                             st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                             st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -818,6 +853,7 @@ with st.container(border=True):
                         if err_item not in st.session_state["download_errors"]:
                             st.session_state["download_errors"].append(err_item)
 
+                # 3. Process Local Files Queue
                 if snap_files and not st.session_state["cancel_requested"]:
                     total_files = len(snap_files)
                     for i, (fname, fpath) in enumerate(snap_files):
@@ -840,23 +876,14 @@ with st.container(border=True):
                             status_box.write(f"Pipeline error for local file {fname}: {str(err)}")
 
                         if res and len(res) >= 22:
-                            (
-                                title, author_name, score, logic_integrity, drift, rec,
-                                fields, subfields, scores_dict, eval_hash, piq, tx_hash,
-                                zk_proof, used_weights, mdar_score, rrid_count, repro_score, is_cached, warnings_list,
-                                consensus_raw, evidence_report_text, scilem_rating
-                            ) = res
-
                             eval_record = {
-                                "title": title, "author_name": clean_author_name(author_name),
-                                "score": score, "logic_integrity": logic_integrity, "drift": drift,
-                                "rec": rec, "fields": fields, "subfields": subfields,
-                                "scores_dict": scores_dict, "eval_hash": eval_hash, "piq": piq,
-                                "tx_hash": tx_hash, "zk_proof": zk_proof, "used_weights": used_weights,
-                                "h_idx": mdar_score, "i10_idx": rrid_count, "repro_score": repro_score,
-                                "filename": fname, "warnings": warnings_list, "warnings_acknowledged": False,
-                                "consensus_raw": consensus_raw, "evidence_report_text": evidence_report_text,
-                                "scilem_rating": scilem_rating
+                                "title": res[0], "author_name": clean_author_name(res[1]),
+                                "score": res[2], "logic_integrity": res[3], "drift": res[4], "rec": res[5], 
+                                "fields": res[6], "subfields": res[7], "scores_dict": res[8], "eval_hash": res[9], 
+                                "piq": res[10], "tx_hash": res[11], "zk_proof": res[12], "used_weights": res[13],
+                                "h_idx": res[14], "i10_idx": res[15], "repro_score": res[16], "filename": fname, 
+                                "warnings": res[18], "warnings_acknowledged": False, "consensus_raw": res[19], 
+                                "evidence_report_text": res[20], "scilem_rating": res[21]
                             }
                             st.session_state["evaluated_papers_buffer"].insert(0, eval_record)
                             st.session_state["evaluated_papers_buffer"] = st.session_state["evaluated_papers_buffer"][:50]
@@ -883,7 +910,7 @@ with st.container(border=True):
                 st.error("Free trial limit reached. Please connect your Web3 Ethereum Wallet in the sidebar to stake 0.1 piQ and run assessments.")
             elif free_evals_used >= 1 and not stake_amount:
                 st.error("You must agree to stake 0.1 piQ to execute further paper assessments.")
-            elif not selected_uploaded_files and not (include_doi and doi_input.strip()):
+            elif not selected_uploaded_files and not (include_doi and doi_input.strip()) and not selected_search_urls:
                 st.warning("Please tick at least one paper or input source to assess.")
             else:
                 add_log("Preparing pipeline dispatch queue...")
@@ -898,10 +925,10 @@ with st.container(border=True):
                     add_log(f"Cached user file to temporary disk node: {safe_filename}")
                     
                 st.session_state["snap_files"] = saved_files
+                st.session_state["snap_search"] = selected_search_urls
                 st.session_state["snap_scope"] = ""
                 st.session_state["snap_doi"] = doi_input
                 st.session_state["snap_include_doi"] = include_doi
-                st.session_state["snap_alex"] = []
                 st.session_state["is_running"] = True
                 st.session_state["cancel_requested"] = False
                 st.rerun()
@@ -1250,7 +1277,7 @@ with top_analytics_col2:
     current_filter = st.session_state.get(filter_key, "All Authors")
     selected_author_top = None if current_filter == "All Authors" else current_filter
 
-    interactive_html_top, table_html_top = build_science_map(
+    interactive_html_top, table_data_top = build_science_map(
         selected_author_top, repulsion=st.session_state.mod_repulsion, spring_len=st.session_state.mod_spring,
         size_scale=st.session_state.mod_size, central_grav=st.session_state.mod_gravity, _db_token=st.session_state['assessment_update_token']
     )
@@ -1279,7 +1306,15 @@ with top_analytics_col2:
             st.slider("Bubble Size Scale", min_value=0.1, max_value=8.0, value=1.5, step=0.1, key="mod_size")
             st.slider("Central Pull (Gravity)", min_value=0.0, max_value=2.0, value=0.15, step=0.01, key="mod_gravity")
     with tab_legend:
-        st.markdown(table_html_top, unsafe_allow_html=True)
+        if table_data_top:
+            st.dataframe(
+                pd.DataFrame(table_data_top), 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={"Color": st.column_config.TextColumn(help="Color mapped to primary field")}
+            )
+        else:
+            st.info("No topic data found.")
 
 st.markdown("---")
 
@@ -1336,23 +1371,10 @@ with side_col1:
     piq_dict, book_dict = get_author_piq_dict()
     if piq_dict:
         sorted_leaderboard = sorted(piq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
-        h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 3.2, 4.5, 1.5])
-        h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
-        h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
-        h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Book Address</div>", unsafe_allow_html=True)
-        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>piQ</div>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
-
-        piq_scroll = st.container(height=380)
-        with piq_scroll:
-            for rank, (author, piq) in enumerate(sorted_leaderboard, start=1):
-                book_addr = book_dict.get(author, "None")
-                r_c1, r_c2, r_c3, r_c4 = st.columns([0.8, 3.2, 4.5, 1.5], vertical_alignment="center")
-                r_c1.markdown(f"**{rank}**")
-                r_c2.markdown(f"**{author}**")
-                r_c3.markdown(f"`{book_addr}`")
-                r_c4.markdown(f"**{safe_float(piq, 0.0):.2f}**")
-                st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
+        piq_df = pd.DataFrame(sorted_leaderboard, columns=["Author", "piQ Mined"])
+        piq_df["Book Address"] = [book_dict.get(a, "None") for a in piq_df["Author"]]
+        piq_df.index = np.arange(1, len(piq_df) + 1)
+        st.dataframe(piq_df, use_container_width=True)
     else:
         st.info("No piQ tokens minted yet.")
 
@@ -1367,31 +1389,22 @@ with side_col2:
         conn_pi.close()
     
     if top_papers:
-        h_c1, h_c2, h_c3, h_c4 = st.columns([0.8, 4.2, 2.5, 2.5])
-        h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>#</div>", unsafe_allow_html=True)
-        h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Manuscript Title</div>", unsafe_allow_html=True)
-        h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Author</div>", unsafe_allow_html=True)
-        h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase;'>Score / Action</div>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin:4px 0px 8px 0px; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
-
-        pix_scroll = st.container(height=380)
-        with pix_scroll:
-            for rank, tp in enumerate(top_papers, start=1):
-                (p_title, p_author, p_filename, p_score, p_logic, p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7, p_c8, p_piq, p_tx, p_zk, p_mdar, p_rrid, p_repro, p_hash, p_consensus, p_report, p_scilem) = tp
-                clean_auth = clean_author_name(p_author)
-                r_c1, r_c2, r_c3, r_c4 = st.columns([0.8, 4.2, 2.5, 2.5], vertical_alignment="center")
-                r_c1.markdown(f"**{rank}**")
-                r_c2.markdown(f"**{p_title}**")
-                r_c3.markdown(f"*{clean_auth}*")
-                with r_c4:
-                    if st.button("View Dossier", key=f"pix_row_dossier_{rank}_{p_hash}", use_container_width=True):
-                        item_dossier = {
-                            "title": p_title, "author_name": p_author, "score": safe_float(p_score, 0.0), "logic_integrity": safe_float(p_logic, 75.0),
-                            "scores_dict": { "C1_Semantic_Originality": safe_float(p_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(p_c2, 0), "C3_Interdisciplinary_Entropy": safe_float(p_c3, 0), "C4_Societal_Impact": safe_float(p_c4, 0), "C5_Open_Science_Repro": safe_float(p_c5, 0), "C6_Literature_Integration": safe_float(p_c6, 0), "C7_Empirical_Density": safe_float(p_c7, 0), "C8_Future_Actionability_FAIR": safe_float(p_c8, 0) },
-                            "used_weights": [1.0]*8, "eval_hash": p_hash, "piq": safe_float(p_piq, 0.0), "tx_hash": p_tx, "zk_proof": p_zk, "h_idx": safe_float(p_mdar, 0.0), "i10_idx": int(safe_float(p_rrid, 0)), "repro_score": safe_float(p_repro, 0.0), "filename": p_filename or "N/A", "warnings": [], "consensus_raw": json.loads(p_consensus) if p_consensus else {}, "evidence_report_text": p_report or "", "scilem_rating": safe_float(p_scilem, 50.0)
-                        }
-                        show_dossier(item_dossier)
-                st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
+        for rank, tp in enumerate(top_papers, start=1):
+            (p_title, p_author, p_filename, p_score, p_logic, p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7, p_c8, p_piq, p_tx, p_zk, p_mdar, p_rrid, p_repro, p_hash, p_consensus, p_report, p_scilem) = tp
+            clean_auth = clean_author_name(p_author)
+            col1, col2, col3, col4 = st.columns([1, 4, 3, 2], vertical_alignment="center")
+            col1.write(f"**#{rank}**")
+            col2.write(f"**{p_title}**")
+            col3.write(f"*{clean_auth}*")
+            with col4:
+                if st.button("View Dossier", key=f"pix_row_dossier_{rank}_{p_hash}", use_container_width=True):
+                    item_dossier = {
+                        "title": p_title, "author_name": p_author, "score": safe_float(p_score, 0.0), "logic_integrity": safe_float(p_logic, 75.0),
+                        "scores_dict": { "C1_Semantic_Originality": safe_float(p_c1, 0), "C2_Methodological_Rigor_SciScore": safe_float(p_c2, 0), "C3_Interdisciplinary_Entropy": safe_float(p_c3, 0), "C4_Societal_Impact": safe_float(p_c4, 0), "C5_Open_Science_Repro": safe_float(p_c5, 0), "C6_Literature_Integration": safe_float(p_c6, 0), "C7_Empirical_Density": safe_float(p_c7, 0), "C8_Future_Actionability_FAIR": safe_float(p_c8, 0) },
+                        "used_weights": [1.0]*8, "eval_hash": p_hash, "piq": safe_float(p_piq, 0.0), "tx_hash": p_tx, "zk_proof": p_zk, "h_idx": safe_float(p_mdar, 0.0), "i10_idx": int(safe_float(p_rrid, 0)), "repro_score": safe_float(p_repro, 0.0), "filename": p_filename or "N/A", "warnings": [], "consensus_raw": json.loads(p_consensus) if p_consensus else {}, "evidence_report_text": p_report or "", "scilem_rating": safe_float(p_scilem, 50.0)
+                    }
+                    show_dossier(item_dossier)
+            st.divider()
     else:
         st.info("No assessments recorded for Pi-Index leaderboard yet.")
 
@@ -1408,13 +1421,6 @@ finally:
 
 if merged_papers:
     st.markdown("<p style='font-size:13px; color:#64748b; margin-bottom:10px;'>Scroll to view more records. Click <b>View Dossier</b> on any manuscript card to open its complete research integrity record:</p>", unsafe_allow_html=True)
-    h_c1, h_c2, h_c3, h_c4 = st.columns([1.5, 4.5, 2.0, 2.0])
-    h_c1.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Block</div>", unsafe_allow_html=True)
-    h_c2.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Manuscript & Author</div>", unsafe_allow_html=True)
-    h_c3.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Score / piQ</div>", unsafe_allow_html=True)
-    h_c4.markdown("<div style='color:#64748b; font-size:12px; font-weight:700; text-transform:uppercase; padding: 6px 0;'>Action</div>", unsafe_allow_html=True)
-    st.markdown("<hr style='margin:4px 0px 12px 0px; border-top: 2px solid #cbd5e1;'>", unsafe_allow_html=True)
-
     recent_scroll_container = st.container(height=450)
     with recent_scroll_container:
         for idx, mp in enumerate(merged_papers):
@@ -1436,7 +1442,7 @@ if merged_papers:
                         "used_weights": [1.0]*8, "eval_hash": m_hash, "piq": safe_float(m_piq, 0.0), "tx_hash": m_tx, "zk_proof": m_zk, "h_idx": safe_float(m_mdar, 0.0), "i10_idx": int(safe_float(m_rrid, 0)), "repro_score": safe_float(m_repro, 0.0), "filename": m_filename or "N/A", "warnings": [], "consensus_raw": json.loads(m_consensus) if m_consensus else {}, "evidence_report_text": m_report or "", "scilem_rating": safe_float(m_scilem, 50.0)
                     }
                     show_dossier(item_dossier)
-            st.markdown("<hr style='margin: 8px 0px; border-top: 1px solid #f1f5f9;'>", unsafe_allow_html=True)
+            st.divider()
 else:
     st.info("No paper assessments recorded on ledger yet.")
 
